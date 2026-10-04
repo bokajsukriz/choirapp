@@ -5963,7 +5963,7 @@
   const SONG_TOMS = { hi: [220, 160], mid: [160, 110], lo: [110, 70] };
 
   /* ---- Echte Instrumente statt Synthese (Standard für alle Songs, seit dem
-     Klang-Versuch v483). Samples in ./samples/ (76 MP3, mono, ≈ 1,5 MB;
+     Klang-Versuch v483). Samples in ./samples/ (85 MP3, mono, ≈ 1,8 MB;
      Herkunft und Lizenzen in samples/LIZENZ.md und THIRD-PARTY.md):
      Schlagzeug aus VCSL (CC0), Bass/Klavier/Streicher/Gitarre/Chor/Bläser
      aus FluidR3_GM (CC BY 3.0). Je Instrument ein Ton alle drei Halbtöne,
@@ -5991,7 +5991,8 @@
    *  bis +3 Cent) – Intonation und Zieltöne brauchen aber den gleichstufigen Ton,
    *  sampleNote rechnet die Abweichung heraus. */
   const SAMPLE_TUNE = {
-    piano: { 39: -6.9, 42: -7, 45: -3.5, 48: -3.2, 51: -2.4, 54: -2.5, 57: -.1, 60: -.6, 63: -.4, 66: -.8, 69: .1, 72: -.8, 75: 1.4, 78: 1.8, 81: 3.2, 84: 3.1 },
+    // bis 36 am 2. Teilton gemessen (Grundton zu schwach); 24–36 und 87–96 nutzt nur piano.html
+    piano: { 24: -5.1, 27: -6.5, 30: -6.6, 33: -.5, 36: -2.9, 39: -6.9, 42: -7, 45: -3.5, 48: -3.2, 51: -2.4, 54: -2.5, 57: -.1, 60: -.6, 63: -.4, 66: -.8, 69: .1, 72: -.8, 75: 1.4, 78: 1.8, 81: 3.2, 84: 3.1, 87: 2.8, 90: 2.8, 93: 6.8, 96: 12.4 },
   };
   /** Laden je Gruppe ('drums' oder ein Instrument): Hören/Singen brauchen nur das
    *  Klavier (≈ 0,4 MB), die Songs alles. buf (alles beisammen) erst, wenn alle
@@ -6181,7 +6182,7 @@
   function soundTrialHtml() {
     return `<span class="sub-label">Klang</span>
       <div class="chip-row">${[['samples', 'Echte Instrumente'], ['synth', 'Einfach (lädt nichts)']].map(([v, label]) => `<button class="chip" type="button" data-db-sound="${v}" aria-pressed="${ear.dbSound === v}">${label}</button>`).join('')}</div>
-      <p class="foot-note" style="text-align:left;margin-top:4px">Echte Instrumente: beim ersten Mal etwa 1,5 MB laden, danach auch offline. Ohne Netz klingt es einfach.</p>
+      <p class="foot-note" style="text-align:left;margin-top:4px">Echte Instrumente: beim ersten Mal etwa 1,8 MB laden, danach auch offline. Ohne Netz klingt es einfach.</p>
       <p class="foot-note" style="text-align:left">Instrumente: FluidR3 GM von Frank Wen (<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener noreferrer">CC BY 3.0</a>, über midi-js-soundfonts von Benjamin Gleitzman), gekürzt und neu kodiert. Schlagzeug: Versilian Community Sample Library (<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0</a>). Alle Lizenzen: App-Einstellungen → Über die App.</p>`;
   }
 

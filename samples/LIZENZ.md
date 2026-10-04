@@ -1,4 +1,4 @@
-# Samples: echte Instrumente („Einsatz finden“) und Klavier (`engine.keys`)
+# Samples: echte Instrumente („Einsatz finden“) und Klavier (`engine.keys`, `piano.html`)
 
 Aufbereitet für `uebe-lab.html` (alle Songs von „Einsatz finden“; das Klavier
 zusätzlich für alle Vorgabetöne und Akkorde in Hören und Singen über
@@ -37,7 +37,7 @@ https://creativecommons.org/licenses/by/3.0/). Hier verändert (siehe oben).
 | Ordner | Instrument (GM-Name) |
 |---|---|
 | bass | electric_bass_finger |
-| piano | acoustic_grand_piano (MIDI 39–84, auch für `engine.keys`) |
+| piano | acoustic_grand_piano (MIDI 24–96 in voller Länge 3,16 s; `engine.keys` lädt 39–84, `piano.html` alle und verlängert den Ausklang tiefer Töne beim Laden) |
 | strings | string_ensemble_1 |
 | guitar | electric_guitar_clean |
 | choir | choir_aahs |
@@ -56,12 +56,19 @@ wurde je Datei der Grundton (fein gerasterte DFT um den Sollton, Hann-Fenster,
 gestreckten Obertönen geprüft: exakt). Ergebnis in Cent gegenüber gleichstufig
 (a′ = 440 Hz):
 
-| Datei | 39 | 42 | 45 | 48 | 51 | 54 | 57 | 60 | 63 | 66 | 69 | 72 | 75 | 78 | 81 | 84 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Cent | −6,9 | −7,0 | −3,5 | −3,2 | −2,4 | −2,5 | −0,1 | −0,6 | −0,4 | −0,8 | +0,1 | −0,8 | +1,4 | +1,8 | +3,2 | +3,1 |
+| Datei | 24 | 27 | 30 | 33 | 36 | 39 | 42 | 45 | 48 | 51 | 54 | 57 | 60 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Cent | −5,1* | −6,5* | −6,6* | −0,5* | −2,9* | −6,9 | −7,0 | −3,5 | −3,2 | −2,4 | −2,5 | −0,1 | −0,6 |
+
+| Datei | 63 | 66 | 69 | 72 | 75 | 78 | 81 | 84 | 87 | 90 | 93 | 96 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Cent | −0,4 | −0,8 | +0,1 | −0,8 | +1,4 | +1,8 | +3,2 | +3,1 | +2,8 | +2,8 | +6,8 | +12,4 |
+
+\* am 2. Teilton gemessen: Bei den tiefsten Tönen ist der Grundton zu schwach
+(Messung dort unzuverlässig, z. B. 24: +12 am Grundton, −5,1 am 2. Teilton).
 
 Die App rechnet diese Abweichung beim Abspielen heraus (`SAMPLE_TUNE` in
-`uebe-lab.html`); `selfCheckAudio()` misst die Tonhöhe der Wiedergabe nach
+`uebe-lab.html`, `PIANO_TUNE` in `piano.html`); `selfCheckAudio()` misst die Tonhöhe der Wiedergabe nach
 (Toleranz 3 Cent, auch zwischen den Dateien). Eine Autokorrelation (YIN) über
 den ganzen Klang misst wegen der gestreckten Obertöne bis zu +24 Cent zu hoch –
 deshalb die Messung im Spektrum.

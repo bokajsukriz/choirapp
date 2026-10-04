@@ -187,9 +187,14 @@ ein Dialog mit echter Wahl).
   selbst in den Fortschritt. Tools schließen sich auch per Zurück-Geste bzw.
   Wischen vom linken Rand. Bericht zur Umsetzung: `BERICHT-DIDAKTIK.md`.
 - `piano.html` — Klavier zum Singen-Üben (Querformat zuerst, Mehrfinger und
-  Gleiten, Beschriftung C D E / Do Re Mi, Pedal). Klang per Web-Audio-
-  Synthese ohne Samples (zwei verstimmte "Saiten", Obertöne nach dem
-  Hammer-Anschlagpunkt, dunkler werdender Tiefpass, Hammergeräusch, Hall).
+  Gleiten, Beschriftung C D E / Do Re Mi, Pedal). Klang: aufgenommenes FluidR3-Klavier aus
+  `samples/piano/` (C1–C7, alle drei Halbtöne, je Datei auf gleichstufig
+  umgestimmt; die auf 3,16 s gekürzte Quelle verlängert `extendTail` bei tiefen
+  Tönen beim Laden mit überblendeten Stücken), Anschlagstärke über Lautstärke
+  und Helligkeit, Hall. Bis die Samples geladen sind bzw. ohne Netz die
+  Web-Audio-Synthese (zwei verstimmte "Saiten", Obertöne nach dem
+  Hammer-Anschlagpunkt, dunkler werdender Tiefpass, Hammergeräusch).
+  Klang-Selbsttest: `await piano.selfCheckAudio()`.
 - `licks.html` — „Licks & Grooves“, Synth-Licks: kurze Synthesizer-Linien nach
   Gehör lernen (hören → mitsingen → Startton finden → stückweise → ganz →
   durchhalten über 4 bis 16 Takte, zuletzt mit stillen Takten ohne Schlagzeug →

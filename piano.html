@@ -208,7 +208,7 @@
 
   function ensureAudio() {
     if (audio.ctx) {
-      if (audio.ctx.state !== 'running') audio.ctx.resume();
+      if (audio.ctx.state !== 'running' && audio.ctx.resume) Promise.resolve(audio.ctx.resume()).catch(() => {}); // (Offline-Kontext im Selbsttest)
       return audio.ctx;
     }
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -233,20 +233,26 @@
     const dry = ctx.createGain(); dry.gain.value = 1;
     dry.connect(master);
     dry.connect(convolver).connect(wet).connect(master);
-    // Hammergeräusch: ein kurzer Rauschpuffer, je Anschlag gefiltert.
-    const nlen = Math.floor(ctx.sampleRate * .03);
+    Object.assign(audio, { master, dry, wet });
+    ensureNoise();
+    return ctx;
+  }
+  /** Hammergeräusch: ein kurzer Rauschpuffer, je Anschlag gefiltert. */
+  function ensureNoise() {
+    if (audio.noise) return;
+    const ctx = audio.ctx, nlen = Math.floor(ctx.sampleRate * .03);
     const noise = ctx.createBuffer(1, nlen, ctx.sampleRate);
     const nd = noise.getChannelData(0);
     for (let i = 0; i < nlen; i++) nd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / nlen, 2);
-    Object.assign(audio, { master, dry, wet, noise });
-    return ctx;
+    audio.noise = noise;
   }
 
   /** Wellenform je Lage (gecacht): Obertöne nach dem Anschlagpunkt —
    *  tiefe Töne obertonreicher, hohe fast sinusförmig. */
   function waveFor(midi) {
     const band = midi < 48 ? 0 : midi < 64 ? 1 : midi < 76 ? 2 : 3;
-    if (audio.waves.has(band)) return audio.waves.get(band);
+    // Je Kontext (eine PeriodicWave gehört ihrem Kontext – Selbsttest rendert offline).
+    if (audio.waves.get(band)?.ctx === audio.ctx) return audio.waves.get(band).wave;
     const count = [28, 20, 12, 6][band];
     const real = new Float32Array(count + 1);
     const imag = new Float32Array(count + 1);
@@ -255,12 +261,119 @@
       imag[n] = (strike + .08) / Math.pow(n, band === 0 ? .95 : 1.15);
     }
     const wave = audio.ctx.createPeriodicWave(real, imag, { disableNormalization: false });
-    audio.waves.set(band, wave);
+    audio.waves.set(band, { ctx: audio.ctx, wave });
     return wave;
   }
 
   const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
   const MAX_VOICES = 28;
+  /** Abklingzeit der Synthese (s): tief lang, hoch kurz – auch Maß für den
+   *  verlängerten Ausklang der Samples. */
+  const decayOf = (f) => clamp(9 * Math.pow(110 / f, .55), 1.1, 14);
+
+  /* ---------------- Samples (echtes Klavier) ----------------
+     FluidR3 GM (Frank Wen, CC BY 3.0), dieselben Dateien wie das Klavier der
+     Übungen (./samples/piano/, Herkunft samples/LIZENZ.md): C1–C7, ein Ton alle
+     drei Halbtöne, dazwischen umgestimmt (höchstens ±1,5 Halbtöne). Geladen
+     beim Öffnen, aus dem Sample-Cache des Service Workers auch offline; bis
+     dahin bzw. ohne Netz die Synthese unten. Die Quelle ist auf 3,16 s
+     gekürzt – tiefe Töne klingen dort noch deutlich; extendTail verlängert
+     sie beim Laden mit überblendeten Stücken aus dem ruhigen Ende. */
+  const PIANO_SAMPLES = [24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90, 93, 96];
+  /** Stimmung je Datei in Cent (gespreizte Klavierstimmung herausrechnen);
+   *  Grundton im Spektrum gemessen, bis 36 am 2. Teilton (der Grundton ist
+   *  dort zu schwach). Gleiche Werte wie SAMPLE_TUNE in uebe-lab.html. */
+  const PIANO_TUNE = { 24: -5.1, 27: -6.5, 30: -6.6, 33: -.5, 36: -2.9, 39: -6.9, 42: -7, 45: -3.5, 48: -3.2, 51: -2.4, 54: -2.5, 57: -.1, 60: -.6, 63: -.4, 66: -.8, 69: .1, 72: -.8, 75: 1.4, 78: 1.8, 81: 3.2, 84: 3.1, 87: 2.8, 90: 2.8, 93: 6.8, 96: 12.4 };
+  const PLAY_GAIN = .38; // Pegel gegenüber der Synthese (piano.selfCheckAudio misst)
+  const smp = { bufs: null, loading: null, gain: {}, failedAt: 0 };
+  const nearestSample = (midi) => PIANO_SAMPLES.reduce((b, x) => (Math.abs(x - midi) < Math.abs(b - midi) ? x : b), PIANO_SAMPLES[0]);
+  /** Stille am Anfang abschneiden (MP3-Vorlauf), sonst kommt der Anschlag spät. */
+  function trimOnset(b) {
+    const d = b.getChannelData(0);
+    let peak = 0;
+    for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]));
+    let i0 = 0;
+    while (i0 < d.length && Math.abs(d[i0]) < peak * .02) i0++;
+    i0 = Math.max(0, i0 - Math.round(b.sampleRate * .001));
+    if (!i0) return b;
+    const out = new AudioBuffer({ length: b.length - i0, numberOfChannels: 1, sampleRate: b.sampleRate });
+    out.copyToChannel(d.subarray(i0), 0);
+    return out;
+  }
+  /** Ausklang verlängern: ein Stück vom ruhigen Ende (0,9 s vor der
+   *  Ausblendung) mehrfach überblendet anhängen, sein eigenes Abklingen
+   *  herausgerechnet und durch ein durchgehendes ersetzt (mindestens so steil,
+   *  dass der Ton nach decayOf·1,1 s, höchstens 10 s, verklungen ist). */
+  function extendTail(b, n) {
+    const sr = b.sampleRate, d = b.getChannelData(0);
+    const target = Math.min(10, decayOf(hz(n)) * 1.1);
+    if (target <= b.duration + .3) return b;
+    const len = Math.round(target * sr), seg1 = d.length - Math.round(.2 * sr), seg0 = seg1 - Math.round(.9 * sr);
+    const segLen = seg1 - seg0, xf = Math.round(.25 * sr), w = Math.round(.08 * sr);
+    const rmsAt = (i) => { let e = 0; for (let k = i; k < i + w; k++) e += d[k] * d[k]; return Math.sqrt(e / w); };
+    const a = rmsAt(seg0), z = rmsAt(seg1 - w);
+    const lambda = a > 0 && z > 0 ? Math.max(0, Math.log(a / z) / ((segLen - w) / sr)) : 0; // eigenes Abklingen (1/s)
+    const r = Math.max(lambda, 6.9 / target);                                              // weiter: −60 dB bis target
+    const out = new Float32Array(len);
+    out.set(d.subarray(0, seg1));
+    for (let p = seg1 - xf; p < len; p += segLen - xf) {
+      for (let j = 0; j < segLen && p + j < len; j++) {
+        const v = d[seg0 + j] * Math.exp(lambda * j / sr) * Math.exp(-r * (p + j - seg0) / sr);
+        if (j < xf) { const x = j / xf; out[p + j] = out[p + j] * Math.cos(x * Math.PI / 2) + v * Math.sin(x * Math.PI / 2); } else out[p + j] = v;
+      }
+    }
+    const fade = Math.round(.3 * sr);
+    for (let i = 0; i < fade; i++) out[len - 1 - i] *= i / fade;
+    const nb = new AudioBuffer({ length: len, numberOfChannels: 1, sampleRate: sr });
+    nb.copyToChannel(out, 0);
+    return nb;
+  }
+  /** Lautstärke je Datei angleichen (Effektivwert 0,02–0,4 s nach dem Anschlag
+   *  auf den Median) – die Quelle ist je Ton unterschiedlich laut. */
+  function sampleLevels(bufs) {
+    const rms = Object.fromEntries(Object.entries(bufs).map(([n, b]) => {
+      const d = b.getChannelData(0), a = Math.round(.02 * b.sampleRate), z = Math.min(d.length, Math.round(.4 * b.sampleRate));
+      let e = 0; for (let i = a; i < z; i++) e += d[i] * d[i];
+      return [n, Math.sqrt(e / (z - a))];
+    }));
+    const sorted = Object.values(rms).sort((x, y) => x - y), med = sorted[sorted.length >> 1];
+    return Object.fromEntries(Object.entries(rms).map(([n, v]) => [n, v > 0 ? clamp(med / v, .25, 6) : 1]));
+  }
+  function loadPianoSamples() {
+    if (smp.bufs) return Promise.resolve(smp.bufs);
+    if (smp.loading) return smp.loading;
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const dec = audio.ctx || (OAC ? new OAC(1, 1, 44100) : null);
+    if (!dec) return Promise.reject(new Error('Kein Web Audio'));
+    smp.loading = Promise.all(PIANO_SAMPLES.map(async (n) => {
+      const r = await fetch(`./samples/piano/${n}.mp3`);
+      if (!r.ok) throw new Error(`Sample ${n}: ${r.status}`);
+      return [n, extendTail(trimOnset(await dec.decodeAudioData(await r.arrayBuffer())), n)];
+    })).then((list) => {
+      smp.bufs = Object.fromEntries(list);
+      smp.gain = sampleLevels(smp.bufs);
+      return smp.bufs;
+    }).catch((err) => { smp.failedAt = Date.now(); throw err; }).finally(() => { smp.loading = null; });
+    return smp.loading;
+  }
+  /** Ton aus den Samples; gleiche Stimme wie die Synthese ({ out, oscs, … }),
+   *  damit Dämpfen, Pedal und Stimmenzahl unverändert funktionieren. */
+  function sampledVoice(ctx, midi, velocity, t) {
+    const n = nearestSample(midi), b = smp.bufs[n];
+    const f = hz(midi);
+    const src = ctx.createBufferSource();
+    src.buffer = b;
+    src.playbackRate.value = Math.pow(2, (midi - n - (PIANO_TUNE[n] || 0) / 100) / 12);
+    // Anschlagstärke: lauter und heller (eine Aufnahme, der Filter macht leise Töne weicher).
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.Q.value = .4;
+    lp.frequency.value = clamp(f * (3 + velocity * 16), 1200, 18000);
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(PLAY_GAIN * (smp.gain[n] || 1) * (.3 + velocity * .7) * (midi < 40 ? .8 : 1), t);
+    src.connect(lp).connect(out);
+    src.start(t);
+    return { out, oscs: [src] };
+  }
 
   function noteOn(midi, velocity = .8) {
     const ctx = ensureAudio();
@@ -271,8 +384,21 @@
     if (audio.all.size >= MAX_VOICES) { const oldest = audio.all.values().next().value; damp(oldest, .02); }
     const t = ctx.currentTime + .005;
     const f = hz(midi);
-    // Abklingzeit: tief lang, hoch kurz.
-    const decay = clamp(9 * Math.pow(110 / f, .55), 1.1, 14);
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (pan) pan.pan.value = clamp((midi - 60) / 40, -.5, .5);
+    // Laden fehlgeschlagen (offline)? Beim Spielen höchstens alle 30 s neu versuchen.
+    if (!smp.bufs && !smp.loading && Date.now() - smp.failedAt > 30000) loadPianoSamples().catch(() => {});
+    if (smp.bufs) {
+      const { out, oscs } = sampledVoice(ctx, midi, velocity, t);
+      if (pan) out.connect(pan).connect(audio.dry); else out.connect(audio.dry);
+      const voice = { midi, out, oscs, done: false, held: true, sampled: true };
+      oscs[0].addEventListener('ended', () => { voice.done = true; audio.all.delete(voice); if (audio.voices.get(midi) === voice) audio.voices.delete(midi); }, { once: true });
+      audio.voices.set(midi, voice);
+      audio.all.add(voice);
+      return;
+    }
+    // Synthese (bis die Samples geladen sind, ohne Netz). Abklingzeit: tief lang, hoch kurz.
+    const decay = decayOf(f);
     const peak = .22 * (.45 + velocity * .55) * (midi < 40 ? .8 : 1);
 
     const out = ctx.createGain();
@@ -287,9 +413,6 @@
     const bright = clamp(f * (5 + velocity * 9), 900, 15000);
     lp.frequency.setValueAtTime(bright, t);
     lp.frequency.setTargetAtTime(clamp(f * 2.2, 400, 6000), t + .02, decay * .22);
-
-    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-    if (pan) pan.pan.value = clamp((midi - 60) / 40, -.5, .5);
 
     const wave = waveFor(midi);
     const oscs = [0, 1].map((i) => {
@@ -602,7 +725,58 @@
     return errors;
   }
 
-  window.piano = { state, audio, noteOn, noteOff, spell, noteLabel, keyLabel, SOLF, selfCheck };
+  /** Klang-Prüfung (async, Konsole: `await piano.selfCheckAudio()`): Samples
+   *  geladen, Tonhöhe auch zwischen den Dateien, verlängerter Ausklang ohne
+   *  Sprung, Pegel wie die Synthese, Rückfall auf die Synthese. */
+  async function selfCheckAudio() {
+    const errors = [];
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!OAC) return ['OfflineAudioContext fehlt'];
+    try { await loadPianoSamples(); } catch (err) { return [`Klavier-Samples nicht geladen (${err.message})`]; }
+    const sr = 48000;
+    const render = async (sec, fn) => {
+      const ctx = new OAC(1, Math.round(sr * sec), sr);
+      const save = { ctx: audio.ctx, dry: audio.dry, voices: audio.voices, all: audio.all };
+      Object.assign(audio, { ctx, dry: ctx.destination, voices: new Map(), all: new Set() });
+      try { fn(); } finally { Object.assign(audio, save); }
+      return (await ctx.startRendering()).getChannelData(0);
+    };
+    const rms = (x, a, b) => { let e = 0; const i0 = Math.round(a * sr), i1 = Math.round(b * sr); for (let i = i0; i < i1; i++) e += x[i] * x[i]; return Math.sqrt(e / (i1 - i0)); };
+    // Tonhöhe im Spektrum (fein gerasterte DFT, Hann-Fenster); bis 40 am 2. Teilton.
+    const cents = (x, midi, a, b) => {
+      const h = midi <= 40 ? 2 : 1, f0 = h * hz(midi), i0 = Math.round(a * sr), n = Math.round((b - a) * sr);
+      const w = new Float64Array(n); for (let i = 0; i < n; i++) w[i] = x[i0 + i] * (.5 - .5 * Math.cos(2 * Math.PI * i / (n - 1)));
+      const mag = (c) => { const k = 2 * Math.PI * f0 * Math.pow(2, c / 1200) / sr; let re = 0, im = 0; for (let i = 0; i < n; i++) { re += w[i] * Math.cos(k * i); im -= w[i] * Math.sin(k * i); } return re * re + im * im; };
+      let best = 0, bm = -1;
+      for (let c = -40; c <= 40; c += 2) { const v = mag(c); if (v > bm) { bm = v; best = c; } }
+      for (let c = best - 2; c <= best + 2; c += .1) { const v = mag(c); if (v > bm) { bm = v; best = c; } }
+      return best;
+    };
+    for (const midi of [26, 31, 40, 50, 61, 71, 79, 85]) {
+      const x = await render(1.5, () => noteOn(midi, .8));
+      const c = cents(x, midi, .15, 1.1);
+      if (!(Math.abs(c) <= 4)) errors.push(`Sample ${noteLabel(midi)}: ${c.toFixed(1)} Cent daneben`);
+    }
+    // Langer tiefer Ton mit Pedal: klingt über die Datei hinaus weiter, ohne Sprung an den Nahtstellen.
+    {
+      const x = await render(9, () => noteOn(31, .8));
+      const lv = []; for (let t = 1; t < 8.5; t += .25) lv.push(20 * Math.log10(rms(x, t, t + .25) + 1e-9));
+      if (!(lv[lv.length - 8] > -90)) errors.push('Sample: tiefer Ton bricht nach der Datei ab');
+      const jumps = lv.slice(1).map((v, i) => v - lv[i]).filter((dv) => dv > 3);
+      if (jumps.length) errors.push(`Sample: Ausklang springt (${jumps.map((v) => v.toFixed(1))} dB)`);
+    }
+    // Pegel wie die Synthese (Mitte der Klaviatur, 0,05–0,6 s), Rückfall ohne Samples.
+    const sampled = await render(1, () => noteOn(60, .8));
+    const bufs = smp.bufs; smp.bufs = null;
+    let synth;
+    try { synth = await render(1, () => { ensureNoise(); noteOn(60, .8); }); } finally { smp.bufs = bufs; }
+    const ratio = rms(sampled, .05, .6) / rms(synth, .05, .6);
+    if (!(ratio > .5 && ratio < 2)) errors.push(`Sample: Pegel ${ratio.toFixed(2)} × Synthese`);
+    if (!(rms(synth, .05, .6) > 1e-3)) errors.push('Rückfall: ohne Samples keine Synthese');
+    return errors;
+  }
+
+  window.piano = { state, audio, noteOn, noteOff, spell, noteLabel, keyLabel, SOLF, selfCheck, selfCheckAudio, loadPianoSamples, samplesReady: () => !!smp.bufs };
 
   restore().then(() => {
     $('.vol input').value = String(state.volume);
@@ -610,6 +784,7 @@
     build();
   });
   build();
+  loadPianoSamples().catch((err) => console.warn('Klavier-Samples nicht geladen – Synthese:', err));
 })();
 </script>
 </body>
