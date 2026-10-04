@@ -14,6 +14,7 @@ Standard aus der Arbeitsanweisung.
 |---|---|---|---|
 | Vorab | Nachklatschen: Urteil Gut/Okay/Fast/Nochmal | umgesetzt | v481 |
 | Etappe 1 | Song-Engine, Stufen 1, 2, 4 | umgesetzt | v482 |
+| Versuch | Echte Instrumente (Samples) für 3 Probesongs | zum Probehören | v483 |
 | Etappe 2 | Einstieg in der Periode, „Worauf hören?“, „Nur das Zeichen“ | offen | – |
 | Etappe 3 | Stufen 3, 5, 6 auf Songs, 12/8 | offen | – |
 | Etappe 4 | Typ C (Stufe 7) | offen | – |
@@ -120,6 +121,44 @@ Klang ließ sich hier nicht anhören. Am meisten Neues steckt in:
   Harmonie ohne Bass für die Eins?
 - Allgemein: Lead (Melodie) zu laut/leise gegenüber Klavier und Drums? Schluss-
   akkord nach den vier Takten angenehm?
+
+## Klang-Versuch: echte Instrumente (v483)
+
+Frage der Nutzerin: fertige, realistische Audio-Loops statt Synthese?
+Geschätzt ≈ 270 KB je Song als fertiger Mix (100 Songs ≈ 27 MB), mit
+Einzelspuren ≈ 550 KB (≈ 55 MB) – dabei gingen Tonart, freies Tempo,
+„ohne Bass“ und das Ändern per Text verloren. Stattdessen als Versuch: die App
+spielt die Songs weiter selbst, aber mit **aufgenommenen Instrumenten**.
+
+- **Samples** in `samples/` (54 MP3, mono, **1,1 MB**): Schlagzeug aus VCSL
+  (CC0), Bass, Klavier, Streicher, Gitarre (Melodie) und Chor („aah“) aus
+  FluidR3_GM (CC BY 3.0). Je Instrument ein Ton alle drei Halbtöne, dazwischen
+  umgestimmt. Herkunft je Datei in `samples/LIZENZ.md`, Aufbereitung
+  `samples/aufbereiten.sh`, Eintrag in `THIRD-PARTY.md`, Namensnennung auch in
+  der App.
+- **Wo:** Einstellungen (Zahnrad) von „Einsatz finden“ → „Klang (Versuch)“:
+  Umschalter „Bisher / Echte Instrumente“ und je Probesong „▶ Bisher“ /
+  „▶ Echt“ zum direkten Vergleich (eine Schleife ab der Eins plus Schluss).
+  Mit „Echte Instrumente“ kommen in Stufe 1 und 2 nur die Probesongs dran
+  (Stufe 1: Fahrradkette, Stadtrand; Stufe 2 dazu Gummistiefel), nie zweimal
+  direkt hintereinander.
+- **Laden:** erst beim ersten Gebrauch, nicht im Shell-Cache. Offline oder bei
+  einem Ladefehler (8 s) klingt es wie bisher. Die Stille am Anfang jeder Datei
+  (MP3-Vorlauf) schneidet die App beim Laden ab, damit die Schläge nicht
+  verspätet kommen.
+- **Was bleibt synthetisch:** Klick (Eins betonen), Vorklatschen der Hilfen,
+  Stabs. Die Bassdrum ist eine Konzert-Bassdrum aus VCSL, darüber liegt die
+  bisherige synthetische Bassdrum für den Punch (VCSL hat kein Rock-Drumset).
+- **Pegel geschätzt**, gemessen im Browser ähnlich laut wie bisher
+  (RMS 0,10–0,13 gegenüber 0,10). Streicher-Samples sind 3,2 s lang; längere
+  Flächen (Stadtrand, ♩ 68–78) klingen am Taktende aus statt durchzuhalten.
+- Tests: Samples decken alle Töne der Probesongs in jeder Tonart ab (±1,5
+  Halbtöne), Aufgaben nur aus Probesongs, Einstellung wird gespeichert. Im
+  Browser: alle 54 Dateien geladen, keine Fehler.
+
+Offen nach dem Probehören: weiter so (dann alle Songs, Stabs/Bläser, längere
+Streicher, Samples offline cachen) oder verwerfen (Ordner `samples/` und den
+Abschnitt in `uebe-lab.html` entfernen).
 
 ## Offene Punkte
 

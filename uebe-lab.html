@@ -608,6 +608,10 @@
   .tap-pad { --mic-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Crect x='9' y='3' width='6' height='11' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3'/%3E%3C/svg%3E"); }
   .pad-level { width: 70%; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
   .pad-level i { display: block; height: 100%; width: 0; border-radius: 4px; background: var(--ok); transition: width .05s linear; }
+  .sound-trial { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .sound-row { display: flex; align-items: center; gap: 6px; }
+  .sound-row > span { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; font-size: 14px; }
+  .sound-row small { color: var(--muted); font-size: 12px; }
   .round-card { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
   /* Urteil (Entwurf docs/nachklatschen): Symbol im Kreis + großes Wort,
      darunter eine Zeile. Wort + Symbol, nie nur Farbe. */
@@ -4837,6 +4841,7 @@
     pick: null,        // Stimmen: angetippter Kandidat
     streak: 0,
     dbPct: 0,          // Einsatz finden: eigene Tempo-Verschiebung in Prozent (BPM-Knopf, ±25)
+    dbSound: 'synth',  // Einsatz finden, Klang-Versuch: 'synth' | 'samples' (echte Instrumente, nur Probesongs)
     dbLog: [],         // Einsatz finden: die letzten Aufgaben (Abwechslung, siehe makeDownbeatTask)
     bodyShift: 0,      // Körper: ebenso
     bodyRehearsal: { on: false, map: { B: 'stomp', T: 'patsch', A: 'clap', S: 'snap' } }, // Körper: Probenmodus, Schicht je Stimme
@@ -5347,9 +5352,9 @@
    *  dasselbe Paar, das Muster möglichst anders als zuletzt, ein Groove höchstens
    *  zweimal in Folge, Einstieg nicht an derselben Stelle; Stufe 3 wechselt die
    *  Taktart reihum. pct: eigene Tempo-Verschiebung in Prozent (BPM-Knopf). */
-  function makeDownbeatTask(n, rnd = Math.random, pct = 0, log = []) {
+  function makeDownbeatTask(n, rnd = Math.random, pct = 0, log = [], only = null) {
     const level = DOWNBEAT_LEVELS[n - 1];
-    if (level.songs) return makeSongTask(n, rnd, pct, log);
+    if (level.songs) return makeSongTask(n, rnd, pct, log, only);
     const pickR = (list) => list[Math.floor(rnd() * list.length)];
     const recent = log.filter((x) => x && x.level === n);
     const last = recent[recent.length - 1] || null;
@@ -5888,17 +5893,20 @@
    *  (ear.dbLog, DB_MEMORY) zuletzt – eine Annäherung an „ohne Zurücklegen“.
    *  Einstieg nie auf der Eins und nicht an derselben Stelle wie zuletzt.
    *  Tonart zufällig: Dur F–A, Moll d–fis (Bass und Melodie in Chorlage). */
-  function makeSongTask(n, rnd = Math.random, pct = 0, log = []) {
+  function makeSongTask(n, rnd = Math.random, pct = 0, log = [], only = null) {
     const level = DOWNBEAT_LEVELS[n - 1];
     const pickR = (list) => list[Math.floor(rnd() * list.length)];
     const narrow = (list, keep) => { const k = list.filter(keep); return k.length ? k : list; };
     const recent = log.filter((x) => x && x.level === n);
     const last = recent[recent.length - 1] || null, prev = recent[recent.length - 2] || null;
     let combos = songCombos(level);
+    // Klang-Versuch: nur die Probesongs, soweit die Stufe welche hat.
+    if (only) combos = narrow(combos, (c) => only.includes(c.song));
     if (last) {
       const fam = (x) => x.family ?? DB_SONGS[x.song]?.family;
       const near = new Set(recent.slice(-DB_SONG_RECENT).map((x) => x.song));
       combos = narrow(combos, (c) => !near.has(c.song));
+      combos = narrow(combos, (c) => c.song !== last.song); // kleiner Vorrat (Klang-Versuch): wenigstens nicht direkt nochmal
       if (prev && fam(prev) && fam(prev) === fam(last)) combos = narrow(combos, (c) => DB_SONGS[c.song].family !== fam(last));
       const seen = new Set(recent.map((x) => `${x.song}/${x.pattern}`));
       combos = narrow(combos, (c) => !seen.has(`${c.song}/${c.pattern}`));
@@ -6007,6 +6015,166 @@
     return bus.parts[name];
   }
   const SONG_TOMS = { hi: [220, 160], mid: [160, 110], lo: [110, 70] };
+
+  /* ---- Klang-Versuch: echte Instrumente statt Synthese (nur für die
+     Probesongs). Samples in ./samples/ (54 MP3, mono, ≈ 1,1 MB; Herkunft und
+     Lizenzen in samples/LIZENZ.md und THIRD-PARTY.md): Schlagzeug aus VCSL
+     (CC0), Bass/Klavier/Streicher/Gitarre/Chor aus FluidR3_GM (CC BY 3.0).
+     Je Instrument ein Ton alle drei Halbtöne, dazwischen umgestimmt
+     (playbackRate, höchstens ±1,5 Halbtöne). Geladen erst beim ersten
+     Gebrauch, nicht im Shell-Cache – offline oder bei einem Ladefehler
+     klingt es wie bisher. ---- */
+  const SAMPLE_SONGS = ['fahrradkette', 'stadtrand', 'gummistiefel'];
+  const SAMPLE_DRUMS = ['kick', 'snare', 'snare-soft', 'rim', 'hat', 'hat-soft', 'open', 'tom-hi', 'tom-lo', 'crash', 'clap'];
+  const SAMPLE_INST = {
+    bass: [42, 45, 48, 51, 54, 57, 60],
+    piano: [48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78],
+    strings: [42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81],
+    guitar: [66, 69, 72, 75, 78, 81],
+    choir: [66, 69, 72, 75, 78],
+  };
+  const samples = { buf: null, loading: null };
+  /** Stille am Anfang abschneiden (MP3-Vorlauf des Kodierers, je nach Browser
+   *  verschieden) – sonst kämen die Schläge alle ein paar ms zu spät. */
+  function trimOnset(b) {
+    const d = b.getChannelData(0);
+    let peak = 0;
+    for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]));
+    let i0 = 0;
+    while (i0 < d.length && Math.abs(d[i0]) < peak * .02) i0++;
+    i0 = Math.max(0, i0 - Math.round(b.sampleRate * .001));
+    if (!i0) return b;
+    const out = new AudioBuffer({ length: b.length - i0, numberOfChannels: b.numberOfChannels, sampleRate: b.sampleRate });
+    for (let c = 0; c < b.numberOfChannels; c++) out.copyToChannel(b.getChannelData(c).subarray(i0), c);
+    return out;
+  }
+  function loadSamples() {
+    if (samples.buf) return Promise.resolve(samples.buf);
+    if (samples.loading) return samples.loading;
+    const ctx = engine.ctx;
+    const one = async (path) => {
+      const r = await fetch(`./samples/${path}.mp3`);
+      if (!r.ok) throw new Error(`Sample ${path}: ${r.status}`);
+      return trimOnset(await ctx.decodeAudioData(await r.arrayBuffer()));
+    };
+    samples.loading = (async () => {
+      const buf = { drums: {}, inst: {} };
+      await Promise.all([
+        ...SAMPLE_DRUMS.map(async (id) => { buf.drums[id] = await one(`drums/${id}`); }),
+        ...Object.entries(SAMPLE_INST).flatMap(([inst, notes]) => notes.map(async (n) => { (buf.inst[inst] ||= {})[n] = await one(`${inst}/${n}`); })),
+      ]);
+      samples.buf = buf;
+      return buf;
+    })().finally(() => { samples.loading = null; });
+    return samples.loading;
+  }
+  /** Für diese Aufgabe mit Samples spielen? Lädt beim ersten Mal (höchstens
+   *  8 s warten); bei Fehler false → bisheriger Klang. */
+  async function prepareSamples(task) {
+    if (ear.dbSound !== 'samples' || !task?.song || !SAMPLE_SONGS.includes(task.song)) return false;
+    if (samples.buf) return true;
+    try {
+      await Promise.race([loadSamples(), new Promise((_, no) => setTimeout(() => no(new Error('Zeitüberschreitung')), 8000))]);
+      return true;
+    } catch (err) { console.warn('Samples nicht geladen:', err); return false; }
+  }
+  /** Ein Sample abspielen; dur: Note endet (mit release ausklingen), attack: einblenden. */
+  function playSample(b, time, { rate = 1, gain = 1, dur = null, attack = 0, release = .06, dest }) {
+    const ctx = engine.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = b; src.playbackRate.value = rate;
+    const g = ctx.createGain();
+    const len = b.duration / rate;
+    const a = Math.min(attack, len / 2);
+    if (a) { g.gain.setValueAtTime(.0001, time); g.gain.linearRampToValueAtTime(gain, time + a); } else g.gain.setValueAtTime(gain, time);
+    let end = len;
+    if (dur !== null && dur + release < len) {
+      g.gain.setValueAtTime(gain, time + Math.max(a, dur));
+      g.gain.linearRampToValueAtTime(.0001, time + Math.max(a, dur) + release);
+      end = Math.max(a, dur) + release;
+    }
+    src.connect(g).connect(dest);
+    src.start(time); src.stop(time + end + .02);
+  }
+  /** Ton eines Instruments: nächstes Sample, umgestimmt. */
+  function sampleNote(inst, midi, time, dur, opts) {
+    const notes = SAMPLE_INST[inst];
+    const n = notes.reduce((best, x) => (Math.abs(x - midi) < Math.abs(best - midi) ? x : best), notes[0]);
+    playSample(samples.buf.inst[inst][n], time, { ...opts, rate: 2 ** ((midi - n) / 12), dur });
+  }
+  /** Ereignis mit Samples spielen; false = nicht zuständig (Klick, Vorklatschen,
+   *  Stabs …) → Synthese wie bisher. Pegel geschätzt (siehe Bericht). */
+  function playSampledEvent(ev, time, bus) {
+    const d = samples.buf.drums;
+    ev = { ...ev, vel: ev.vel ?? 1 }; // Schlusspunkt-Ereignisse tragen keine Anschlagstärke
+    const mix = songPart(bus, 's-mix', .5);
+    const part = (name, g) => { bus.parts ||= {}; if (!bus.parts[name]) { const n = engine.ctx.createGain(); n.gain.value = g; n.connect(mix); bus.parts[name] = n; } return bus.parts[name]; };
+    const drums = part('s-drums', 1);
+    switch (ev.kind) {
+      case 'kick': playSample(d.kick, time, { gain: ev.vel, dest: drums }); engine.drum('kick', time, ev.vel * .6, bus); return true;
+      case 'snare': playSample(ev.vel < 1 ? d['snare-soft'] : d.snare, time, { gain: .8 * ev.vel, dest: drums }); return true;
+      case 'rim': playSample(d.rim, time, { gain: .5, dest: drums }); return true;
+      case 'hat': playSample(ev.vel < 1 ? d['hat-soft'] : d.hat, time, { gain: .28, dest: drums }); return true;
+      case 'open': playSample(d.open, time, { gain: .3, dest: drums }); return true;
+      case 'tom': playSample(ev.pitch === 'hi' ? d['tom-hi'] : d['tom-lo'], time, { gain: .7, rate: ev.pitch === 'mid' ? 1.19 : 1, dest: drums }); return true;
+      case 'crash': playSample(d.crash, time, { gain: .4, dest: drums }); return true;
+      case 'bandclap': playSample(d.clap, time, { gain: .45, dest: drums }); return true;
+      case 'bass': sampleNote('bass', ev.midi, time, ev.long ? 1.2 : ev.dur ?? .45, { gain: .6, release: .08, dest: part('s-bass', 1) }); return true;
+      case 'keys': ev.notes.forEach((n) => sampleNote('piano', n, time, Math.max(.1, ev.dur), { gain: ev.arp ? .6 : .45, release: .3, dest: part('s-keys', 1) })); return true;
+      case 'pad': ev.notes.forEach((n) => sampleNote('strings', n, time, Math.max(.3, ev.dur), { gain: .2, attack: .25, release: .4, dest: part('s-pad', 1) })); return true;
+      case 'lead': sampleNote('guitar', ev.midi, time, ev.dur, { gain: .38, release: .12, dest: part('s-lead', 1) }); return true;
+      case 'chop': sampleNote('choir', ev.midi, time, Math.max(.2, ev.dur), { gain: .4, attack: .04, release: .2, dest: part('s-chop', 1) }); return true;
+      default: return false;
+    }
+  }
+  /** Klangprobe in den Einstellungen: eine Schleife des Songs ab der Eins plus
+   *  Schlusspunkt, ohne Klick und Vorklatschen – wahlweise bisher oder echt. */
+  const soundPreview = { bus: null, key: '', timer: null };
+  function stopSoundPreview() {
+    if (soundPreview.bus) engine.fadeBus(soundPreview.bus);
+    clearTimeout(soundPreview.timer);
+    Object.assign(soundPreview, { bus: null, key: '', timer: null });
+  }
+  async function playSoundPreview(id, sound) {
+    const key = `${id}:${sound}`;
+    const again = soundPreview.key === key;
+    stopSoundPreview();
+    if (again) { renderSettings(); return; }
+    await engine.start();
+    engine.fadeBus(ear.bus); clearEarTimers();
+    soundPreview.key = key; renderSettings();
+    const song = DB_SONGS[id];
+    const task = { kind: 'downbeat', level: 1, song: id, groove: null, meter: song.meter, pattern: 'one4', bpm: Math.round((song.bpm[0] + song.bpm[1]) / 2), startTick: 0, bass: true, mode: song.mode, tonic: song.mode === 'minor' ? 64 : 67, aids: {}, answer: null };
+    let sampled = false;
+    if (sound === 'samples') {
+      try { await loadSamples(); sampled = true; } catch (err) { console.warn(err); setStatus('Die Instrumente ließen sich nicht laden – offline? Es klingt wie bisher.'); }
+    }
+    if (soundPreview.key !== key) return;
+    const bus = engine.newBus({ reverb: false });
+    bus.sampled = sampled;
+    soundPreview.bus = bus;
+    const m = METERS[song.meter], L = m.ticks * song.bars, tickSec = 60 / task.bpm / m.ref;
+    const t0 = engine.ctx.currentTime + .1;
+    for (const e of songVoices(task, true)) {
+      const { t, len, ...rest } = e;
+      playDownbeatEvent({ ...rest, vel: e.kind === 'kick' ? (t % m.ticks === 0 ? 1 : .8) : e.kind === 'hat' ? (t % 12 === 0 ? 1 : .75) : e.fill ? .8 : 1, ...(len === undefined ? {} : { dur: len * tickSec }) }, t0 + t * tickSec, bus);
+    }
+    songFinaleEvents(task).forEach((e) => playDownbeatEvent(e, t0 + L * tickSec, bus));
+    soundPreview.timer = setTimeout(() => { if (soundPreview.key === key) { soundPreview.key = ''; soundPreview.bus = null; renderSettings(); } }, (L * tickSec + 1.6) * 1000);
+  }
+  /** Abschnitt „Klang (Versuch)“ in den Einstellungen von „Einsatz finden“. */
+  function soundTrialHtml() {
+    const rows = SAMPLE_SONGS.map((id) => {
+      const s = DB_SONGS[id];
+      const btn = (sound, label) => { const on = soundPreview.key === `${id}:${sound}`; return `<button class="chip" type="button" data-sound-preview="${id}:${sound}" aria-pressed="${on}" aria-label="${esc(s.name)} ${label} anhören">${on ? '■' : '▶'} ${label}</button>`; };
+      return `<div class="sound-row"><span><b>${esc(s.name)}</b><small>${esc(s.style)} · Stufe ${s.levels.filter((n) => n <= 2).join('/')}</small></span>${btn('synth', 'Bisher')}${btn('samples', 'Echt')}</div>`;
+    }).join('');
+    return `<span class="sub-label">Klang (Versuch)</span>
+      <div class="chip-row">${[['synth', 'Bisher'], ['samples', 'Echte Instrumente']].map(([v, label]) => `<button class="chip" type="button" data-db-sound="${v}" aria-pressed="${ear.dbSound === v}">${label}</button>`).join('')}</div>
+      <p class="foot-note" style="text-align:left;margin-top:4px">Probe mit drei Songs. Mit „Echte Instrumente“ kommen in Stufe 1 und 2 nur diese Songs dran, gespielt mit aufgenommenen Instrumenten (beim ersten Mal etwa 1 MB laden). Zum Vergleichen hier direkt anhören:</p>
+      <div class="sound-trial">${rows}</div>
+      <p class="foot-note" style="text-align:left">Instrumente: FluidR3 GM von Frank Wen (CC BY 3.0, über midi-js-soundfonts von Benjamin Gleitzman), gekürzt und neu kodiert. Schlagzeug: Versilian Community Sample Library (CC0).</p>`;
+  }
 
   /* ---- Körper (Übe-Korrekturen 11): Puls im Fuß, Rhythmus in den Händen.
      Stufen 1–3: auf der Stelle steppen (Viertel, unbewertet) und einen
@@ -6312,7 +6480,7 @@
   /** Aufgabe der neuen Modi (reine Funktion bis auf den Zufall). */
   function makeEarTask(mode, n, rnd = Math.random) {
     if (mode === 'downbeat') {
-      const t = makeDownbeatTask(n, rnd, ear.dbPct, ear.dbLog);
+      const t = makeDownbeatTask(n, rnd, ear.dbPct, ear.dbLog, ear.dbSound === 'samples' ? SAMPLE_SONGS : null);
       ear.dbLog = [...ear.dbLog, dbLogEntry(t)].slice(-DB_MEMORY);
       return t;
     }
@@ -6947,8 +7115,12 @@
       if (ear.task !== task) return;
       if (!mic) setEarFeedback(`${voice.error} Tippen geht trotzdem.`, 'bad');
     }
+    stopSoundPreview();
+    const sampled = await prepareSamples(task);
+    if (ear.task !== task) return;
     const ctx = engine.ctx;
     const bus = engine.newBus({ reverb: false });
+    bus.sampled = sampled;
     ear.bus = bus;
     const plan = downbeatPlan(task, solution ? { solution: true, accent: true } : task.aids || {});
     const t0 = ctx.currentTime + .12;
@@ -6970,6 +7142,7 @@
    *  Songs zusätzlich Klavier, Fläche, Stabs, Lead, Chor-Einwürfe, Toms,
    *  Becken und die Klatscher der Band (bandclap, leiser als das Vorklatschen). */
   function playDownbeatEvent(ev, time, bus) {
+    if (bus.sampled && samples.buf && playSampledEvent(ev, time, bus)) return;
     const A = ACCOMP_GAIN;
     switch (ev.kind) {
       case 'bass': engine.drumTone(time, { freq: noteHz(ev.midi), type: 'triangle', gain: .2, decay: ev.long ? 1.2 : ev.dur ? clamp(ev.dur * .9, .12, 1.2) : .45, filter: { type: 'lowpass', freq: 900 } }, bus); break;
@@ -7251,6 +7424,7 @@
     run.bus.gain.setValueAtTime(1, Math.max(engine.ctx.currentTime, end - .005));
     run.bus.gain.linearRampToValueAtTime(0, end + .02);
     const fin = engine.newBus({ reverb: false });
+    fin.sampled = run.bus.sampled;
     run.finBus = fin; run.finAt = end;
     if (run.task.song) songFinaleEvents(run.task, run.task.bass || !!run.task.aids?.bass).forEach((e) => playDownbeatEvent(e, end, fin));
     else { engine.drum('kick', end, 1, fin); engine.drum('open', end, 1, fin); }
@@ -8349,6 +8523,7 @@
         ${ear.mode === 'body' ? `<span class="sub-label">Probenmodus</span>
         <div class="chip-row">${[['off', 'Aus'], ['on', 'An']].map(([v, label]) => `<button class="chip" type="button" data-body-rehearsal="${v}" aria-pressed="${ear.bodyRehearsal.on === (v === 'on')}">${label}</button>`).join('')}</div>
         <p class="foot-note" style="text-align:left;margin-top:4px">Für die Probe: alle vier Schichten in Schleife, ohne Wertung und ohne Mikrofon. Jede Stimme hat eine Schicht (Bass stampft, Tenor patscht, Alt klatscht, Sopran schnipst) – in der Bühne antippen zum Wechseln. Tempo wie sonst in der Fläche ziehen.</p>` : ''}
+        ${ear.mode === 'downbeat' ? soundTrialHtml() : ''}
         ${isRhythmEar(ear.mode) ? `<span class="sub-label">Eingabe</span>
         <div class="chip-row">${INPUT_CHOICES.map(([id, label]) => `<button class="chip" type="button" data-db-input="${id}" aria-pressed="${state.input === id}">${label}</button>`).join('')}</div>
         <p class="foot-note" style="text-align:left;margin-top:4px">Tippen aufs Feld oder Leertaste – oder übers Mikrofon in die Hände klatschen, dann bitte mit Kopfhörern (sonst hört das Mikrofon das Schlagzeug). Gilt auch im Bereich Rhythmus; dessen Latenz-Ausgleich wirkt hier mit.${ear.mode === 'entries' ? ' Ein gesprochenes oder gesungenes „da“ zählt genauso.' : ''}</p>` : ''}
@@ -12303,7 +12478,7 @@
         grooves: grooveData, // Klatsch-Grooves: { [Lektions-ID]: { hold, rating, streak, due } }
         groovesProgress: groovesProgress(), // nur für den Balken der Kachel „Grooves“ in der App, beim Laden ignoriert
       },
-      ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, dbPct: ear.dbPct, dbLog: ear.dbLog, bodyShift: ear.bodyShift, bodyRehearsal: ear.bodyRehearsal, entryShift: ear.entryShift, entryLog: ear.entryLog, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
+      ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, dbPct: ear.dbPct, dbSound: ear.dbSound, dbLog: ear.dbLog, bodyShift: ear.bodyShift, bodyRehearsal: ear.bodyRehearsal, entryShift: ear.entryShift, entryLog: ear.entryLog, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4, low: voice.low, high: voice.high },
       sing: { mode: sing.mode, levels: sing.levels, solfa: sing.solfa, showSolfa: sing.showSolfa, showSight: sing.showSight, findA4: sing.findA4,
         audiation: sing.audiation, twoPartVol: sing.twoPartVol, inTimeVariant: sing.inTime.variant, inTimeTempo: sing.inTime.tempo, inTimeRhythmSyl: sing.inTime.rhythmSyl, singLatencyMs: sing.inTime.latencyMs, demo: sing.demo },
@@ -12385,6 +12560,7 @@
     if (SATB_PARTS.includes(e.part)) ear.part = e.part;
     // Früher dbShift in BPM (konnte Pop auf 150 treiben) — bewusst nicht übernommen.
     ear.dbPct = Number.isFinite(e.dbPct) ? clamp(Math.round(e.dbPct), -DB_PCT_MAX, DB_PCT_MAX) : 0;
+    ear.dbSound = e.dbSound === 'samples' ? 'samples' : 'synth';
     ear.dbLog = Array.isArray(e.dbLog) ? e.dbLog.filter((x) => x && (DB_GROOVES[x.groove] || DB_SONGS[x.song]) && DB_PATTERNS[x.pattern] && Number.isInteger(x.level)).slice(-DB_MEMORY)
       .map((x) => dbLogEntry({ ...x, meter: x.song ? DB_SONGS[x.song].meter : DB_GROOVES[x.groove].meter, startTick: Number(x.startTick) || 0 })) : [];
     ear.bodyShift = Number.isFinite(e.bodyShift) ? clamp(Math.round(e.bodyShift), -60, 60) : 0;
@@ -12791,6 +12967,15 @@
     }
     const earSet = e.target.closest('[data-earset]');
     if (earSet) { ear.settings[earSet.dataset.earset] = earSet.dataset.value; ear.settings.level = 0; renderSettings(); return; }
+    const dbSound = e.target.closest('[data-db-sound]');
+    if (dbSound) {
+      ear.dbSound = dbSound.dataset.dbSound === 'samples' ? 'samples' : 'synth';
+      if (ear.dbSound === 'samples' && engine.ctx) loadSamples().catch(() => {});
+      clearEarTimers(); if (engine.ctx) engine.fadeBus(ear.bus); ear.task = null; ear.revealed = false; setEarFeedback('', '');
+      persist(); renderSettings(); renderEar(); return;
+    }
+    const preview = e.target.closest('[data-sound-preview]');
+    if (preview) { const [id, sound] = preview.dataset.soundPreview.split(':'); if (SAMPLE_SONGS.includes(id)) playSoundPreview(id, sound); return; }
     const bodyReh = e.target.closest('[data-body-rehearsal]');
     if (bodyReh) {
       ear.bodyRehearsal.on = bodyReh.dataset.bodyRehearsal === 'on';
@@ -16006,11 +16191,38 @@
       r = judgeDownbeat(t, exact.map((x) => x + 12 * p.tickSec));
       if (r.ok || !/die 2 für die Eins/.test(downbeatMessage(t, r))) errors.push(`Einsatz Song: verschoben → ${downbeatMessage(t, r)}`);
     }
+    // Klang-Versuch: Samples decken alle Töne der Probesongs (jede Tonart) auf ±1,5 Halbtöne ab;
+    // mit „Echte Instrumente“ kommen in Stufe 1/2 nur Probesongs dran, nie zweimal direkt hintereinander.
+    const inst = { bass: 'bass', keys: 'piano', pad: 'strings', lead: 'guitar', chop: 'choir' };
+    for (const id of SAMPLE_SONGS) {
+      const song = DB_SONGS[id];
+      for (const tonic of song.mode === 'minor' ? [62, 63, 64, 65, 66] : [65, 66, 67, 68, 69]) {
+        const t = { song: id, meter: song.meter, tonic, mode: song.mode };
+        const evs = [...songVoices(t, true), ...songFinaleEvents(t)];
+        for (const e of evs) {
+          const name = inst[e.kind];
+          if (!name) continue;
+          for (const n of e.notes || [e.midi]) if (!SAMPLE_INST[name].some((x) => Math.abs(x - n) <= 1.5)) errors.push(`Klang-Versuch: ${id} braucht ${name} ${n}`);
+        }
+      }
+    }
+    for (const n of [1, 2]) {
+      let log = [];
+      for (let i = 0; i < 30; i++) {
+        const t = makeDownbeatTask(n, rnd, 0, log, SAMPLE_SONGS);
+        if (!SAMPLE_SONGS.includes(t.song) || (log.length && log[log.length - 1].song === t.song)) { errors.push(`Klang-Versuch Stufe ${n}: ${t.song} nach ${log[log.length - 1]?.song}`); break; }
+        log = [...log, dbLogEntry(t)].slice(-DB_MEMORY);
+      }
+    }
     // Gedächtnis: Song-Einträge überstehen Speichern/Laden (mit Stil-Familie).
     const snap = JSON.parse(JSON.stringify(snapshot()));
     try {
       restore({ ...snap, ear: { ...snap.ear, dbLog: [{ level: 1, song: 'fahrradkette', pattern: 'one4', startTick: 12 }, { level: 1, song: 'gibtsnicht', pattern: 'one4' }] } });
       if (ear.dbLog.length !== 1 || ear.dbLog[0].family !== 'indie-rock' || ear.dbLog[0].meter !== '4/4') errors.push(`Einsatz: Song-Gedächtnis nach dem Laden ${JSON.stringify(ear.dbLog)}`);
+      restore({ ...snap, ear: { ...snap.ear, dbSound: 'samples' } });
+      if (ear.dbSound !== 'samples' || snapshot().ear.dbSound !== 'samples') errors.push('Klang-Versuch: Einstellung wird nicht gespeichert');
+      restore({ ...snap, ear: { ...snap.ear, dbSound: 'laut' } });
+      if (ear.dbSound !== 'synth') errors.push('Klang-Versuch: unbekannter Wert übernommen');
     } finally { restore(snap); }
     return errors;
   }
@@ -17028,7 +17240,7 @@
     HOLD_STAGES, holdPlan, judgeHold, holdMessage, nextDue, sanitizeGrooves, grooveTimeline, groovesCheck, GROOVE_COMBOS,
     holdTimingStats, groovesShowResult: (id, combo, result) => { Object.assign(gv, { view: 'lesson', id, combo, running: '', feedback: holdMessage(result, comboStage(combo)), result: { kind: 'hold', combo, ...result } }); renderGrooves(); }, // Prüfhilfe (Screenshot)
     // Einsatz finden (Hören)
-    get melodyCheckInfo() { return melodyCheckInfo; }, melodyFingerprint, holdEntriesCheck, entriesCheck, makeEntriesTask, entriesPlan, judgeEntries, DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, songDownbeatCheck, songPlan, makeSongTask, songEvents, songFairness, DB_SONGS, BODY_LEVELS, makeBodyTask, bodyPlan, judgeBody, bodyCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
+    get melodyCheckInfo() { return melodyCheckInfo; }, melodyFingerprint, holdEntriesCheck, entriesCheck, makeEntriesTask, entriesPlan, judgeEntries, DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, songDownbeatCheck, songPlan, makeSongTask, loadSamples, samplesLoaded: () => !!samples.buf, playSoundPreview, engine, songEvents, songFairness, DB_SONGS, BODY_LEVELS, makeBodyTask, bodyPlan, judgeBody, bodyCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
     restoreForTest: (data) => { restore(data); renderArea?.(); },
     // Verzögerung erkennen
     estimateRunDelay, detectDelay, delayVectors, delayCheck,
