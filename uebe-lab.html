@@ -1013,11 +1013,24 @@
 
   /* ---- Zwei Hände: oben Streifen (Vorzähler, Hilfen, Auflösung), unten zwei Flächen ---- */
   :root { --hand-r: #1f7fc8; --hand-r-bg: #e2f0fb; --hand-l: #7b48c9; --hand-l-bg: #efe6fb; }
-  body[data-view="hands"] footer, body[data-view="hands"] header, body[data-view="hands"] .tab-bar, body[data-view="hands"] .quick-bar { display: none; }
-  body[data-view="hands"] main { padding-top: max(8px, env(safe-area-inset-top)); }
+  body[data-view="hands"] footer, body[data-view="hands"] header, body[data-view="hands"] .tab-bar, body[data-view="hands"] .quick-bar,
+  body[data-view="singtap"] footer, body[data-view="singtap"] header, body[data-view="singtap"] .tab-bar, body[data-view="singtap"] .quick-bar { display: none; }
+  .th-pads.st-pads { grid-template-columns: 1fr; }
+  .st-pad { border-color: var(--accent-foreground); color: var(--accent-foreground); background: var(--surface); text-align: center; }
+  .st-pad b { font-size: 24px; }
+  .st-pad.is-you { border-width: 5px; }
+  .st-pad.is-lit { animation: st-lit .22s ease-out; }
+  .st-pad.is-pulse { animation: st-lit .3s ease-out; }
+  @keyframes st-lit { from { background: rgba(var(--accent-rgb), .45); } to { background: var(--surface); } }
+  .ex-head .st-mic { position: static; opacity: 1; }
+  .st-progress { height: 6px; border-radius: 3px; background: var(--tint); overflow: hidden; }
+  .st-progress i { display: block; height: 100%; width: 0; background: var(--accent); }
+  body[data-view="singtap"] main, body[data-view="hands"] main { padding-top: max(8px, env(safe-area-inset-top)); }
   /* Oben ein eigener Scrollbereich, unten die festen Flächen: die Seite selbst scrollt nicht. */
-  [data-hands] .th-top { display: flex; flex-direction: column; gap: 8px; max-height: calc(54vh - 16px - max(8px, env(safe-area-inset-top))); overflow-y: auto; overscroll-behavior: contain; }
-  [data-hands] .th-top > * { flex: none; }
+  [data-hands] .th-top, [data-singtap] .th-top { position: fixed; top: 0; left: 0; right: 0; bottom: 46vh; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overscroll-behavior: contain;
+    padding: max(8px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left)); }
+  [data-hands] .th-top > *, [data-singtap] .th-top > * { flex: none; width: 100%; max-width: 720px; margin-left: auto; margin-right: auto; box-sizing: border-box; }
+  html.is-embedded [data-hands] .th-top .ex-head, html.is-embedded [data-singtap] .th-top .ex-head { padding-right: 0; }
   .th-notes, .th-bars, .th-grid { width: 100%; max-width: 560px; align-self: center; }
   [data-hands] .ex-head { margin-bottom: 0; }
   .th-info { margin: 0; font-size: 14px; color: var(--text); }
@@ -1052,7 +1065,7 @@
   .th-grid i.is-now.has-R.has-L { background: linear-gradient(var(--hand-l) 50%, var(--hand-r) 50%); }
   .th-grid i.is-now.has-S { background: var(--text); }
   .th-grid i.is-now:not([class*="has-"]) { background: var(--tint); }
-  .th-result { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .th-result { scroll-margin: 8px 0 96px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
   .th-result .verdict-line { display: flex; flex-direction: column; gap: 2px; }
   .th-hv { font-size: 13px; }
   .th-row-R, .th-hv.th-row-R { fill: var(--hand-r); color: var(--hand-r); font-weight: 800; }
@@ -1062,7 +1075,7 @@
   .th-pull { fill: var(--fast); }
   .th-msg { margin: 0; font-weight: 700; color: var(--fast-fg); }
   .th-after { display: flex; flex-wrap: wrap; gap: 8px; }
-  .th-ctl { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 6px; }
+  .th-ctl { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 6px; position: sticky; bottom: -8px; z-index: 1; background: var(--bg); padding: 6px 0 8px; }
   .th-ctl button { font: inherit; border: 0; background: none; padding: 0; color: var(--text); cursor: pointer; display: grid; justify-items: center; gap: 4px; font-size: 12px; font-weight: 800; }
   .th-ctl .dock-c { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--tint-line); background: var(--surface-2); display: grid; place-items: center; }
   .th-ctl .dock-c svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -1086,7 +1099,9 @@
   @keyframes th-lit-r { from { background: var(--hand-r); color: #fff; } to { background: var(--hand-r-bg); } }
   @keyframes th-lit-l { from { background: var(--hand-l); color: #fff; } to { background: var(--hand-l-bg); } }
   @media (orientation: landscape) {
-    [data-hands] .th-top { max-height: calc(48vh - 8px - max(8px, env(safe-area-inset-top))); }
+    [data-hands] .th-top, [data-singtap] .th-top { bottom: 52vh; }
+    .th-top .ex-head { order: -2; } .th-top .th-ctl { order: -1; top: -8px; bottom: auto; }
+    .th-result { scroll-margin: 96px 0 8px; }
     .th-notes, .th-bars, .th-grid { max-width: 460px; }
     .th-pads { height: 52vh; }
     .th-rotate { display: none; }
@@ -1244,6 +1259,8 @@
     </section>
     <p class="foot-note">Das Mikrofon wird nur live ausgewertet, nichts wird aufgenommen, gespeichert oder gesendet.</p>
     </div>
+    <!-- Singen und klopfen: eigene Ansicht mit einer Tippfläche, siehe renderSingTap. -->
+    <div data-singtap hidden></div>
   </section>
 </main>
 
@@ -5127,6 +5144,7 @@
     echo: '<path d="M4 9a5 5 0 0 1 10 0c0 3-3 3.5-3 6.5a2.8 2.8 0 0 1-5 1.7"/><path d="M7 9a2 2 0 0 1 4 0"/><path d="M17.5 7.5 20 5M18.5 12H22M17.5 16.5 20 19"/>',
     read: '<rect x="3.5" y="3" width="12" height="18" rx="2"/><path d="M6.5 8h6M6.5 12h6M6.5 16h3.5"/><path d="M20 7v10"/>',
     duo: '<path d="M3 5h18M3 9h18"/><path d="M3 15h18M3 19h18"/><circle cx="8" cy="7" r="1.6" fill="currentColor"/><circle cx="16" cy="17" r="1.6" fill="currentColor"/>',
+    singTap: '<rect x="4" y="3" width="5.5" height="10" rx="2.75"/><path d="M2.5 10a4.25 4.25 0 0 0 8.5 0M6.75 14.5V18"/><rect x="13" y="12" width="8.5" height="9" rx="2.5"/><path d="M17.25 5v4"/>',
     hands: '<rect x="2.5" y="9" width="8.5" height="11" rx="2.5"/><rect x="13" y="9" width="8.5" height="11" rx="2.5"/><path d="M6.7 3.5v3M17.3 3.5v3"/>',
     interval: '<circle cx="6.5" cy="5.5" r="2" fill="currentColor"/><circle cx="6.5" cy="18.5" r="2" fill="currentColor"/><path d="M15 4v16"/><path d="m12 7 3-3 3 3M12 17l3 3 3-3"/>',
     quality: '<rect x="5" y="3.5" width="14" height="4" rx="1.5"/><rect x="5" y="10" width="14" height="4" rx="1.5"/><rect x="5" y="16.5" width="14" height="4" rx="1.5"/>',
@@ -5166,11 +5184,11 @@
     singInterval: 'Ein Grundton – du singst das Intervall',
     findTone: 'Deinen Ton im Zusammenklang finden – wie beim Anstimmen im Chor', hold: 'Einen Ton ruhig und gerade halten', sight: 'Kurze Melodie vom Blatt singen',
     dictation: 'Kurze Melodie hören und aufschreiben', singEcho: 'Melodie hören und nachsingen – ohne Noten',
-    inTime: 'Ton und Rhythmus zum Klick – nachsingen oder vom Blatt', twoPart: 'Deine Melodie halten, während die App eine zweite Stimme singt', tuner: 'Tonhöhe live sehen, Zielton, Tonumfang',
+    inTime: 'Ton und Rhythmus zum Klick – nachsingen oder vom Blatt', singTap: 'Singen und dabei Puls oder Rhythmus klopfen', twoPart: 'Deine Melodie halten, während die App eine zweite Stimme singt', tuner: 'Tonhöhe live sehen, Zielton, Tonumfang',
   };
   // Blattsingen nur, wenn es eingeblendet ist (Einstellung „Blattsingen anzeigen“).
   const areaModes = (tab) => (tab === 'rhythm' ? MODES : tab === 'ear' ? EAR_MODES
-    : [...visibleSingModes().filter(([id]) => id !== 'tuner'), ['tuner', 'Tuner und Tonumfang']]);
+    : [...visibleSingModes().filter(([id]) => id !== 'tuner'), ['singTap', 'Singen und klopfen'], ['tuner', 'Tuner und Tonumfang']]);
   const modeName = (tab, id) => areaModes(tab).find(([m]) => m === id)?.[1] || id;
   const currentMode = (tab) => (tab === 'rhythm' ? state.mode : tab === 'ear' ? ear.mode : sing.mode);
   /** Direkt geöffneter Bereich (?tab=… ohne from=quick) — dann ohne Tab-Leiste. */
@@ -5188,6 +5206,7 @@
     if (tab === 'voice' && id === 'tuner') return null;
     if (tab === 'rhythm' && id === 'duo') return { kind: 'ring', n: state.duoStage, max: DUO_LEVELS.length };
     if (tab === 'rhythm' && id === 'hands') return { kind: 'ring', n: hands.level, max: HANDS_LEVELS.length };
+    if (tab === 'voice' && id === 'singTap') return { kind: 'ring', n: singtap.level, max: SINGTAP_LEVELS.length };
     if (tab === 'rhythm' && id === 'course') { const cc = courseCounts(); return { kind: 'pill', text: course.done.length ? `${cc.done}/${cc.total} ✓` : 'neu' }; }
     const area = tab === 'rhythm' ? 'rhythm' : areaOf(id);
     if (practicedAreas && !practicedAreas.has(area)) return { kind: 'pill', text: 'neu' };
@@ -5263,7 +5282,7 @@
   /** Singen: Ton treffen → Melodie → Mit Rhythmus (Musikpädagoge; Blattsingen,
    *  wenn eingeschaltet, als dritter Eintrag unter Melodie). Der Tuner ist ein
    *  Werkzeug, keine Übung: eigene Kachel auf der Tools-Seite (?mode=tuner). */
-  const SING_GROUPS = [['Ton treffen', ['hold', 'findTone', 'singInterval']], ['Melodie', ['singEcho', 'dictation', 'sight']], ['Mit Rhythmus', ['inTime']], ['Im Chor', ['twoPart']]];
+  const SING_GROUPS = [['Ton treffen', ['hold', 'findTone', 'singInterval']], ['Melodie', ['singEcho', 'dictation', 'sight']], ['Mit Rhythmus', ['inTime', 'singTap']], ['Im Chor', ['twoPart']]];
 
   /** Rhythmus-Übersicht: Kurs-Karte (Lektion, Stepper, Play), „Heute
    *  wiederholen (n)“ direkt darunter (Wiederholen vor Neuem), dann die
@@ -5349,13 +5368,14 @@
     for (const t of Object.keys(AREA_NAMES)) {
       const list = views[t] === 'list';
       $(`[data-list="${t}"]`).hidden = !list;
-      $(`[data-exview="${t}"]`).hidden = list || views[t] === 'grooves' || views[t] === 'downbeat' || views[t] === 'hands'; // eigene Ansichten
+      $(`[data-exview="${t}"]`).hidden = list || views[t] === 'grooves' || views[t] === 'downbeat' || views[t] === 'hands' || views[t] === 'singtap'; // eigene Ansichten
     }
     renderGrooves();
     renderHands();
+    renderSingTap();
     placeDownbeatView(downbeatInRhythm());
     if (downbeatInRhythm()) { $('[data-exview="ear"]').hidden = false; renderEar(); return; }
-    if (views[tab] === 'grooves' || views[tab] === 'downbeat' || views[tab] === 'hands') return;
+    if (views[tab] === 'grooves' || views[tab] === 'downbeat' || views[tab] === 'hands' || views[tab] === 'singtap') return;
     if (views[tab] === 'list') renderModeList(tab);
     else if (tab === 'rhythm') renderRhythmTitle();
     else {
@@ -5368,12 +5388,13 @@
     if (tab === 'rhythm' && run.playing) stop();
     if (tab === 'rhythm' && hands.run) handsStop(false);
     if (tab === 'ear') { clearEarTimers(); if (engine.ctx) engine.fadeBus(ear.bus); ear.task = null; ear.pick = null; setEarFeedback('', ''); }
-    if (tab === 'voice') { stopSing(); if (voice.analyser) micOff(); setSingFeedback('', ''); }
+    if (tab === 'voice') { stopSing(); if (singtap.run) singTapStop(false); if (voice.analyser) micOff(); setSingFeedback('', ''); }
   }
 
   /** Eine Übungsart aus der Liste öffnen. */
   function openMode(tab, id) {
     if (tab === 'rhythm' && id === 'hands') { openHands(); return; }
+    if (tab === 'voice' && id === 'singTap') { openSingTap(); return; }
     quietArea(tab);
     if (tab === 'rhythm') {
       if (id !== 'course') leaveCourse();
@@ -5392,6 +5413,7 @@
     quietArea(tab);
     if (tab === 'rhythm' && views.rhythm === 'downbeat') quietArea('ear');
     if (tab === 'rhythm' && views.rhythm === 'hands') leaveHands();
+    if (tab === 'voice' && views.voice === 'singtap') leaveSingTap();
     if (tab === 'rhythm') leaveCourse();
     views[tab] = 'list';
     renderAll();
@@ -9044,7 +9066,7 @@
 
   function openSettings(kind) {
     sheetKind = kind;
-    $('#sheet-title').textContent = kind === 'course' ? `Alle Lektionen · ${courseCounts().done}/${courseCounts().total} geschafft` : kind === 'rhythm' ? 'Rhythmus-Einstellungen' : kind === 'singhelp' || kind === 'earhelp' || kind === 'handshelp' ? 'Hilfen' : kind === 'hands' ? 'Zwei Hände' : 'Einstellungen';
+    $('#sheet-title').textContent = kind === 'course' ? `Alle Lektionen · ${courseCounts().done}/${courseCounts().total} geschafft` : kind === 'rhythm' ? 'Rhythmus-Einstellungen' : kind === 'singhelp' || kind === 'earhelp' || kind === 'handshelp' || kind === 'singtaphelp' ? 'Hilfen' : kind === 'hands' ? 'Zwei Hände' : kind === 'singtap' ? 'Singen und klopfen' : 'Einstellungen';
     lastSettingsBtn = document.activeElement;
     $('.sheet').hidden = false;
     renderSettings();
@@ -9056,6 +9078,7 @@
     if (problem) { $('.sheet-hint').textContent = problem; return; }
     $('.sheet').hidden = true;
     if (sheetKind === 'singhelp') { renderSing(); $('[data-sing="helps"]')?.focus(); return; }
+    if (sheetKind === 'singtaphelp' || sheetKind === 'singtap') { singtap.topKey = ''; renderSingTap(); $(`[data-singtap="${sheetKind === 'singtap' ? 'settings' : 'helps'}"]`)?.focus(); return; }
     if (sheetKind === 'handshelp' || sheetKind === 'hands') { hands.topKey = ''; renderHands(); $(`[data-hands="${sheetKind === 'hands' ? 'settings' : 'helps'}"]`)?.focus(); return; }
     if (sheetKind === 'earhelp') { renderEar(); $(downbeatInRhythm() ? '[data-ear="db-helps"]' : '[data-ear="helps"]')?.focus(); return; }
     if (sheetKind === 'sing') {
@@ -9207,6 +9230,8 @@
     if (sheetKind === 'course') { renderCourseList(); return; }
     if (sheetKind === 'singhelp') { renderSingHelps(); return; }
     if (sheetKind === 'handshelp') { renderHandsHelps(); return; }
+    if (sheetKind === 'singtaphelp') { renderSingTapHelps(); return; }
+    if (sheetKind === 'singtap') { renderSingTapSettings(); return; }
     if (sheetKind === 'hands') { renderHandsSettings(); return; }
     if (sheetKind === 'earhelp') { renderEarHelps(); return; }
     if (sheetKind === 'sing') {
@@ -9584,6 +9609,7 @@
       voice.frame = requestAnimationFrame(voiceLoop);
       return;
     }
+    if (voice.consumer === 'singtap') { singTapFrame(now); voice.frame = requestAnimationFrame(voiceLoop); return; }
     if (voice.consumer === 'sing') { singFrame(now); updateSingMic(now); if (sing.task && sing.phase !== 'result') updateSingProgress(now); voice.frame = requestAnimationFrame(voiceLoop); return; }
     voice.analyser.getFloatTimeDomainData(voice.buffer);
     updateSingMic(now, $('.tuner-mic'), 'tuner');
@@ -13833,6 +13859,386 @@
 
 
   /* ------------------------------------------------------------------------
+     SINGEN UND KLOPFEN (Arbeitsanweisung „Zwei Hände“, Paket 2). Eine große
+     Tippfläche (Puls, Ostinato oder Gegenrhythmus) und das Mikrofon für den
+     Gesang; beides wird gleichzeitig ausgewertet. Eigene Ansicht im Singen-
+     Bereich (views.voice = 'singtap'), Ablauf wie „Zwei Hände“: Einzähler →
+     Vorspielen → Mitmachen → allein. Material: Phrasen des Nachsing-Generators
+     (makeRhythmMelody, Stufen 1–4: metrisch notiert, höchstens zwei Takte),
+     in der Lage des Stimmprofils (singRange).
+     ------------------------------------------------------------------------ */
+  const SINGTAP_LEVELS = [
+    { n: 1, label: 'Puls klopfen, einen Ton halten' },
+    { n: 2, label: 'Puls klopfen, kurze Phrase singen' },
+    { n: 3, label: 'Halbe klopfen, Phrase singen' },
+    { n: 4, label: 'Gegenrhythmus klopfen, Phrase singen' },
+  ];
+  /** Nachsing-Stufen, aus denen die Phrasen je Stufe kommen. */
+  const SINGTAP_ECHO = { 2: [1, 2], 3: [2, 3], 4: [3, 4] };
+  const SINGTAP_CLICK_GAP = .04; // Tonhöhen-Frames rund um jeden Klick verwerfen (ohne Kopfhörer)
+  const SINGTAP_HOLD_SETTLE = .3; // Einschwingen beim Ton halten (s), zählt nicht
+  /** Gemeinsame Anschläge zweier Anschlagslisten. */
+  const commonCount = (a, b) => a.filter((t) => b.includes(t)).length;
+
+  /** Gegenrhythmus passend zur Melodie: Kandidaten aus makePattern (Achtel,
+   *  Pausen), gültig nach den Regeln von „Zwei Hände“ Stufe 1 für eine Stimme
+   *  (je zwei Takte ≥ 2 Anschläge auf „und“ und eine leere Einheit) und mit
+   *  höchstens 50 % gemeinsamen Anschlägen mit der Melodie; gewählt wird der,
+   *  dessen Anschläge am meisten dort liegen, wo die Melodie einen langen Ton
+   *  (ab Viertel, schon klingend) oder eine Pause hat. */
+  function counterForMelody(mel, rnd = Math.random) {
+    const m = METERS[mel.meter];
+    const bars = Math.round(mel.total / m.ticks);
+    const per2 = Math.max(1, bars / 2);
+    const melOn = mel.tones.map((x) => x.t);
+    const quiet = (t) => {
+      const tone = mel.tones.find((x) => x.t < t && t < x.t + x.d);
+      return tone ? tone.d >= 12 : !mel.tones.some((x) => x.t === t);
+    };
+    let best = null, bestScore = -1;
+    for (let k = 0; k < 300; k++) {
+      const p = handsRhythm(mel.meter, ['e', 'r'], bars, rnd);
+      if (commonCount(p.onsets, melOn) > .5 * p.onsets.length) continue;
+      if (andCount(p) < 2 * per2 || unitOnsets(p).filter((u) => !u.length).length < per2) continue;
+      const score = p.onsets.filter(quiet).length / p.onsets.length;
+      if (score > bestScore) { best = p; bestScore = score; }
+      if (bestScore >= .99) break;
+    }
+    return best;
+  }
+  /** Rhythmus der Fläche je Stufe (Puls, Halbe — in 3/4 nur die Eins —, Gegenrhythmus). */
+  function singTapRhythm(level, meter, bars, mel, rnd) {
+    if (level <= 2) return handsPattern(meter, 'puls', bars);
+    if (level === 3) return handsPattern(meter, { '4/4': '24 24', '3/4': '36', '2/4': '24', '6/8': '36' }[meter], bars);
+    return counterForMelody(mel, rnd);
+  }
+  /** Aufgabe (rein bis auf den Zufall): { level, meter, bars, total, tap
+   *  (Pattern der Fläche), mel (Phrase) | target (MIDI, Stufe 1), key }. */
+  function makeSingTapTask(level, range, { rnd = Math.random, previousKey = null } = {}) {
+    if (level === 1) {
+      const target = clamp(Math.round((range.lo + range.hi) / 2) + rndInt(-4, 4, rnd), range.lo, range.hi);
+      const tap = handsPattern('4/4', 'puls', 2);
+      return { level, meter: '4/4', bars: 2, total: tap.total, tap, mel: null, target, key: `hold:${target}` };
+    }
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const list = SINGTAP_ECHO[level];
+      const n = list[Math.floor(rnd() * list.length)];
+      const mel = makeRhythmMelody(melodySpec('echo', n), range, { previousKey, rnd });
+      const m = METERS[mel.meter];
+      const bars = Math.round(mel.total / m.ticks);
+      if (mel.pickup || bars > 2 || mel.total !== bars * m.ticks) continue; // nur metrisch, höchstens zwei Takte
+      const tap = singTapRhythm(level, mel.meter, bars, mel, rnd);
+      if (!tap) continue;
+      return { level, echoLevel: n, meter: mel.meter, bars, total: mel.total, tap, mel, target: null, key: `${mel.key}|${handsKey(tap)}`, tolerance: ECHO_LEVELS[n - 1].tol };
+    }
+    return null;
+  }
+
+  /** Zeitplan einer Runde (rein, in Ticks): Einzähler, dann je Teil die Phrase.
+   *  click: Klick in allen Teilen nach dem Einzähler; sonst pulsiert im
+   *  Allein-Teil nur die Fläche (pulse-Ereignisse). */
+  function singTapTimeline(task, { click = false } = {}) {
+    const m = METERS[task.meter];
+    const T = m.ticks, len = task.total;
+    const phases = [{ phase: 'count', from: 0, to: T }];
+    let t = T;
+    for (const phase of ['listen', 'along', 'you']) { phases.push({ phase, from: t, to: t + len }); t += len; }
+    const events = [];
+    for (const ph of phases) {
+      for (let k = ph.from; k < ph.to; k += m.beat) {
+        const level = beatLevel(m, mod(k - ph.from, T));
+        if (ph.phase === 'count' || click) events.push({ tick: k, type: 'click', level, phase: ph.phase });
+        else if (ph.phase === 'you') events.push({ tick: k, type: 'pulse', level, phase: ph.phase });
+      }
+      if (ph.phase === 'count' || ph.phase === 'you') continue;
+      const gain = ph.phase === 'listen' ? 1 : .5;
+      for (const o of task.tap.onsets) events.push({ tick: ph.from + o, type: 'hit', gain, phase: ph.phase });
+      if (task.mel) for (const x of task.mel.tones) events.push({ tick: ph.from + x.t, type: 'note', midi: x.midi, d: x.d, gain, phase: ph.phase });
+      else events.push({ tick: ph.from, type: 'note', midi: task.target, d: len, gain, phase: ph.phase });
+    }
+    events.sort((a, b) => a.tick - b.tick || (a.type === 'click' ? -1 : 1));
+    const you = phases[phases.length - 1];
+    return { phases, events, youFrom: you.from, end: you.to };
+  }
+  /** Tonhöhen-Frames rund um die Klicks (±gap s) verwerfen: ohne Kopfhörer
+   *  hört das Mikrofon den Klick mit. Zeiten in derselben Zählung. */
+  const dropClickFrames = (frames, clicks, gap = SINGTAP_CLICK_GAP) => frames.filter((f) => !clicks.some((c) => Math.abs(f.t - c) <= gap));
+
+  /** Ton halten über die Phrase (Stufe 1): Lage, Ruhe und Drift wie bei Ton
+   *  halten (holdStats/holdHit), oktavneutral. Ergebnis mit Urteil. */
+  function judgeSingHold(target, frames, durSec) {
+    const samples = frames.filter((f) => f.midi != null && f.t >= SINGTAP_HOLD_SETTLE && f.t <= durSec).map((f) => {
+      const off = f.midi - target, folded = mod(off + 6, 12) - 6;
+      return { t: f.t, cents: folded * 100, rms: f.rms };
+    });
+    const st = holdStats(samples);
+    const share = samples.length / Math.max(1, frames.filter((f) => f.t >= SINGTAP_HOLD_SETTLE && f.t <= durSec).length);
+    if (!st || share < .5) return { key: 'nochmal', text: 'Zu wenig Ton erkannt – den Ton über beide Takte halten, etwas lauter oder näher am Mikrofon.', st };
+    const hit = holdHit(st);
+    const key = hit ? (Math.abs(st.mean) <= 10 ? 'gut' : 'okay') : Math.abs(st.mean) <= 40 && st.sd <= 25 ? 'fast' : 'nochmal';
+    const text = `Ziel ${noteLabel(target)}: Lage ${st.mean >= 0 ? '+' : '−'}${Math.round(Math.abs(st.mean))} Cent · ${st.sd <= 12 ? 'ruhig' : 'noch unruhig'} (±${Math.round(st.sd)} Cent)${Math.abs(st.trend) >= 4 ? ` · ${st.trend < 0 ? 'sinkt' : 'steigt'}` : ''}${share < .85 ? ' · zwischendurch abgesetzt' : ''}.`;
+    return { key, text, st };
+  }
+  /** Phrase singen (Stufe 2–4): wie Im Takt (scoreEcho mit Einsätzen). */
+  function judgeSingPhrase(task, frames, tickSec, latency = 0) {
+    const res = scoreEcho(melodyTarget(task.mel, tickSec), frames, { tolCents: task.tolerance, timing: true, latency, good: .1, ok: .18 });
+    const { ok, value } = inTimeVerdict(res);
+    const key = ok ? (res.notes.every((x) => x.timing === 'gut') ? 'gut' : 'okay') : value >= .6 ? 'fast' : 'nochmal';
+    return { key, text: inTimeFeedback(res), res, value };
+  }
+  /** Beides zugleich: Klopfen (wie Zwei Hände) und Singen; gesamt der schlechtere Teil.
+   *  taps: Sekunden ab Beginn deines Teils; frames: { t (s ab Beginn deines Teils), midi, rms }. */
+  function judgeSingTap(task, { taps, frames, tickSec, clicks = null, latency = 0 }) {
+    const a = handsAssign(task.tap.onsets, tickSec, taps, handsTol(task.tap, tickSec));
+    const tap = { ...a, verdict: roundVerdict(a, { tol: a.tol, mode: 'hands' }) };
+    const fr = clicks ? dropClickFrames(frames, clicks) : frames;
+    const sung = task.mel ? judgeSingPhrase(task, fr, tickSec, latency) : judgeSingHold(task.target, fr, task.total * tickSec);
+    const key = VERDICT_ORDER.indexOf(sung.key) > VERDICT_ORDER.indexOf(tap.verdict.key) ? sung.key : tap.verdict.key;
+    return { tap, sing: sung, key };
+  }
+
+  /* ---- Ablauf und Ansicht ---- */
+  const singtap = {
+    level: 1, bpm: 72, phones: 'wired', click: null, // phones: 'wired' | 'bt' | 'none'; click: null = nach Kopfhörer
+    notes: false, task: null, last: null, phase: 'idle', run: null, topKey: '', wake: null, notesFor: null, msg: '',
+  };
+  const SINGTAP_TEMPO = [56, 100];
+  /** Klick im Allein-Teil: eingestellt oder nach Kopfhörer (ohne: nur optisch). */
+  const singTapClick = () => (typeof singtap.click === 'boolean' ? singtap.click : singtap.phones !== 'none');
+
+  async function singTapStart(again = false) {
+    singTapStop(false);
+    try { await engine.start(); } catch { singtap.msg = 'Web Audio ist auf diesem Gerät nicht verfügbar.'; renderSingTap(); return; }
+    singtap.msg = 'Mikrofon wird geöffnet …'; renderSingTap();
+    if (!(await micOn('singtap'))) { singtap.msg = voice.error || 'Das Mikrofon konnte nicht gestartet werden.'; renderSingTap(); return; }
+    if (!samples.drums) await Promise.race([loadSampleGroup('drums').catch(() => {}), new Promise((ok) => setTimeout(ok, 3000))]);
+    if (!again || !singtap.task) {
+      singtap.task = makeSingTapTask(singtap.level, singRange(), { previousKey: singtap.task?.mel?.key || null });
+      singtap.notesFor = null;
+    }
+    const task = singtap.task;
+    if (!task) { singtap.msg = 'Keine passende Phrase gefunden – bitte noch einmal.'; renderSingTap(); return; }
+    const m = METERS[task.meter];
+    const click = singTapClick();
+    const tl = singTapTimeline(task, { click });
+    const ctx = engine.ctx;
+    const bpm = singtap.bpm;
+    const r = { tl, task, bpm, click, tickSec: 60 / bpm / m.ref, t0: ctx.currentTime + .2, idx: 0, flashIdx: 0, taps: [], frames: [], bus: engine.newBus({ reverb: false }), melBus: engine.newBus(), playing: true, judged: false, clickTimes: [] };
+    r.youStart = r.t0 + tl.youFrom * r.tickSec;
+    r.endAt = r.t0 + tl.end * r.tickSec;
+    r.clickTimes = tl.events.filter((e) => e.type === 'click' && e.phase === 'you').map((e) => (e.tick - tl.youFrom) * r.tickSec);
+    const half = ctx.createGain(); half.gain.value = .5; half.connect(r.melBus);
+    singtap.run = r; singtap.phase = 'count'; singtap.msg = ''; singtap.last = null;
+    const pump = () => {
+      if (singtap.run !== r || !r.playing) return;
+      const horizon = ctx.currentTime + .25;
+      while (r.idx < tl.events.length && r.t0 + tl.events[r.idx].tick * r.tickSec < horizon) {
+        const ev = tl.events[r.idx++];
+        const time = r.t0 + ev.tick * r.tickSec;
+        if (ev.type === 'click') engine.click(time, ev.level, r.bus);
+        else if (ev.type === 'hit') handsHit('S', time, ev.gain, r.bus);
+        else if (ev.type === 'note') playDemoNote(ev.midi, time, ev.d * r.tickSec, ev.gain < 1 ? half : r.melBus, 'da');
+      }
+      if (!r.judged && ctx.currentTime > r.endAt + .5) singTapFinish(r);
+    };
+    r.timer = setInterval(pump, 25);
+    pump();
+    handsWakeFor(singtap, true);
+    renderSingTap();
+  }
+  function singTapStop(rerender = true) {
+    const r = singtap.run;
+    if (r) { clearInterval(r.timer); r.playing = false; engine.fadeBus(r.bus); engine.fadeBus(r.melBus); singtap.run = null; }
+    if (voice.consumer === 'singtap') micOff();
+    handsWakeFor(singtap, false);
+    if (singtap.phase !== 'result') singtap.phase = 'idle';
+    if (rerender) renderSingTap();
+  }
+  /** Wake Lock für eine Ansicht (Zwei Hände, Singen und klopfen). */
+  async function handsWakeFor(obj, on) {
+    try {
+      if (on && !obj.wake && navigator.wakeLock) obj.wake = await navigator.wakeLock.request('screen');
+      else if (!on && obj.wake) { const w = obj.wake; obj.wake = null; await w.release(); }
+    } catch { obj.wake = null; }
+  }
+  function singTapTap() {
+    const r = singtap.run;
+    const pad = $('.st-pad');
+    if (pad) { pad.classList.remove('is-tap'); void pad.offsetWidth; pad.classList.add('is-tap'); }
+    if (!r || !r.playing) return;
+    const ctx = engine.ctx;
+    r.taps.push(ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0) - state.latency);
+  }
+  function singTapFinish(r) {
+    r.judged = true;
+    const taps = r.taps.filter((x) => x >= r.youStart - .15 && x <= r.endAt + .15).map((x) => x - r.youStart);
+    const frames = r.frames.map((f) => ({ ...f, t: f.t - r.youStart }));
+    const res = judgeSingTap(r.task, { taps, frames, tickSec: r.tickSec, clicks: r.click && singtap.phones === 'none' ? r.clickTimes : null, latency: (sing.inTime.latencyMs || 0) / 1000 });
+    singtap.last = { task: r.task, res, tickSec: r.tickSec, taps };
+    singTapStop(false);
+    singtap.phase = 'result';
+    report('inTime', 0, res.key === 'gut' || res.key === 'okay', { value: res.tap.count ? res.tap.hits / res.tap.count : 0 });
+    renderSingTap();
+  }
+  /** Ein Bild vom Mikrofon (Verbraucher 'singtap'): Tonhöhen-Frames im eigenen Teil, Pegel, Phase, Puls. */
+  function singTapFrame(now) {
+    voice.analyser.getFloatTimeDomainData(voice.buffer);
+    const r = singtap.run;
+    if (!r || !r.playing) return;
+    const res = detectPitch(voice.buffer, engine.ctx.sampleRate);
+    if (now >= r.youStart - .3 && now <= r.endAt + .5) r.frames.push(pitchFrameOf(now, res, voice.buffer, engine.ctx.sampleRate));
+    const tick = (now - r.t0) / r.tickSec;
+    const ph = r.tl.phases.find((p) => tick >= p.from && tick < p.to);
+    const phase = ph ? ph.phase : tick < 0 ? 'count' : 'wait';
+    if (phase !== singtap.phase) { singtap.phase = phase; renderSingTap(); }
+    // Fläche leuchtet zum Rhythmus der App und pulsiert im Allein-Teil ohne Klick.
+    while (r.flashIdx < r.tl.events.length && r.tl.events[r.flashIdx].tick <= tick) {
+      const ev = r.tl.events[r.flashIdx++];
+      if (ev.type === 'hit' || ev.type === 'pulse') { const pad = $('.st-pad'); if (pad) { const c = ev.type === 'pulse' ? 'is-pulse' : 'is-lit'; pad.classList.remove(c); void pad.offsetWidth; pad.classList.add(c); } }
+    }
+    const bar = $('.st-progress i');
+    if (bar && ph) bar.style.width = `${clamp((tick - ph.from) / (ph.to - ph.from), 0, 1) * 100}%`;
+    const dots = $('.st-count');
+    if (dots) {
+      const m = METERS[r.task.meter];
+      const beat = phase === 'count' ? Math.floor(Math.max(0, tick) / m.beat) : -1;
+      [...dots.children].forEach((d, i) => d.classList.toggle('is-on', i <= beat));
+    }
+    updateSingMic(now, $('.st-mic'), 'singtap');
+  }
+
+  const SINGTAP_PHASE = { idle: '', count: 'Einzähler', listen: 'Hör zu', along: 'Mach mit – singen und klopfen', you: 'Jetzt du – allein', wait: 'Gleich …', result: '' };
+  /** Noten (Hilfe): Rhythmuszeile der Fläche und die Melodie. */
+  function singTapNotesHtml(task) {
+    const rhythm = systemSvg({ pattern: task.tap, meterId: task.meter, lines: phraseLines(task.tap), y0: 0, label: 'Klopfen', reveal: true, statusOf: () => '', syllables: null, taps: [], timeline: false, own: false });
+    const h = phraseLines(task.tap).length * (ST.H - 18);
+    const melody = task.mel ? rhythmStaffSvg(task.mel, PART_CLEF[ear.part] || 'treble').svg : `<p class="th-info">Ton: <b>${noteLabel(task.target)}</b> über ${task.bars} Takte halten.</p>`;
+    return `<div class="th-notes"><svg viewBox="0 0 ${ST.W} ${h}" role="img" aria-label="Rhythmus der Fläche">${rhythm}</svg>${melody}</div>`;
+  }
+  function singTapResultHtml() {
+    const { res } = singtap.last;
+    const tapLine = `${VERDICT_WORD[res.tap.verdict.key].replace('!', '')} · ${res.tap.verdict.line}`;
+    const notesBtn = singtap.notes || singtap.notesFor === singtap.last.task.key ? '' : '<button type="button" class="k-btn k-btn--ghost" data-singtap="notes">Noten zeigen</button>';
+    return `<div class="th-result" data-verdict="${res.key}">
+      <div class="round-verdict"><span class="verdict-badge" aria-hidden="true"><svg viewBox="0 0 24 24">${VERDICT_ICON[res.key]}</svg></span><div class="verdict-text"><p class="verdict-word">${VERDICT_WORD[res.key]}</p>
+        <p class="verdict-line"><span class="th-hv">Klopfen: ${esc(tapLine)}</span><span class="th-hv">Singen: ${VERDICT_WORD[res.sing.key].replace('!', '')}</span></p></div></div>
+      <p class="round-tip">${esc(res.sing.text)}</p>
+      <div class="th-after">${notesBtn}</div>
+    </div>`;
+  }
+  function renderSingTap() {
+    const host = $('[data-singtap]');
+    if (!host) return;
+    host.hidden = views.voice !== 'singtap' || state.tab !== 'voice';
+    if (host.hidden) return;
+    queueMicrotask(markToolDepth);
+    if (!host.querySelector('.st-pads')) {
+      host.innerHTML = `<div class="th-top"></div><div class="th-pads st-pads"><button type="button" class="th-pad st-pad" aria-label="Tippfläche: hier klopfen (Leertaste)"><b>Hier klopfen</b><small>nur auf dem Bildschirm, nicht auf dem Tisch</small></button></div>`;
+    }
+    const task = singtap.task, phase = singtap.phase, running = !!singtap.run;
+    const m = METERS[task?.meter || '4/4'];
+    const fs = document.fullscreenEnabled && !/iPhone|iPad|iPod/.test(navigator.userAgent)
+      ? `<button class="icon-btn" type="button" data-singtap="fullscreen" aria-pressed="${!!document.fullscreenElement}" aria-label="${document.fullscreenElement ? 'Vollbild beenden' : 'Vollbild'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>` : '';
+    const mic = `<span class="sing-mic st-mic" role="img" aria-label="Mikrofon"><svg viewBox="0 0 24 24" aria-hidden="true"><defs><clipPath id="st-mic-clip"><rect x="8.5" y="2.5" width="7" height="12" rx="3.5"/></clipPath></defs><rect class="mic-fill" clip-path="url(#st-mic-clip)" x="8.5" y="14.5" width="7" height="0"/><rect class="mic-cap" x="8.5" y="2.5" width="7" height="12" rx="3.5"/><path class="mic-stand" d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5M9 21.5h6"/><path class="mic-slash" d="M4 3l16 18"/></svg></span>`;
+    const head = `<div class="ex-head"><button class="back-btn" type="button" data-singtap="back" data-own-back-btn aria-label="Zurück zu Singen" title="Zurück zu Singen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Singen</span><h2 class="mode-title">Singen und klopfen</h2></div><div class="head-tools">${mic}${fs}<button class="icon-btn" type="button" data-singtap="settings" aria-label="Einstellungen: Kopfhörer, Klick, Tempo" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></button></div></div>`;
+    const level = running ? '' : levelControlHtml('singtap', SINGTAP_LEVELS, singtap.level);
+    const what = SINGTAP_LEVELS[singtap.level - 1].label;
+    const count = running ? `<div class="th-phase"><span class="th-count st-count" aria-hidden="true">${Array.from({ length: Math.round(m.ticks / m.beat) }, (_, i) => `<i${beatLevel(m, i * m.beat) >= 1 ? ' class="is-strong"' : ''}></i>`).join('')}</span><b>${SINGTAP_PHASE[phase] || ''}</b></div><div class="progress st-progress"><i></i></div>` : '';
+    const hint = !running && phase !== 'result' ? `<p class="th-intro">${what}. Erst hören, dann mitmachen, dann allein. Klopf nur auf den Bildschirm, nicht auf den Tisch – das stört die Tonerkennung. Mit Kopfhörern üben${singtap.phones === 'bt' ? '; Bluetooth-Kopfhörer verzögern den Ton – unter Singen → Im Takt → Zahnrad neu kalibrieren' : ''}.${singtap.phones === 'none' ? ' Ohne Kopfhörer pulsiert die Fläche statt des Klicks.' : ''}</p>` : '';
+    const notes = task && (singtap.notes || (phase === 'result' && singtap.notesFor === task.key)) && (running || phase === 'result') ? singTapNotesHtml(task) : '';
+    const main = running ? ['stop', 'Stopp'] : task && phase === 'result' ? ['next', 'Weiter'] : ['start', 'Start'];
+    const icon = { stop: SING_MAIN_ICONS.stop, next: SING_MAIN_ICONS.start, start: SING_MAIN_ICONS.begin }[main[0]];
+    const ctl = `<div class="th-ctl">
+      <button type="button" class="dock-slot" data-singtap="again" aria-label="Nochmal, dieselbe Aufgabe"${!running && task ? '' : ' disabled'}><span class="dock-c"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7"/><path d="M4 4v4.7h4.7"/></svg></span><span>Nochmal</span></button>
+      <button type="button" class="dock-main" data-singtap="${main[0]}" aria-label="${main[1]}"><span class="dock-core"><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></span><span class="dock-cap">${main[1]}</span></button>
+      <button type="button" class="dock-slot" data-singtap="helps" aria-label="Hilfen: Noten" aria-haspopup="dialog"><span class="dock-c"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></span><span>Hilfen</span></button>
+    </div>`;
+    const key = [phase, running, task?.key, singtap.level, singtap.msg, singtap.notes, singtap.notesFor, singtap.phones, singtap.click, !!document.fullscreenElement, singtap.last ? 1 : 0].join('|');
+    if (key === singtap.topKey && host.querySelector('.th-top').childElementCount) return;
+    singtap.topKey = key;
+    host.querySelector('.th-top').innerHTML = `${head}${level}${hint}${singtap.msg ? `<p class="th-msg" role="status">${esc(singtap.msg)}</p>` : ''}${count}${notes}${phase === 'result' && singtap.last ? singTapResultHtml() : ''}${ctl}<p class="th-rotate">Quer drehen geht leichter.</p>`;
+    host.dataset.phase = phase;
+    $('.st-pad').classList.toggle('is-you', running && phase === 'you');
+    tunerMic.state = ''; // Mikro-Symbol neu gezeichnet: Zustand beim nächsten Bild wieder setzen
+    if (phase === 'result') host.querySelector('.th-result')?.scrollIntoView({ block: 'nearest' });
+  }
+  function openSingTap() {
+    quietArea('voice');
+    views.voice = 'singtap';
+    singtap.topKey = '';
+    renderAll();
+    renderArea();
+    $('[data-singtap="back"]')?.focus();
+  }
+  function leaveSingTap() {
+    singTapStop(false);
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  }
+  function renderSingTapHelps() {
+    $('.sheet-body').innerHTML = `<label class="switch"><input type="checkbox" role="switch" data-singtap-opt="notes"${singtap.notes ? ' checked' : ''}><span class="switch-track"></span>Noten</label>
+      <p class="foot-note" style="text-align:left">Rhythmuszeile der Fläche und die Melodie. Erst nach Gehör – die Noten sind zum Nachschauen da.</p>`;
+    $('.sheet-hint').textContent = '';
+  }
+  function renderSingTapSettings() {
+    const chip = (attr, v, t, on) => `<button class="chip" type="button" data-singtap-${attr}="${v}" aria-pressed="${on}">${t}</button>`;
+    $('.sheet-body').innerHTML = `${partChipsHtml('singPart')}
+      <span class="sub-label">Kopfhörer</span><div class="chip-row">${chip('phones', 'wired', 'Mit Kabel', singtap.phones === 'wired')}${chip('phones', 'bt', 'Bluetooth', singtap.phones === 'bt')}${chip('phones', 'none', 'Ohne', singtap.phones === 'none')}</div>
+      <span class="sub-label">Klick im Allein-Teil</span><div class="chip-row">${chip('click', 'auto', 'Nach Kopfhörer', singtap.click === null)}${chip('click', 'on', 'An', singtap.click === true)}${chip('click', 'off', 'Nur Fläche', singtap.click === false)}</div>
+      <span class="sub-label">Tempo</span><div class="chip-row">${chip('tempo', '-4', '−', false)}<span class="th-tempo-val">♩ = ${singtap.bpm}</span>${chip('tempo', '4', '+', false)}</div>
+      <p class="foot-note" style="text-align:left">Ohne Kopfhörer hört das Mikrofon Vorspiel und Klick mit: Der Puls ist dann nur zu sehen; schaltest du den Klick ein, zählen die Töne direkt am Klick nicht. Bluetooth-Kopfhörer verzögern den Ton – die Verzögerung gleichst du wie in den anderen Übungen aus (Rhythmus → Zahnrad bzw. Im Takt → Neu kalibrieren).</p>`;
+    $('.sheet-hint').textContent = '';
+  }
+  document.addEventListener('pointerdown', (e) => {
+    const pad = e.target.closest?.('.st-pad');
+    if (!pad || views.voice !== 'singtap') return;
+    e.preventDefault();
+    if (!singtap.run) { if (singtap.phase !== 'result' || !singtap.task) singTapStart(); return; }
+    singTapTap();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (views.voice !== 'singtap' || state.tab !== 'voice' || e.repeat || e.key !== ' ' || !singtap.run) return;
+    if (!$('.sheet').hidden || e.target.closest?.('input, select, textarea, button:not(.st-pad)')) return;
+    e.preventDefault(); singTapTap();
+  });
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-singtap]');
+    const act = b?.dataset.singtap;
+    if (views.voice === 'singtap') {
+      if (act === 'back') { leaveSingTap(); views.voice = 'list'; renderAll(); renderArea(); return; }
+      if (act === 'start' || act === 'next') { singTapStart(false); return; }
+      if (act === 'again') { singTapStart(true); return; }
+      if (act === 'stop') { singTapStop(); return; }
+      if (act === 'helps') { openSettings('singtaphelp'); return; }
+      if (act === 'settings') { openSettings('singtap'); return; }
+      if (act === 'fullscreen') { toggleHandsFullscreen(); return; }
+      if (act === 'notes') { singtap.notesFor = singtap.last?.task.key ?? null; renderSingTap(); return; }
+      const lvl = e.target.closest('[data-level-area="singtap"]');
+      if (lvl) { singTapStop(false); singtap.level = Number(lvl.dataset.levelN); singtap.task = null; singtap.last = null; singtap.phase = 'idle'; persist(); renderSingTap(); return; }
+    }
+    const ph = e.target.closest('[data-singtap-phones]');
+    if (ph) { singtap.phones = ph.dataset.singtapPhones; persist(); renderSingTapSettings(); return; }
+    const ck = e.target.closest('[data-singtap-click]');
+    if (ck) { singtap.click = { auto: null, on: true, off: false }[ck.dataset.singtapClick]; persist(); renderSingTapSettings(); return; }
+    const tp = e.target.closest('[data-singtap-tempo]');
+    if (tp) { singtap.bpm = clamp(singtap.bpm + Number(tp.dataset.singtapTempo), SINGTAP_TEMPO[0], SINGTAP_TEMPO[1]); persist(); renderSingTapSettings(); }
+  });
+  document.addEventListener('change', (e) => {
+    const opt = e.target.closest?.('[data-singtap-opt]');
+    if (opt) { singtap[opt.dataset.singtapOpt] = opt.checked; persist(); singtap.topKey = ''; renderSingTap(); }
+  });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && singtap.run) singTapStop(); });
+  function restoreSingTap(s) {
+    if (!s || typeof s !== 'object') return;
+    if (Number.isInteger(s.level) && s.level >= 1 && s.level <= SINGTAP_LEVELS.length) singtap.level = s.level;
+    if (Number.isFinite(s.bpm)) singtap.bpm = clamp(Math.round(s.bpm), SINGTAP_TEMPO[0], SINGTAP_TEMPO[1]);
+    if (['wired', 'bt', 'none'].includes(s.phones)) singtap.phones = s.phones;
+    if (s.click === null || typeof s.click === 'boolean') singtap.click = s.click;
+    if (typeof s.notes === 'boolean') singtap.notes = s.notes;
+  }
+  const singTapSnapshot = () => ({ level: singtap.level, bpm: singtap.bpm, phones: singtap.phones, click: singtap.click, notes: singtap.notes });
+
+
+  /* ------------------------------------------------------------------------
      ABLAGE — über die App (window.parent.chorToolStorage, IndexedDB). Gleiche
      Herkunft, der Zugriff auf window.parent ist erlaubt; direkt geöffnet
      gibt es sie nicht, dann gelten die Voreinstellungen.
@@ -13861,7 +14267,8 @@
       ear: { mode: ear.mode, settings: ear.settings, levels: ear.levels, part: ear.part, dbPct: ear.dbPct, dbSound: ear.dbSound, dbSoundV: 2, dbLog: ear.dbLog, bodyShift: ear.bodyShift, bodyRehearsal: ear.bodyRehearsal, entryShift: ear.entryShift, entryLog: ear.entryLog, stairs: Object.fromEntries(Object.entries(ear.stairs).map(([n, st]) => [n, st.toJSON()])) },
       voice: { target: voice.target, useTarget: voice.useTarget, a4: tuningA4, low: voice.low, high: voice.high },
       sing: { mode: sing.mode, levels: sing.levels, solfa: sing.solfa, showSolfa: sing.showSolfa, showSight: sing.showSight, findA4: sing.findCue === 'a4', findCue: sing.findCue,
-        audiation: sing.audiation, twoPartVol: sing.twoPartVol, inTimeVariant: sing.inTime.variant, inTimeTempo: sing.inTime.tempo, inTimeRhythmSyl: sing.inTime.rhythmSyl, singLatencyMs: sing.inTime.latencyMs, demo: sing.demo },
+        audiation: sing.audiation, twoPartVol: sing.twoPartVol, inTimeVariant: sing.inTime.variant, inTimeTempo: sing.inTime.tempo, inTimeRhythmSyl: sing.inTime.rhythmSyl, singLatencyMs: sing.inTime.latencyMs, demo: sing.demo,
+        singTap: singTapSnapshot() },
     };
   }
 
@@ -14024,6 +14431,7 @@
     sing.findA4 = sing.findCue === 'a4';
     if (!sing.showSight && sing.mode === 'sight') sing.mode = 'dictation';
     if (sg.demo === 'piano' || sg.demo === 'voice') sing.demo = sg.demo;
+    restoreSingTap(sg.singTap);
     // Im Takt (Nachsingen Paket 4): optional, sonst Standard.
     if (IN_TIME_VARIANTS.some(([id]) => id === sg.inTimeVariant)) sing.inTime.variant = sg.inTimeVariant;
     if ([0, 1, 2].includes(sg.audiation)) sing.audiation = sg.audiation;
@@ -14500,7 +14908,7 @@
   window.chorToolBack = () => {
     if (!$('.level-sheet').hidden) { closeLevelSheet(); return true; }
     if (!$('.sheet:not(.level-sheet)').hidden) { closeSettings(); return true; }
-    const btn = $$('[data-back], [data-grooves-back], [data-grooves-hub-back], [data-hands="back"]').find((b) => !b.hasAttribute('data-close-tool') && b.getClientRects().length);
+    const btn = $$('[data-back], [data-grooves-back], [data-grooves-hub-back], [data-hands="back"], [data-singtap="back"]').find((b) => !b.hasAttribute('data-close-tool') && b.getClientRects().length);
     if (!btn) return false;
     btn.click();
     return true;
@@ -15223,6 +15631,121 @@
     return errors;
   }
   const pickSeeded = (list, rnd) => list[Math.floor(rnd() * list.length)];
+
+  /** Selbsttest „Singen und klopfen“ (Paket 2). */
+  function singTapCheck() {
+    const errors = [];
+    let seed = 31;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const range = { lo: 55, hi: 69 };
+    // Material: metrisch, höchstens zwei Takte, ohne Auftakt; Fläche je Stufe.
+    for (const lv of [1, 2, 3, 4]) for (let k = 0; k < 12; k++) {
+      const t = makeSingTapTask(lv, range, { rnd });
+      if (!t) { errors.push(`Singen und klopfen: Stufe ${lv} ohne Aufgabe`); break; }
+      const m = METERS[t.meter];
+      if (t.tap.total !== t.total || t.bars > 2 || (t.mel && (t.mel.pickup || t.mel.total !== t.bars * m.ticks))) errors.push(`Singen und klopfen: Stufe ${lv}: Länge`);
+      if (t.mel && t.mel.tones.some((x) => x.midi < range.lo || x.midi > range.hi)) errors.push(`Singen und klopfen: Stufe ${lv}: außerhalb des Stimmumfangs`);
+      if (lv <= 2 && handsKey(t.tap) !== handsKey(handsPattern(t.meter, 'puls', t.bars))) errors.push(`Singen und klopfen: Stufe ${lv}: kein Puls`);
+      if (lv === 3 && t.tap.onsets.some((x) => x % (t.meter === '3/4' ? 36 : 24))) errors.push('Singen und klopfen: Stufe 3: Ostinato nicht in Halben');
+      if (lv === 4) {
+        const melOn = t.mel.tones.map((x) => x.t), per2 = Math.max(1, t.bars / 2);
+        if (commonCount(t.tap.onsets, melOn) > .5 * t.tap.onsets.length) errors.push('Singen und klopfen: Gegenrhythmus mit mehr als 50 % gemeinsamen Anschlägen');
+        if (andCount(t.tap) < 2 * per2 || unitOnsets(t.tap).filter((u) => !u.length).length < per2) errors.push('Singen und klopfen: Gegenrhythmus verletzt die Regeln von Stufe 1');
+      }
+    }
+    // Gegenrhythmus passend zur Melodie: liegt öfter auf langen Tönen und Pausen als ein beliebiger gültiger.
+    {
+      let fit = 0, any = 0;
+      for (let k = 0; k < 8; k++) {
+        const t = makeSingTapTask(4, range, { rnd });
+        const quiet = (p) => p.onsets.filter((x) => { const tone = t.mel.tones.find((y) => y.t < x && x < y.t + y.d); return tone ? tone.d >= 12 : !t.mel.tones.some((y) => y.t === x); }).length / p.onsets.length;
+        fit += quiet(t.tap);
+        any += quiet(handsRhythm(t.meter, ['e', 'r'], t.bars, rnd));
+      }
+      if (fit <= any) errors.push('Singen und klopfen: Gegenrhythmus nicht zur Melodie passend');
+    }
+    // Ablauf: Einzähler, Vorspielen, Mitmachen (halb laut), allein; ohne Klick pulsiert die Fläche.
+    {
+      const t = makeSingTapTask(2, range, { rnd });
+      const tl = singTapTimeline(t, { click: false });
+      if (tl.phases.map((p) => p.phase).join() !== 'count,listen,along,you') errors.push('Singen und klopfen: Ablauf');
+      if (tl.events.some((e) => e.phase === 'you' && (e.type === 'note' || e.type === 'hit' || e.type === 'click'))) errors.push('Singen und klopfen: App spielt im Allein-Teil');
+      if (!tl.events.some((e) => e.phase === 'you' && e.type === 'pulse') || !tl.events.some((e) => e.phase === 'along' && e.gain === .5)) errors.push('Singen und klopfen: Puls nur optisch bzw. Mitmachen halb laut');
+      if (!singTapTimeline(t, { click: true }).events.some((e) => e.phase === 'you' && e.type === 'click')) errors.push('Singen und klopfen: Klick im Allein-Teil fehlt');
+    }
+    // Klick-Frames ausblenden (±40 ms).
+    {
+      const fr = [0, .03, .05, .2, .5, .53].map((t) => ({ t, midi: 60, rms: .1 }));
+      if (dropClickFrames(fr, [0, .5]).map((f) => f.t).join() !== '0.05,0.2') errors.push('Singen und klopfen: Klick-Frames');
+    }
+    // Gleichzeitige Auswertung: künstliche Frames (60/s) und Anschläge.
+    const tick = 60 / 72 / 12; // ♩ = 72
+    const framesOf = (tones, { cents = 0, clicks = [], jitter = 0 } = {}) => {
+      const out = [];
+      for (const x of tones) for (let t = x.start; t < x.start + x.dur - .08; t += 1 / 60) out.push({ t, midi: x.midi + cents / 100 + (jitter ? Math.sin(t * 40) * jitter / 100 : 0), rms: .1 });
+      clicks.forEach((c) => [-.02, 0, .02].forEach((d) => out.push({ t: c + d, midi: 84, rms: .3 })));
+      return out.sort((a, b) => a.t - b.t);
+    };
+    {
+      const t = makeSingTapTask(4, range, { rnd });
+      const target = melodyTarget(t.mel, tick);
+      const taps = t.tap.onsets.map((x) => x * tick + .01);
+      const good = judgeSingTap(t, { taps, frames: framesOf(target), tickSec: tick });
+      if (good.key !== 'gut' && good.key !== 'okay') errors.push(`Singen und klopfen: alles richtig → ${good.key} (Klopfen ${good.tap.verdict.key}, Singen ${good.sing.key})`);
+      const noTap = judgeSingTap(t, { taps: [], frames: framesOf(target), tickSec: tick });
+      if (noTap.tap.verdict.key !== 'nochmal' || noTap.sing.key === 'nochmal' || noTap.key !== 'nochmal') errors.push('Singen und klopfen: Gesamturteil = schlechterer Teil (Klopfen)');
+      const flat = judgeSingTap(t, { taps, frames: framesOf(target, { cents: 0 }).map((f) => ({ ...f, midi: f.midi - 1 })).filter((_, i) => i % 3), tickSec: tick });
+      if (flat.tap.verdict.key !== 'gut' || flat.key === 'gut') errors.push('Singen und klopfen: falsch gesungen, richtig geklopft');
+    }
+    {
+      // Ton halten (Stufe 1), mit Klick ohne Kopfhörer: Klick-Frames stören, ausgeblendet nicht.
+      const t = makeSingTapTask(1, range, { rnd });
+      const dur = t.total * tick;
+      const clicks = Array.from({ length: Math.round(t.total / 12) }, (_, k) => k * 12 * tick);
+      const frames = framesOf([{ midi: t.target, start: 0, dur: dur + .08 }], { clicks, jitter: 3 });
+      const taps = t.tap.onsets.map((x) => x * tick);
+      const raw = judgeSingTap(t, { taps, frames, tickSec: tick });
+      const clean = judgeSingTap(t, { taps, frames, tickSec: tick, clicks });
+      if (clean.sing.key !== 'gut' || clean.key !== 'gut') errors.push(`Singen und klopfen: Ton halten mit ausgeblendeten Klicks → ${clean.sing.key}`);
+      if (raw.sing.key === 'gut') errors.push('Singen und klopfen: Klick-Frames stören die Auswertung nicht (Test unwirksam)');
+      const off = judgeSingTap(t, { taps, frames: framesOf([{ midi: t.target, start: 0, dur: dur + .08 }], { cents: 45 }), tickSec: tick });
+      if (off.sing.key === 'gut' || off.sing.key === 'okay') errors.push('Singen und klopfen: Ton 45 Cent daneben gilt als gehalten');
+      if (judgeSingHold(t.target, [], dur).key !== 'nochmal') errors.push('Singen und klopfen: ohne Ton kein Nochmal');
+    }
+    // Hören zuerst: ohne Hilfe keine Noten in irgendeiner Phase vor der Auflösung; eine Fläche über die volle Breite.
+    {
+      const saved = { ...singtap };
+      const v0 = views.voice, tab0 = state.tab;
+      views.voice = 'singtap'; state.tab = 'voice';
+      Object.assign(singtap, { notes: false, task: makeSingTapTask(2, range, { rnd }), last: null, topKey: '' });
+      for (const phase of ['count', 'listen', 'along', 'you']) {
+        singtap.phase = phase; singtap.run = { task: singtap.task }; singtap.topKey = '';
+        renderSingTap();
+        if ($('[data-singtap] .th-top .th-notes, [data-singtap] .th-top .syl-t')) errors.push(`Singen und klopfen: ${phase} zeigt Noten ohne Hilfe`);
+      }
+      singtap.notes = true; singtap.topKey = ''; renderSingTap();
+      if (!$('[data-singtap] .th-notes')) errors.push('Singen und klopfen: Noten-Hilfe zeigt nichts');
+      const pads = $$('[data-singtap] .st-pad');
+      const box = pads[0]?.getBoundingClientRect();
+      if (pads.length !== 1 || getComputedStyle(pads[0]).touchAction !== 'none' || (box && box.width && box.width < innerWidth * .8)) errors.push('Singen und klopfen: Fläche fehlt oder zu schmal');
+      Object.assign(singtap, saved, { run: null, topKey: '' });
+      views.voice = v0; state.tab = tab0;
+      renderSingTap();
+    }
+    // Speichern und Laden.
+    {
+      const keep = singTapSnapshot();
+      restoreSingTap({ level: 3, bpm: 80, phones: 'none', click: true, notes: true });
+      if (JSON.stringify(singTapSnapshot()) !== JSON.stringify({ level: 3, bpm: 80, phones: 'none', click: true, notes: true })) errors.push('Singen und klopfen: Speichern/Laden');
+      if (singTapClick() !== true) errors.push('Singen und klopfen: Klick-Einstellung');
+      restoreSingTap({ level: 9, bpm: 'x', phones: 'ja', click: 'vielleicht' });
+      if (singtap.level !== 3 || singtap.phones !== 'none') errors.push('Singen und klopfen: kaputter Stand übernommen');
+      singtap.click = null;
+      if (singTapClick() !== false) errors.push('Singen und klopfen: ohne Kopfhörer standardmäßig Klick');
+      restoreSingTap(keep);
+    }
+    return errors;
+  }
 
   function groovesCheck() {
     const errors = [];
@@ -17978,6 +18501,7 @@
     errors.push(...accompCheck());
     errors.push(...groovesCheck());
     errors.push(...handsCheck());
+    errors.push(...singTapCheck());
     errors.push(...holdEntriesCheck());
     errors.push(...downbeatCheck());
     errors.push(...songDownbeatCheck());
@@ -18042,7 +18566,7 @@
         if (views.ear !== 'exercise' || state.tab !== 'ear' || ear.mode !== QUICK_CHAINS.ear[0][0] || !quickRun || quickRun.steps !== QUICK_CHAINS.ear) errors.push('from=quick&tab=ear startet die Kette nicht wie bisher');
         quickRun = saved.run;
         // Einsatz finden und Körper stehen im Rhythmus-Bereich (eigene Zeilen data-downbeat-open, siehe downbeatCheck/bodyCheck).
-        for (const [tab, list] of [['rhythm', MODES], ['ear', EAR_MODES.filter(([id]) => !isRhythmEar(id))], ['voice', visibleSingModes().filter(([id]) => id !== 'tuner')]]) { // Tuner: Tools-Kachel
+        for (const [tab, list] of [['rhythm', MODES], ['ear', EAR_MODES.filter(([id]) => !isRhythmEar(id))], ['voice', [...visibleSingModes().filter(([id]) => id !== 'tuner'), ['singTap']]]]) { // Tuner: Tools-Kachel; Singen und klopfen: eigene Ansicht
           renderModeList(tab);
           for (const [id] of list) {
             const n = $$(`[data-list="${tab}"] [data-open-mode="${tab}:${id}"]`).length;
@@ -19042,7 +19566,7 @@
     // Pop-Didaktik: Rhythmus
     RHYTHM_LEVELS, METERS, ELEMENTS, makePattern, makeDuo, syllablesFor, elementFits,
     // Zwei Hände
-    handsState: () => hands, handsCheck, handsTimeline, handsBarsSvg, handsNotesSvg,
+    handsState: () => hands, handsCheck, singTapCheck, singTapState: () => singtap, SINGTAP_LEVELS, makeSingTapTask, counterForMelody, singTapTimeline, dropClickFrames, judgeSingTap, judgeSingHold, handsTimeline, handsBarsSvg, handsNotesSvg,
     HANDS_LEVELS, STARTER_TWOHANDS, HANDS_POOL, HANDS_FIGURES, handsPattern, handsRuleErrors, handsCandidate, starterTask, poolTask, figTask, figVoice, nextHandsTask, nextFigTask, handsFigAdvance, judgeHands, handsGridStep, figBpm, fpmRange, syncopeCount, andAloneCount,
     // Pop-Didaktik: Hören
     EAR_LEVELS, QUALITY_LEVELS, CADENCE_LEVELS, INTERVAL_PRESETS, chordToneNames, chordNames, makeModulationTask, makeEarTask,

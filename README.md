@@ -125,6 +125,14 @@ ein Dialog mit echter Wahl).
   Mitziehen, Vertauscht und Verschliffen, Auflösung `handsBarsSvg`. Noten,
   Raster und Silben sind Hilfen zum Einschalten (`visibleAids` mit
   `mode: 'hands'`), Ablage `rhythm.hands`;
+  Singen und klopfen (Singen → Mit Rhythmus, eigene Ansicht
+  `views.voice = 'singtap'`): eine Fläche (Puls, Halbe, zur Melodie passender
+  Gegenrhythmus `counterForMelody`) und zugleich Ton halten bzw. eine Phrase
+  des Nachsing-Generators (Stufe 1–4, höchstens zwei Takte) singen; Klopfen
+  und Singen getrennt beurteilt (`judgeSingTap`, gesamt der schlechtere Teil);
+  ohne Kopfhörer pulsiert die Fläche statt des Klicks, mit Klick werden die
+  Tonhöhen-Frames ±40 ms um jeden Klick verworfen (`dropClickFrames`),
+  Ablage `sing.singTap`;
   Rhythmus-Training mit Stufen, Phrasen,
   Auftakt, Rhythmussprache, Eingabe per Tippen oder Mikrofon;
   Hören: Intervalle, Klänge, Schlüsse, Töne in der Tonart, Akkorde in der
