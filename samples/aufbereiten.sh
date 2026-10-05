@@ -35,10 +35,15 @@ fi
 inst(){ local src=$1 dst=$2 L=$3 fd=$4; want $dst || return 0; rm -rf $OUT/$dst; mkdir -p $OUT/$dst; local mx=-99; for f in $FL/$src/*.mp3; do p=$(peak $f); mx=$(python3 -c "print(max($mx,$p))"); done
   for f in $FL/$src/*.mp3; do enc $f $OUT/$dst/$(basename $f) $L $(python3 -c "print(round(-1-($mx),2))") 64k "" $fd; done; }
 inst electric_bass_finger bass 1.6
-# Klavier 24–96 in voller Länge (Quelle 3,16 s, nur am Ende 0,15 s ausgeblendet):
-# Hören/Singen nutzen 39–84 (engine.keys), piano.html alle; den Ausklang tiefer
-# Töne verlängert piano.html beim Laden (extendTail).
-inst acoustic_grand_piano piano 3.16 0.15
+# Klavier: Salamander Grand Piano (Tone.js-Fassung), unverändert übernommen –
+# gekürzt wird erst beim Laden (piano-samples.js). Holen mit ONLY=salamander.
+if want salamander && [ -z "$NO_FETCH" ]; then
+  mkdir -p $OUT/salamander
+  N=([0]=C [3]=Ds [6]=Fs [9]=A)
+  for m in $(seq 24 3 96); do
+    curl -sf -o "$OUT/salamander/$m.mp3" "https://raw.githubusercontent.com/Tonejs/audio/master/salamander/${N[$((m%12))]}$((m/12-1)).mp3"
+  done
+fi
 # Streicher: die Quelle hält 3,1 s ohne Abklingen – nur kurz ausblenden; längere
 # Flächen setzt die App aus überblendeten Stücken zusammen (sampleNote, loopFrom).
 inst string_ensemble_1 strings 3.1 0.15

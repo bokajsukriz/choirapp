@@ -12,14 +12,14 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v494';
+const SW_VERSION = 'v495';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 // Samples (echte Instrumente in „Einsatz finden“, Klavier für Übungen und
 // piano.html, ./samples/*.mp3): eigener
 // Cache, cache-first, bewusst NICHT im Shell-Cache und nicht an SW_VERSION
-// gebunden — sonst lüde jedes App-Update ≈ 1,8 MB neu. Ändern sich die
+// gebunden — sonst lüde jedes App-Update ≈ 2,9 MB neu. Ändern sich die
 // Dateien in samples/, diese Nummer erhöhen (activate räumt den alten weg).
-const SAMPLES_CACHE = 'chor-samples-v2'; // v2: Klavier in voller Länge, C1–C7
+const SAMPLES_CACHE = 'chor-samples-v3'; // v3: Klavier = Salamander Grand Piano (samples/salamander/)
 const SAMPLES_PATH = new URL('./samples/', self.location.href).pathname;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
@@ -52,12 +52,14 @@ const SHELL_REQUIRED = [
 // deswegen ein ganzes Shell-Update zu verwerfen. Dasselbe gilt für die
 // Tool-Seiten uebe-lab.html (Ausbildung), licks.html (Licks & Grooves), einsingen.html und metronom.html (Einstellungen →
 // Tools), die nur als iframe geöffnet werden (siehe TOOL_PAGES), und für
-// harmony.js (gemeinsame Harmonik von Groove Lab und Tool-Seiten) sowie für
+// harmony.js (gemeinsame Harmonik von Groove Lab und Tool-Seiten), für
+// piano-samples.js (gemeinsames Klavier der Tool-Seiten) sowie für
 // ueben.css (gemeinsame Designsprache der Übungsseiten).
 const SHELL_OPTIONAL = [
   './boot-guard.js',
   './lame.min.js',
   './harmony.js',
+  './piano-samples.js',
   './ueben.css',
   './groove-lab.js',
   './uebe-lab.html',

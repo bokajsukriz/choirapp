@@ -152,7 +152,7 @@ ein Dialog mit echter Wahl).
   geteilten Speicher-Datensatz `calibration` (`{v:1, tapMs, micMs}`) abgelegt
   und gilt übungsübergreifend. Das Vorspiel ist wahlweise Klavier oder eine
   künstliche Singstimme (Formant-Synthese, `singVoice`). Das Klavier
-  (`engine.keys`) spielt aufgenommene FluidR3-Töne aus `samples/piano/`
+  (`engine.keys`) spielt das Salamander Grand Piano aus `samples/salamander/` (`piano-samples.js`)
   (beim Öffnen von Hören/Singen nachgeladen, je Datei auf gleichstufig
   umgestimmt, siehe `samples/LIZENZ.md`); solange sie fehlen, die Synthese.
   Gehaltene Vorgaben (Ton halten, Satz bei „Ton im Akkord finden“) klingen
@@ -187,10 +187,9 @@ ein Dialog mit echter Wahl).
   selbst in den Fortschritt. Tools schließen sich auch per Zurück-Geste bzw.
   Wischen vom linken Rand. Bericht zur Umsetzung: `BERICHT-DIDAKTIK.md`.
 - `piano.html` — Klavier zum Singen-Üben (Querformat zuerst, Mehrfinger und
-  Gleiten, Beschriftung C D E / Do Re Mi, Pedal). Klang: aufgenommenes FluidR3-Klavier aus
-  `samples/piano/` (C1–C7, alle drei Halbtöne, je Datei auf gleichstufig
-  umgestimmt; die auf 3,16 s gekürzte Quelle verlängert `extendTail` bei tiefen
-  Tönen beim Laden mit überblendeten Stücken), Anschlagstärke über Lautstärke
+  Gleiten, Beschriftung C D E / Do Re Mi, Pedal). Klang: Salamander Grand Piano aus
+  `samples/salamander/` über `piano-samples.js` (C1–C7, alle drei Halbtöne, je Datei auf
+  gleichstufig umgestimmt, beim Laden je nach Tonhöhe auf 3–10 s gekürzt), Anschlagstärke über Lautstärke
   und Helligkeit, Hall. Bis die Samples geladen sind bzw. ohne Netz die
   Web-Audio-Synthese (zwei verstimmte "Saiten", Obertöne nach dem
   Hammer-Anschlagpunkt, dunkler werdender Tiefpass, Hammergeräusch).

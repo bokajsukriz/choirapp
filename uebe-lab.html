@@ -1224,6 +1224,7 @@
 </footer>
 
 <script src="./harmony.js"></script>
+<script src="./piano-samples.js"></script>
 <script>
 (function () {
   'use strict';
@@ -2552,8 +2553,9 @@
      *  abklingend, Filter schließt sich — deutlich "gezupft" statt gesungen,
      *  damit Intervall und Akkord klar konturiert sind. */
     keys(midi, time, duration, { velocity = .2, dest, synth = false } = {}) {
-      // Klavier-Samples, sobald geladen (preloadPiano); sonst/ mit synth: true die Synthese.
-      if (!synth && sampleBank('piano')) { pianoNote(midi, time, duration, velocity, dest || this.master); return; }
+      // Klavier-Samples (Salamander, piano-samples.js), sobald geladen (preloadPiano);
+      // sonst bzw. mit synth: true die Synthese.
+      if (!synth && pianoKeys.set) { pianoNote(midi, time, duration, velocity, dest || this.master); return; }
       const ctx = this.ctx;
       const gain = ctx.createGain();
       const filter = ctx.createBiquadFilter();
@@ -5963,10 +5965,10 @@
   const SONG_TOMS = { hi: [220, 160], mid: [160, 110], lo: [110, 70] };
 
   /* ---- Echte Instrumente statt Synthese (Standard für alle Songs, seit dem
-     Klang-Versuch v483). Samples in ./samples/ (85 MP3, mono, ≈ 1,8 MB;
+     Klang-Versuch v483). Samples in ./samples/ (85 MP3, ≈ 2,9 MB;
      Herkunft und Lizenzen in samples/LIZENZ.md und THIRD-PARTY.md):
-     Schlagzeug aus VCSL (CC0), Bass/Klavier/Streicher/Gitarre/Chor/Bläser
-     aus FluidR3_GM (CC BY 3.0). Je Instrument ein Ton alle drei Halbtöne,
+     Schlagzeug aus VCSL (CC0), Bass/Streicher/Gitarre/Chor/Bläser
+     aus FluidR3_GM (CC BY 3.0), Klavier Salamander (piano-samples.js, CC BY 3.0). Je Instrument ein Ton alle drei Halbtöne,
      dazwischen umgestimmt (playbackRate, höchstens ±1,5 Halbtöne). Geladen
      erst beim ersten Gebrauch, nicht im Shell-Cache; der Service Worker legt
      sie in einen eigenen Cache (offline). Ohne Netz und Cache oder bei einem
@@ -5974,7 +5976,6 @@
   const SAMPLE_DRUMS = ['kick', 'snare', 'snare-soft', 'rim', 'hat', 'hat-soft', 'open', 'tom-hi', 'tom-lo', 'crash', 'clap'];
   const SAMPLE_INST = {
     bass: [39, 42, 45, 48, 51, 54, 57, 60, 63, 66],
-    piano: [39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84], // auch engine.keys (Hören/Singen)
     strings: [39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81],
     guitar: [63, 66, 69, 72, 75, 78, 81, 84, 87],
     choir: [66, 69, 72, 75, 78, 81],
@@ -5985,15 +5986,9 @@
   /** Lange Töne aus überblendeten Stücken: ab loopFrom (s in der Datei, nach dem
    *  Einschwingen) gleichmäßig; die Dateien sind am Ende kurz ausgeblendet (tail). */
   const SAMPLE_LONG = { strings: { loopFrom: .9, tail: .2, xfade: .4 } };
-  /** Stimmung je Datei: gemessene Abweichung des Grundtons in Cent (Spektrum um
-   *  den Grundton, 0,12–1,12 s nach dem Anschlag; Messung siehe samples/LIZENZ.md).
-   *  Das FluidR3-Klavier ist wie ein echtes gespreizt gestimmt (tief bis −7, hoch
-   *  bis +3 Cent) – Intonation und Zieltöne brauchen aber den gleichstufigen Ton,
-   *  sampleNote rechnet die Abweichung heraus. */
-  const SAMPLE_TUNE = {
-    // bis 36 am 2. Teilton gemessen (Grundton zu schwach); 24–36 und 87–96 nutzt nur piano.html
-    piano: { 24: -5.1, 27: -6.5, 30: -6.6, 33: -.5, 36: -2.9, 39: -6.9, 42: -7, 45: -3.5, 48: -3.2, 51: -2.4, 54: -2.5, 57: -.1, 60: -.6, 63: -.4, 66: -.8, 69: .1, 72: -.8, 75: 1.4, 78: 1.8, 81: 3.2, 84: 3.1, 87: 2.8, 90: 2.8, 93: 6.8, 96: 12.4 },
-  };
+  /** Stimmung je Datei in Cent (gemessene Abweichung, sampleNote rechnet sie
+   *  heraus). Das Klavier (Salamander) stimmt piano-samples.js selbst. */
+  const SAMPLE_TUNE = {};
   /** Laden je Gruppe ('drums' oder ein Instrument): Hören/Singen brauchen nur das
    *  Klavier (≈ 0,4 MB), die Songs alles. buf (alles beisammen) erst, wenn alle
    *  Gruppen da sind. */
@@ -6041,28 +6036,34 @@
   function loadSamples() {
     if (samples.buf) return Promise.resolve(samples.buf);
     if (samples.loading) return samples.loading;
-    samples.loading = Promise.all(['drums', ...Object.keys(SAMPLE_INST)].map(loadSampleGroup))
+    samples.loading = Promise.all([loadPiano(), ...['drums', ...Object.keys(SAMPLE_INST)].map(loadSampleGroup)])
       .then(() => { samples.buf = { drums: samples.drums, inst: samples.inst }; return samples.buf; })
       .finally(() => { samples.loading = null; });
     return samples.loading;
   }
-  /** Klavier für engine.keys im Hintergrund laden (Hören/Singen öffnen). */
-  function preloadPiano() { if (!sampleBank('piano')) loadSampleGroup('piano').catch((err) => console.warn('Klavier-Samples nicht geladen:', err)); }
-  /** Klavier-Ton aus Samples (engine.keys). Pegel wie die Synthese bei gleicher
-   *  velocity (PIANO_GAIN, gemessen in selfCheckAudio); Ausklang nach `dur`
-   *  kurz und fest (KEYS_RELEASE), damit Mikrofon-Übungen keine Fahne hören. */
-  const PIANO_GAIN = 1;
-  /** Verstärkung je Klavier-Datei, damit engine.keys so laut klingt wie die
-   *  Synthese (Effektivwert 0,12–0,5 s nach dem Anschlag, velocity 0,22),
-   *  begrenzt auf höchstens den doppelten Spitzenwert der Synthese – hohe Töne
-   *  bleiben dadurch etwas leiser (wie beim echten Klavier), nichts übersteuert.
-   *  Gemessen im Browser (OfflineAudioContext); selfCheckAudio prüft das
-   *  Verhältnis. Nur für engine.keys – die Songs mischen ihr Klavier selbst. */
-  const PIANO_LEVEL = { 39: 2.26, 42: 2.33, 45: 2.23, 48: 2.89, 51: 2.37, 54: 2.45, 57: 3.41, 60: 3.16, 63: 6.18, 66: 5.92, 69: 2.68, 72: 4.71, 75: 5.15, 78: 5.33, 81: 5.33, 84: 6.35 };
+  /** Klavier für engine.keys und die Songs: Salamander Grand Piano über
+   *  piano-samples.js (gemeinsam mit piano.html und einsingen.html), Mono,
+   *  je Ton auf KEYS_KEEP_SEC gekürzt. Geladen beim Öffnen von Hören/Singen
+   *  bzw. mit den Songs; bis dahin bzw. ohne Netz die Synthese. */
+  const PIANO_NOTES = window.ChorPiano ? ChorPiano.NOTES.filter((n) => n >= 36 && n <= 90) : [];
+  const KEYS_KEEP_SEC = 4;
+  const pianoKeys = { set: null };
+  function loadPiano() {
+    if (pianoKeys.set) return Promise.resolve(pianoKeys.set);
+    if (!window.ChorPiano) return Promise.reject(new Error('piano-samples.js fehlt'));
+    return ChorPiano.load({ notes: PIANO_NOTES, keepSec: () => KEYS_KEEP_SEC }).then((set) => (pianoKeys.set = set));
+  }
+  function preloadPiano() { if (!pianoKeys.set) loadPiano().catch((err) => console.warn('Klavier-Samples nicht geladen:', err)); }
+  /** Klavier-Ton aus Samples (engine.keys): so laut wie die Synthese bei
+   *  gleicher velocity (PIANO_GAIN; die Dateien gleicht piano-samples.js
+   *  untereinander an, selfCheckAudio misst das Verhältnis); Ausklang nach
+   *  `dur` kurz und fest (KEYS_RELEASE), damit Mikrofon-Übungen keine Fahne hören. */
+  const PIANO_GAIN = 8.5; // Salamander ist leise aufgenommen (Spitzen −8 dB, Mittel −35 dB); begrenzt auf doppelte Spitze der Synthese
   const KEYS_RELEASE = .15;
   function pianoNote(midi, time, dur, velocity, dest) {
-    const lvl = PIANO_LEVEL[sampleBase('piano', midi)] || 1;
-    sampleNote('piano', midi, time, dur, { gain: velocity * PIANO_GAIN * lvl, release: KEYS_RELEASE, dest });
+    const set = pianoKeys.set, opts = { dur, gain: velocity * PIANO_GAIN, release: KEYS_RELEASE, dest };
+    if (playSampleHook) { const n = ChorPiano.nearest(set, midi); playSampleHook(set.bufs[n], time, { ...opts, rate: ChorPiano.rateFor(midi, n), gain: opts.gain * (set.gain[n] || 1) }); return; }
+    ChorPiano.play(engine.ctx, set, midi, time, opts);
   }
   /** Für diese Aufgabe mit Samples spielen? Lädt beim ersten Mal (höchstens
    *  8 s warten); bei Fehler false → bisheriger Klang. */
@@ -6133,7 +6134,7 @@
       case 'crash': playSample(d.crash, time, { gain: .4, dest: drums }); return true;
       case 'bandclap': playSample(d.clap, time, { gain: .45, dest: drums }); return true;
       case 'bass': sampleNote('bass', ev.midi, time, ev.long ? 1.2 : ev.dur ?? .45, { gain: .6, release: .08, dest: part('s-bass', 1) }); return true;
-      case 'keys': ev.notes.forEach((n) => sampleNote('piano', n, time, Math.max(.1, ev.dur), { gain: ev.arp ? .6 : .45, release: .3, dest: part('s-keys', 1) })); return true;
+      case 'keys': if (!pianoKeys.set) return false; ev.notes.forEach((n) => pianoNote(n, time, Math.max(.1, ev.dur), ev.arp ? .2 : .15, part('s-keys', 1))); return true;
       case 'pad': ev.notes.forEach((n) => sampleNote('strings', n, time, Math.max(.3, ev.dur), { gain: .2, attack: .25, release: .4, dest: part('s-pad', 1) })); return true;
       case 'lead': sampleNote('guitar', ev.midi, time, ev.dur, { gain: .38, release: .12, dest: part('s-lead', 1) }); return true;
       case 'chop': sampleNote('choir', ev.midi, time, Math.max(.2, ev.dur), { gain: .4, attack: .04, release: .2, dest: part('s-chop', 1) }); return true;
@@ -6182,8 +6183,8 @@
   function soundTrialHtml() {
     return `<span class="sub-label">Klang</span>
       <div class="chip-row">${[['samples', 'Echte Instrumente'], ['synth', 'Einfach (lädt nichts)']].map(([v, label]) => `<button class="chip" type="button" data-db-sound="${v}" aria-pressed="${ear.dbSound === v}">${label}</button>`).join('')}</div>
-      <p class="foot-note" style="text-align:left;margin-top:4px">Echte Instrumente: beim ersten Mal etwa 1,8 MB laden, danach auch offline. Ohne Netz klingt es einfach.</p>
-      <p class="foot-note" style="text-align:left">Instrumente: FluidR3 GM von Frank Wen (<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener noreferrer">CC BY 3.0</a>, über midi-js-soundfonts von Benjamin Gleitzman), gekürzt und neu kodiert. Schlagzeug: Versilian Community Sample Library (<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0</a>). Alle Lizenzen: App-Einstellungen → Über die App.</p>`;
+      <p class="foot-note" style="text-align:left;margin-top:4px">Echte Instrumente: beim ersten Mal bis zu 2,9 MB laden, danach auch offline. Ohne Netz klingt es einfach.</p>
+      <p class="foot-note" style="text-align:left">Instrumente: FluidR3 GM von Frank Wen (<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener noreferrer">CC BY 3.0</a>, über midi-js-soundfonts von Benjamin Gleitzman), gekürzt und neu kodiert. Klavier: Salamander Grand Piano von Alexander Holm (<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener noreferrer">CC BY 3.0</a>, Fassung von Tone.js), gekürzt und umgestimmt. Schlagzeug: Versilian Community Sample Library (<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer">CC0</a>). Alle Lizenzen: App-Einstellungen → Über die App.</p>`;
   }
 
   /* ---- Körper (Übe-Korrekturen 11): Puls im Fuß, Rhythmus in den Händen.
@@ -16338,12 +16339,13 @@
           if (!e.notes && e.midi === undefined) continue;
           const name = SAMPLE_OF[e.kind];
           if (!name) { miss.add(`${e.kind} ohne Instrument`); continue; }
-          for (const n of e.notes || [e.midi]) if (!SAMPLE_INST[name].some((x) => Math.abs(x - n) <= 1.5)) miss.add(`${name} ${n}`);
+          const have = name === 'piano' ? PIANO_NOTES : SAMPLE_INST[name];
+          for (const n of e.notes || [e.midi]) if (!have.some((x) => Math.abs(x - n) <= 1.5)) miss.add(`${name} ${n}`);
         }
         if (miss.size) { errors.push(`Echte Instrumente: ${id} braucht ${[...miss].join(', ')}`); break; }
       }
     }
-    if (Object.values(SAMPLE_OF).some((x) => !SAMPLE_INST[x])) errors.push('Echte Instrumente: Zuordnung unvollständig');
+    if (Object.values(SAMPLE_OF).some((x) => x !== 'piano' && !SAMPLE_INST[x])) errors.push('Echte Instrumente: Zuordnung unvollständig');
     // Lange Fläche: genug Stücke, nahtlos überblendet (Ende des einen = Einsatz des nächsten).
     {
       const calls = [];
@@ -17374,24 +17376,22 @@
    *  engine.keys nimmt die Samples (Rate mit Stimmungskorrektur, Pegel je Datei). */
   function pianoSampleCheck() {
     const errors = [];
-    const notes = SAMPLE_INST.piano;
-    for (let m = 38; m <= 84; m++) if (!notes.some((x) => Math.abs(x - m) <= 1.5)) errors.push(`Klavier-Samples: kein Sample für ${noteLabel(m)}`);
-    for (const n of notes) {
-      if (!Number.isFinite(SAMPLE_TUNE.piano[n]) || Math.abs(SAMPLE_TUNE.piano[n]) > 15) errors.push(`Klavier ${n}: Stimmung fehlt/unplausibel`);
-      if (!(PIANO_LEVEL[n] > 0)) errors.push(`Klavier ${n}: Pegel fehlt`);
-    }
-    const saved = samples.inst.piano, calls = [];
-    const fake = { duration: 2.5 };
-    samples.inst.piano = Object.fromEntries(notes.map((n) => [n, fake]));
+    const notes = PIANO_NOTES;
+    if (!window.ChorPiano) return ['piano-samples.js nicht geladen'];
+    for (let m = 38; m <= 88; m++) if (!notes.some((x) => Math.abs(x - m) <= 1.5)) errors.push(`Klavier-Samples: kein Sample für ${noteLabel(m)}`);
+    for (const n of ChorPiano.NOTES) if (!Number.isFinite(ChorPiano.TUNE[n]) || Math.abs(ChorPiano.TUNE[n]) > 30) errors.push(`Klavier ${n}: Stimmung fehlt/unplausibel`);
+    const saved = pianoKeys.set, calls = [];
+    const fake = { duration: 4 };
+    pianoKeys.set = { notes, bufs: Object.fromEntries(notes.map((n) => [n, fake])), gain: Object.fromEntries(notes.map((n) => [n, n === 39 ? 1.5 : 1])) };
     playSampleHook = (b, t, o) => calls.push(o);
     try {
       engine.keys(39, 0, 1, { velocity: .2, dest: {} });
       engine.keys(40, 0, 1, { velocity: .2, dest: {} });
       engine.keys(84, 0, 1, { velocity: .2, dest: {} });
-      const want = [2 ** (6.9 / 1200), 2 ** ((100 + 6.9) / 1200), 2 ** (-3.1 / 1200)];
+      const T = ChorPiano.TUNE, want = [2 ** (-T[39] / 1200), 2 ** ((100 - T[39]) / 1200), 2 ** (-T[84] / 1200)];
       if (calls.length !== 3 || calls.some((c, i) => Math.abs(c.rate - want[i]) > 1e-9)) errors.push(`Klavier: Stimmungskorrektur ${calls.map((c) => c.rate)}`);
-      if (Math.abs(calls[0]?.gain - .2 * PIANO_LEVEL[39]) > 1e-9 || calls[0]?.release !== KEYS_RELEASE) errors.push('Klavier: Pegel/Ausklang je Datei');
-    } finally { samples.inst.piano = saved; playSampleHook = null; }
+      if (Math.abs(calls[0]?.gain - .2 * PIANO_GAIN * 1.5) > 1e-9 || calls[0]?.release !== KEYS_RELEASE) errors.push('Klavier: Pegel/Ausklang je Datei');
+    } finally { pianoKeys.set = saved; playSampleHook = null; }
     // Intonation: gegenseitiges Wandern zweier Töne unter der kleinsten Treppenstufe.
     const st = makeStaircase();
     for (let i = 0; i < 60; i++) st.answer(true);
@@ -17415,7 +17415,7 @@
       for (let c = best - 2; c <= best + 2; c += .1) { const v = mag(c); if (v > bm) { bm = v; best = c; } }
       return best;
     };
-    try { await loadSampleGroup('piano'); } catch (err) { return [`Klavier-Samples nicht geladen (${err.message}) – Klavier-Prüfung übersprungen`]; }
+    try { await loadPiano(); } catch (err) { return [`Klavier-Samples nicht geladen (${err.message}) – Klavier-Prüfung übersprungen`]; }
     for (const midi of [40, 47, 53, 61, 66, 70, 77, 83]) {
       const smp = await off((c) => engine.keys(midi, .1, 1.2, { velocity: .22, dest: c.destination }));
       const syn = await off((c) => engine.keys(midi, .1, 1.2, { velocity: .22, dest: c.destination, synth: true }));
@@ -17441,13 +17441,13 @@
       if (c.some((v) => Math.abs(v) > TUNING_WANDER_CENTS + .4)) errors.push(`Intonation: Ton wandert ${c.map((v) => v.toFixed(1))} Cent`);
     }
     // Rückfall: ohne geladene Samples spielt engine.keys die Synthese.
-    const bank = samples.inst.piano, buf = samples.buf;
+    const bank = pianoKeys.set;
     let calls = 0;
-    samples.inst.piano = undefined; samples.buf = null; playSampleHook = () => { calls++; };
+    pianoKeys.set = null; playSampleHook = () => { calls++; };
     try {
       const syn = await off((c) => engine.keys(60, .1, .8, { velocity: .22, dest: c.destination }));
       if (calls || !(rmsOf(syn, .15 * sr, .6 * sr) > 1e-3)) errors.push('Klavier: ohne Samples keine Synthese');
-    } finally { samples.inst.piano = bank; samples.buf = buf; playSampleHook = null; }
+    } finally { pianoKeys.set = bank; playSampleHook = null; }
     return errors;
   }
   async function selfCheckAudio() {
@@ -17519,7 +17519,7 @@
     HOLD_STAGES, holdPlan, judgeHold, holdMessage, nextDue, sanitizeGrooves, grooveTimeline, groovesCheck, GROOVE_COMBOS,
     holdTimingStats, groovesShowResult: (id, combo, result) => { Object.assign(gv, { view: 'lesson', id, combo, running: '', feedback: holdMessage(result, comboStage(combo)), result: { kind: 'hold', combo, ...result } }); renderGrooves(); }, // Prüfhilfe (Screenshot)
     // Einsatz finden (Hören)
-    get melodyCheckInfo() { return melodyCheckInfo; }, melodyFingerprint, holdEntriesCheck, entriesCheck, makeEntriesTask, entriesPlan, judgeEntries, DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, songDownbeatCheck, songPlan, makeSongTask, loadSamples, loadSampleGroup, pianoReady: () => !!sampleBank("piano"), samplesLoaded: () => !!samples.buf, playSoundPreview, engine, songEvents, songFairness, DB_SONGS, BODY_LEVELS, makeBodyTask, bodyPlan, judgeBody, bodyCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
+    get melodyCheckInfo() { return melodyCheckInfo; }, melodyFingerprint, holdEntriesCheck, entriesCheck, makeEntriesTask, entriesPlan, judgeEntries, DOWNBEAT_LEVELS, makeDownbeatTask, downbeatPlan, judgeDownbeat, downbeatCheck, songDownbeatCheck, songPlan, makeSongTask, loadSamples, loadSampleGroup, loadPiano, pianoReady: () => !!pianoKeys.set, samplesLoaded: () => !!samples.buf, playSoundPreview, engine, songEvents, songFairness, DB_SONGS, BODY_LEVELS, makeBodyTask, bodyPlan, judgeBody, bodyCheck, downbeatRun: () => dbRun, audioNow: () => engine.ctx?.currentTime ?? null,
     restoreForTest: (data) => { restore(data); renderArea?.(); },
     // Verzögerung erkennen
     estimateRunDelay, detectDelay, delayVectors, delayCheck,

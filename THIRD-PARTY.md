@@ -54,10 +54,11 @@ Volltexte nicht. `lame.min.js` selbst wurde dabei nicht angefasst.
 | Feld | Wert |
 |---|---|
 | Komponente | Samples: echte Instrumente in „Einsatz finden“, Klavier für `engine.keys` (Hören/Singen) und für `piano.html` |
-| Dateien | `samples/` (85 MP3, ≈ 1,8 MB), Einzelnachweis in `samples/LIZENZ.md` |
+| Dateien | `samples/` (85 MP3, ≈ 2,9 MB), Einzelnachweis in `samples/LIZENZ.md` |
 | Quelle Schlagzeug | Versilian Community Sample Library (VCSL), https://github.com/sgossner/VCSL, Stand `c1ea7bc` |
 | Lizenz Schlagzeug | CC0 1.0 (Volltext `samples/LICENSE-VCSL-CC0.txt`) |
-| Quelle Instrumente | FluidR3_GM (Frank Wen), Einzeltöne aus https://github.com/gleitz/midi-js-soundfonts (Benjamin Gleitzman) |
-| Lizenz Instrumente | CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/) – Namensnennung in der App: Einstellungen → Über die App → „Lizenzen / Danke“ (alle Sprachen) und Fußnote in den Einstellungen von „Einsatz finden“, jeweils mit Link zum Lizenztext |
-| Verändert | ja – gekürzt, Stille am Anfang entfernt, ausgeblendet, mono, Pegel angeglichen, neu als MP3 kodiert; Klavier zusätzlich in der App umgestimmt (gemessene Abweichung je Datei, `SAMPLE_TUNE`) |
-| Verwendung | Wiedergabe aller Songs in „Einsatz finden“ mit echten Instrumenten (Standard), dazu das Klavier für alle Vorgabetöne und Akkorde in Hören und Singen (`engine.keys`, beim Öffnen des Bereichs nachgeladen; ohne Samples Synthese) und das spielbare Piano `piano.html` (beim Öffnen nachgeladen, tiefe Töne mit verlängertem Ausklang; ohne Samples Synthese); erst beim ersten Gebrauch nachgeladen; nicht im Shell-Cache, sondern im eigenen Service-Worker-Cache `chor-samples-v1` (offline) |
+| Quelle Instrumente | FluidR3_GM (Frank Wen), Einzeltöne aus https://github.com/gleitz/midi-js-soundfonts (Benjamin Gleitzman) – Bass, Streicher, Gitarre, Chor, Bläser |
+| Quelle Klavier | Salamander Grand Piano (Alexander Holm, Yamaha C5), Fassung von Tone.js: https://github.com/Tonejs/audio (Ordner `salamander/`), Dateien unverändert in `samples/salamander/`; gemeinsamer Lader `piano-samples.js` für `uebe-lab.html`, `piano.html`, `einsingen.html` |
+| Lizenz Instrumente und Klavier | CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/) – Namensnennung in der App: Einstellungen → Über die App → „Lizenzen / Danke“ (alle Sprachen) und Fußnote in den Einstellungen von „Einsatz finden“, jeweils mit Link zum Lizenztext |
+| Verändert | ja – gekürzt, Stille am Anfang entfernt, ausgeblendet, mono, Pegel angeglichen, neu als MP3 kodiert; Klavier (Salamander) unverändert abgelegt, erst in der App gekürzt, zu Mono gemischt und umgestimmt (gemessene Abweichung je Datei, `TUNE` in `piano-samples.js`) |
+| Verwendung | Wiedergabe aller Songs in „Einsatz finden“ mit echten Instrumenten (Standard), dazu das Klavier für alle Vorgabetöne und Akkorde in Hören und Singen (`engine.keys`, beim Öffnen des Bereichs nachgeladen; ohne Samples Synthese) und das spielbare Piano `piano.html` (beim Öffnen nachgeladen, tiefe Töne mit verlängertem Ausklang; ohne Samples Synthese); erst beim ersten Gebrauch nachgeladen; nicht im Shell-Cache, sondern im eigenen Service-Worker-Cache `chor-samples-v3` (offline) |

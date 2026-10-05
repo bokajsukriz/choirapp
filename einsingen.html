@@ -417,6 +417,7 @@
 </footer>
 
 <script src="./harmony.js"></script>
+<script src="./piano-samples.js"></script>
 <script>
 (function () {
   'use strict';
@@ -1037,6 +1038,17 @@
      ENGINE — weiche Singstimme, klavierähnlicher Akkord, Liegeton, Klick.
      ------------------------------------------------------------------------ */
 
+  /** Klavier: Salamander Grand Piano über piano-samples.js (gemeinsam mit
+   *  Ausbildung und Piano). Beim Öffnen geladen; tiefe/mittlere Töne 8 s
+   *  (Akkord-Übung hält bis knapp 7 s), hohe 5 s. Pegel wie die Synthese bei
+   *  gleicher velocity (PIANO_GAIN wie in uebe-lab.html, selbe Synthese). */
+  const PIANO_GAIN = 8.5;
+  const pianoKeys = { set: null };
+  function loadPiano() {
+    if (pianoKeys.set) return Promise.resolve(pianoKeys.set);
+    if (!window.ChorPiano) return Promise.reject(new Error('piano-samples.js fehlt'));
+    return ChorPiano.load({ notes: ChorPiano.NOTES.filter((n) => n >= 33 && n <= 87), keepSec: (n) => (n <= 66 ? 8 : 5) }).then((set) => (pianoKeys.set = set));
+  }
   const engine = {
     ctx: null, master: null, reverb: null,
 
@@ -1164,8 +1176,15 @@
 
     /** Klavierähnlicher Ton für den Akkord vor jeder Runde — "gezupft",
      *  damit er sich klar von der vorgesungenen Melodie abhebt. */
-    keys(midi, time, duration, { velocity = .16 } = {}) {
+    keys(midi, time, duration, { velocity = .16, synth = false } = {}) {
       const ctx = this.ctx;
+      // Echtes Klavier (Salamander über piano-samples.js), sobald geladen; sonst Synthese.
+      if (!synth && pianoKeys.set) {
+        const { out } = ChorPiano.play(ctx, pianoKeys.set, midi, time, { dur: duration, gain: velocity * PIANO_GAIN, release: .2 });
+        out.connect(this.master);
+        out.connect(this.reverb);
+        return;
+      }
       const gain = ctx.createGain();
       const filter = ctx.createBiquadFilter();
       filter.type = 'lowpass';
@@ -2745,8 +2764,33 @@
   });
 
   // Für die Konsole und Selbstprüfungen: Plan und Töne ansehen, ohne zu spielen.
+  /** Klavier-Prüfung (async, Konsole: `await einsingen.selfCheckAudio()`):
+   *  Salamander geladen, Pegel wie die Synthese, Rückfall ohne Samples. */
+  async function selfCheckAudio() {
+    const errors = [];
+    try { await loadPiano(); } catch (err) { return [`Klavier-Samples nicht geladen (${err.message})`]; }
+    const sr = 48000;
+    const render = async (fn) => {
+      const ctx = new OfflineAudioContext(1, sr * 1.2, sr);
+      const save = { ctx: engine.ctx, master: engine.master, reverb: engine.reverb };
+      Object.assign(engine, { ctx, master: ctx.destination, reverb: ctx.createGain() });
+      try { fn(); } finally { Object.assign(engine, save); }
+      return (await ctx.startRendering()).getChannelData(0);
+    };
+    const rms = (x) => { let e = 0; for (let i = .1 * sr; i < .5 * sr; i++) e += x[i] * x[i]; return Math.sqrt(e / (.4 * sr)); };
+    for (const m of [43, 55, 64, 72]) {
+      const smp = await render(() => engine.keys(m, .05, 1, { velocity: .16 }));
+      const syn = await render(() => engine.keys(m, .05, 1, { velocity: .16, synth: true }));
+      const ratio = rms(smp) / rms(syn);
+      if (!(ratio > .25 && ratio < 1.6)) errors.push(`Klavier ${noteLabel(m)}: Pegel ${ratio.toFixed(2)} × Synthese`);
+    }
+    const set = pianoKeys.set; pianoKeys.set = null;
+    try { if (!(rms(await render(() => engine.keys(60, .05, 1, { velocity: .16 }))) > 1e-3)) errors.push('Klavier: ohne Samples keine Synthese'); } finally { pianoKeys.set = set; }
+    return errors;
+  }
+
   window.einsingen = {
-    engine, state, EXERCISES, PRACTICE_RANGES, PROGRAMS,
+    engine, state, loadPiano, pianoReady: () => !!pianoKeys.set, selfCheckAudio, EXERCISES, PRACTICE_RANGES, PROGRAMS,
     get VOICES() { return voiceList(); },
     voiceRange: voiceById,
     plan: () => (plan = buildPlan()),
@@ -3498,6 +3542,7 @@
   const maybeAutostart = () => { if (pendingAutostart) { pendingAutostart = false; autostart(); } };
   if (!storage) applyQuickParams(quickParams);
   renderAll();
+  loadPiano().catch((err) => console.warn('Klavier-Samples nicht geladen – Synthese:', err));
   if (!storage) maybeAutostart();
   if (storage) {
     try {
