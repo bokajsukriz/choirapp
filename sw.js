@@ -12,8 +12,15 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v388';
+const SW_VERSION = 'v499';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
+// Samples (echte Instrumente in „Einsatz finden“, Klavier für Übungen und
+// piano.html, ./samples/*.mp3): eigener
+// Cache, cache-first, bewusst NICHT im Shell-Cache und nicht an SW_VERSION
+// gebunden — sonst lüde jedes App-Update ≈ 2,9 MB neu. Ändern sich die
+// Dateien in samples/, diese Nummer erhöhen (activate räumt den alten weg).
+const SAMPLES_CACHE = 'chor-samples-v3'; // v3: Klavier = Salamander Grand Piano (samples/salamander/)
+const SAMPLES_PATH = new URL('./samples/', self.location.href).pathname;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt
 // (https://<name>.github.io/<repo>/). Absolute Pfade würden dort ins Leere zeigen.
@@ -45,11 +52,15 @@ const SHELL_REQUIRED = [
 // deswegen ein ganzes Shell-Update zu verwerfen. Dasselbe gilt für die
 // Tool-Seiten uebe-lab.html (Ausbildung), licks.html (Licks & Grooves), einsingen.html und metronom.html (Einstellungen →
 // Tools), die nur als iframe geöffnet werden (siehe TOOL_PAGES), und für
-// harmony.js (gemeinsame Harmonik von Groove Lab und Tool-Seiten).
+// harmony.js (gemeinsame Harmonik von Groove Lab und Tool-Seiten), für
+// piano-samples.js (gemeinsames Klavier der Tool-Seiten) sowie für
+// ueben.css (gemeinsame Designsprache der Übungsseiten).
 const SHELL_OPTIONAL = [
   './boot-guard.js',
   './lame.min.js',
   './harmony.js',
+  './piano-samples.js',
+  './ueben.css',
   './groove-lab.js',
   './uebe-lab.html',
   './metronom.html',
@@ -114,7 +125,7 @@ self.addEventListener('activate', (event) => {
       const names = await caches.keys();
       await Promise.all(
         names
-          .filter((n) => n.startsWith('chor-app-shell-') && n !== CACHE_NAME)
+          .filter((n) => (n.startsWith('chor-app-shell-') && n !== CACHE_NAME) || (n.startsWith('chor-samples-') && n !== SAMPLES_CACHE))
           .map((n) => caches.delete(n))
       );
       await self.clients.claim();
@@ -226,6 +237,28 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // die App lädt ohnehin nichts Fremdes
+
+  // Samples: erst der eigene Cache, dann Netz (und nachtragen). Offline ohne
+  // Cache: 504 — die Übungsseite klingt dann wie mit „Einfach“ (Synthese).
+  if (url.pathname.startsWith(SAMPLES_PATH) && url.pathname.endsWith('.mp3')) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(SAMPLES_CACHE);
+        const cached = await cache.match(req, { ignoreSearch: true });
+        if (cached) return cached;
+        try {
+          const res = await fetch(req);
+          if (res && res.ok && res.type === 'basic') {
+            try { await cache.put(req, res.clone()); } catch (err) { console.warn('[sw] konnte Sample nicht cachen:', req.url, err); }
+          }
+          return res;
+        } catch {
+          return new Response('', { status: 504, statusText: 'Offline' });
+        }
+      })()
+    );
+    return;
+  }
 
   // Tool-Seiten (Einstellungen → Tools), die die App als iframe lädt. Auch
   // das sind Navigationen — ohne diese Ausnahme käme dort die index.html

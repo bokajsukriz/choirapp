@@ -9,7 +9,7 @@ dort unter „Dateiübersicht".
 **Vor jedem Commit prüfen:** wurde eine der folgenden Dateien geändert?
 
 `index.html`, `app.js`, `lightshow.js`, `strings.js`, `zip-reader.js`,
-`groove-lab.js`, `harmony.js`, `signalsmith-stretch.js`, `boot-guard.js`, `lame.min.js`,
+`groove-lab.js`, `harmony.js`, `piano-samples.js`, `ueben.css`, `signalsmith-stretch.js`, `boot-guard.js`, `lame.min.js`,
 `uebe-lab.html`, `einsingen.html`, `piano.html`, `licks.html`, `metronom.html`, `manifest.json`, `icon-192.png`, `icon-512.png`, `sw.js` selbst
 
 (maßgeblich ist immer `SHELL_REQUIRED`/`SHELL_OPTIONAL` in `sw.js` — dort
@@ -37,6 +37,12 @@ gegen diese Liste prüfen.
   Helligkeits-Übergänge über 0,5 je 1000-ms-Fenster, gezählt mit Hysterese
   0,45/0,55 — siehe Test 5 in `runSelfTests()`), bevor die App im Browser
   läuft.
+- `uebeLab.selfCheck()` (Konsole von `uebe-lab.html`) prüft die Melodie-Generatoren
+  nur mit einer Stichprobe (≈ 20 s gesamt), solange ihr Fingerabdruck
+  `MELODY_VERIFIED` entspricht. Ändert sich die Melodielogik, läuft automatisch
+  die volle Prüfung (≈ 2 min) und die Konsole nennt den neuen Wert: ist sie
+  grün, `MELODY_VERIFIED` in derselben Änderung auf diesen Wert setzen.
+  `uebeLab.selfCheck({ full: true })` prüft immer voll.
 - `lightshow.js` ist bewusst ein reines Blatt (kein DOM, kein `Date.now()`,
   kein `Math.random`, keine Imports zurück nach `app.js`) — jede Show ist
   `Farbe = f(Zeit, Stimme, Seed)`. Neuer Zufall gehört als deterministischer

@@ -58,6 +58,28 @@ ein Dialog mit echter Wahl).
 - `sw.js` — Service Worker (App-Shell-Cache, Offline-Betrieb).
 - `groove-lab.js` — Groove Lab (Beat/Synth), nachgeladen über den
   Tools-Reiter oder das Easter Egg (7× auf den Songtitel im Player).
+  Beat-Editor (Studio und de:construct): Lupe öffnet ihn bildschirmfüllend
+  mit großen Feldern (`_setBeatZoom`; hochkant zwei Zeilen je Takt, Transport
+  bleibt); „Raster leeren“ und „Original“ (bei verändertem Beat) erst nach
+  Rückfrage im Lab (kein Browser-Dialog — der beendet das Vollbild); die Lupe
+  sperrt am Handy aufs Querformat (Vollbild + Orientation-Lock).
+  Ansicht „de:construct“ (nur im Lab über die
+  Ansichtswahl): Einer von festen, komplett nachbaubaren Songs läuft
+  verborgen (`DC_SONGS`/`dcBuild`, je Stufe leicht/mittel/schwer 9–10 eigene Pop-
+  Songs für den Popchor); nachgebaut wird mit den
+  normalen Reitern. Auswahl: Stufenwahl (Segmented Control), Fortschritt
+  und Songliste mit Genre · Tempo-Gefühl (`genre`, `dcTempoFeel`; nie die
+  BPM), ✓/„2/4“ je Song. Bauen: Element-Leiste mit Status, Hinweis nur
+  des aktiven Elements, Tempo per Tap („Meine Version“), „Prüfen“ unten.
+  A/B wechselt im laufenden Takt zwischen Original und eigener Version
+  (`_dcHeard` tauscht je Schritt den gehörten Stand, `dcSwitchStep`),
+  „Hinhören“ hört eine Spur allein. Prüfen öffnet ein Bottom-Sheet je
+  Spur (`dcCompare`: stimmt/fast/noch nicht, ohne Lösung), ab dem 3.
+  Versuch mit gestufter Hilfe; „Auflösen“ zeigt Beat/Bass als Raster
+  Original vs. meins, Akkorde als Kacheln. Stand (Original, eigene Version,
+  Fortschritt) liegt im Feld `deconstruct` des
+  Groove-Lab-Datensatzes (`sanitizeDeconstruct`), bis ein neuer Song
+  beginnt. Details: `DECONSTRUCT-BERICHT.md`.
 - `harmony.js` — gemeinsame Harmonik der Musik-Tools (`window.ChorHarmony`,
   klassisches Skript ohne DOM): Modi, Akkordbau (Dur-Dominante in Moll,
   Dominantseptakkorde), Tonnamen tonartabhängig (`spell`/`noteLabel`,
@@ -82,14 +104,70 @@ ein Dialog mit echter Wahl).
   Klatsch-Grooves (Licks & Grooves, `?tab=rhythm&grooves=1`): geschaffte Kurs-
   Lektionen hören, auffrischen und über 4 bis 16 Takte durchhalten (zuletzt mit
   stillen Takten), Status und Wiederholen mit Abstand (Ablage `rhythm.grooves`);
-  Auswertung `judgeHold` wortgleich zu `licks.html`;
+  Auswertung `judgeHold` wortgleich zu `licks.html`; bei Auftakt-Lektionen
+  zusätzlich die Einsätze (erste Note jeder Wiederholung, `holdEntries`);
   Zweistimmig: gelernte Rhythmen vier Takte lang gegen eine zweite Stimme halten
-  – Puls, Gegenrhythmus, dichter werdende Stimme, Rollentausch, frei;
+  – Puls, Gegenrhythmus, dichter werdende Stimme, Rollentausch, frei; die
+  Notenfläche zeigt nur die eigene Stimme, nach der Runde Takt für Takt
+  (`duoBarsSvg`, wie die Auflösung bei „Einsatz finden“); das Trefferfenster
+  der Rhythmus-Auswertung (`evaluate`) wandert wie bei `judgeHold` bis
+  ±60 ms mit einem gleichbleibenden eigenen Versatz mit;
+  Zwei Hände (eigene Ansicht `views.rhythm = 'hands'`, `renderHands`): beide
+  Stimmen selbst klopfen, je eine pro Hand, auf zwei großen Flächen (links L
+  tief, rechts R hoch; Multitouch, Desktop F/J; hoch/quer, Vollbild, Wake
+  Lock). Stufe 1–4 generiert (`nextHandsTask`: Einstiegsaufgaben
+  `STARTER_TWOHANDS`, Stütze aus festen Vorlagen, Rhythmus-Stimme aus
+  `makePattern`, Regeln `handsRuleErrors` über Anschläge bzw. Notenbild, jede
+  4. Aufgabe in Stufe 3/4 eine Figur aus dem Kurs per ID, `HANDS_POOL`), Stufe
+  5/6 Polyrhythmen 2:3 und 3:4 (`HANDS_FIGURES`, Unterstufen a–g, Tempo in
+  Figuren pro Minute je Figur, `handsFigAdvance`). Ablauf Einzähler →
+  Vorspielen → Mitklopfen → allein; Auswertung je Hand (`judgeHands`) mit
+  Mitziehen, Vertauscht und Verschliffen, Auflösung `handsBarsSvg`. Noten,
+  Raster und Silben sind Hilfen zum Einschalten (`visibleAids` mit
+  `mode: 'hands'`), Ablage `rhythm.hands`;
+  Singen und klopfen (Singen → Mit Rhythmus, eigene Ansicht
+  `views.voice = 'singtap'`): eine Fläche (Puls, Halbe, zur Melodie passender
+  Gegenrhythmus `counterForMelody`) und zugleich Ton halten bzw. eine Phrase
+  des Nachsing-Generators (Stufe 1–4, höchstens zwei Takte) singen; Klopfen
+  und Singen getrennt beurteilt (`judgeSingTap`, gesamt der schlechtere Teil);
+  ohne Kopfhörer pulsiert die Fläche statt des Klicks, mit Klick werden die
+  Tonhöhen-Frames ±40 ms um jeden Klick verworfen (`dropClickFrames`),
+  Ablage `sing.singTap`;
   Rhythmus-Training mit Stufen, Phrasen,
   Auftakt, Rhythmussprache, Eingabe per Tippen oder Mikrofon;
   Hören: Intervalle, Klänge, Schlüsse, Töne in der Tonart, Akkorde in der
-  Tonart, Akkordfolgen, Stimmen heraushören, Intonation; Singen: Tuner, Ton halten, Intervalle singen, Ton finden,
-  Nachsingen, Im Takt, Blattsingen, Diktat). Nachsingen und Im Takt werten
+  Tonart, Akkordfolgen, Stimmen heraushören, Intonation; Singen: Ton halten, Intervalle singen, Ton im Akkord finden (intern `findTone`; eigene Auswahl „Nur das a′“ oder „a′, dann Akkord“),
+  Nachsingen, Im Takt, Blattsingen, Diktat; der Tuner – Zielton per Klaviatur,
+  Kammerton, dauerhaft gemerkter Tonumfang – ist eine eigene Tools-Kachel,
+  uebe-lab.html?tab=voice&mode=tuner). Die Sing-Übungen haben ein festes Gerüst:
+  Stufen-Karte, Phasenleiste Hören · Du · Ergebnis, eine Bühne mit fester Höhe
+  (beim Singen nur Fortschrittsbalken, Mikro-Symbol als Pegel oben rechts) und
+  ein Daumen-Dock (Nochmal · Start/Stopp/Weiter · Hilfen); alle Einstellungen
+  liegen im Zahnrad. Hören nutzt dasselbe Gerüst (Phasenleiste Hören · Du ·
+  Lösung, Zähler oben rechts in der Bühne, Antwortfeld mit fester Höhe, Dock
+  mit Nochmal · Start/Weiter · Hilfen). „Einsatz finden“ (im Rhythmus-Bereich,
+  im Gerüst von Hören) blendet einen Groove ohne Einzähler an zufälliger Stelle im Takt
+  ein; man findet hörend die Eins und klatscht ein Muster darüber (Tippen,
+  Leertaste oder Mikrofon, Klatschfläche im Antwortfeld) – Stufen 1–6 vom
+  Pop-Groove mit Klatschen auf 1 bis zu Synkopen-Grooves ohne Bassdrum auf 1
+  (`DOWNBEAT_LEVELS`, Zeitplan `downbeatPlan`, Wertung `judgeDownbeat`,
+  Prüfung `downbeatCheck`; Fortschrittsbereich `downbeat`). „Körper“ (ID `body`,
+  ebenfalls im Rhythmus-Bereich, gleiches Gerüst): Stufen 1–3 auf der Stelle
+  steppen (unbewertet) und einen gelernten Rhythmus klatschen – mit Groove, nur
+  mit Fuß-Bassdrum, zuletzt nach zwei Takten ohne; Stufen 4–6 Body-Percussion in
+  vier Schichten (Stampfen, Patschen, Klatschen, Schnipsen), die App spielt drei,
+  man übernimmt die vierte, Rollenwechsel mit Ansage einen Takt vorher. Wertung mit
+  `judgeHold` im absoluten Raster, mit Mikrofon nur Klatschen und Schnipsen;
+  Probenmodus (Zahnrad) für den Chor: alle Schichten in Schleife, je Stimme eine
+  Schicht groß angezeigt (`BODY_LEVELS`, `bodyPlan`, `judgeBody`, Prüfung
+  `bodyCheck`; Fortschrittsbereich `body`). „Wieder einsetzen“ (ID `entries`,
+  ebenfalls dort): Die Band spielt 8–16 Takte, dazwischen kommt eine kurze Phrase
+  nach Pausen immer wieder – Einsätze auf „4 und“, „4 a“, auf der 2, drei Achtel
+  Auftakt oder genau auf der 1 (`ENTRY_TYPES`); Vorbild mit hörbarem Atem, in
+  Stufe 1–2 „Atmen“ einen Schlag vor dem Einsatz; je Einsatz zählt die erste
+  Note, geschafft ab 80 % im Fenster, Rückmeldung früh/pünktlich/spät mit Tipp;
+  Fehler je Einsatz steuern das Ziehen (`ENTRY_LEVELS`, `entriesPlan`,
+  `judgeEntries`, Prüfung `entriesCheck`; Fortschrittsbereich `entries`). Nachsingen und Im Takt werten
   eine gesungene Melodie Ton für Ton aus (`scoreEcho`, gegen simulierte
   Sänger:innen getestet); Im Takt misst dazu die Einsätze mit einer eigenen,
   durch Singen kalibrierten Latenz. Kommen die Tipper in `uebe-lab.html` und
@@ -99,7 +177,12 @@ ein Dialog mit echter Wahl).
   alle Töne „daneben“ liegen) und schlägt einen Ausgleich vor. Er wird im
   geteilten Speicher-Datensatz `calibration` (`{v:1, tapMs, micMs}`) abgelegt
   und gilt übungsübergreifend. Das Vorspiel ist wahlweise Klavier oder eine
-  künstliche Singstimme (Formant-Synthese, `singVoice`). Das Mikrofon wird nur live ausgewertet, nichts wird
+  künstliche Singstimme (Formant-Synthese, `singVoice`). Das Klavier
+  (`engine.keys`) spielt das Salamander Grand Piano aus `samples/salamander/` (`piano-samples.js`)
+  (beim Öffnen von Hören/Singen nachgeladen, je Datei auf gleichstufig
+  umgestimmt, siehe `samples/LIZENZ.md`); solange sie fehlen, die Synthese.
+  Gehaltene Vorgaben (Ton halten, Satz bei „Ton im Akkord finden“) klingen
+  weich und ohne Abklingen (`engine.soft`). Das Mikrofon wird nur live ausgewertet, nichts wird
   aufgenommen oder gesendet, und es läuft nie im Hintergrund.
   „Töne in der Tonart“ und „Akkorde in der Tonart“ üben das Erkennen
   einzelner Töne (do re mi … bzw. 1–7, in Moll la-basiert) und Akkorde
@@ -130,13 +213,21 @@ ein Dialog mit echter Wahl).
   selbst in den Fortschritt. Tools schließen sich auch per Zurück-Geste bzw.
   Wischen vom linken Rand. Bericht zur Umsetzung: `BERICHT-DIDAKTIK.md`.
 - `piano.html` — Klavier zum Singen-Üben (Querformat zuerst, Mehrfinger und
-  Gleiten, Beschriftung C D E / Do Re Mi, Pedal). Klang per Web-Audio-
-  Synthese ohne Samples (zwei verstimmte "Saiten", Obertöne nach dem
-  Hammer-Anschlagpunkt, dunkler werdender Tiefpass, Hammergeräusch, Hall).
+  Gleiten, Beschriftung C D E / Do Re Mi, Pedal). Klang: Salamander Grand Piano aus
+  `samples/salamander/` über `piano-samples.js` (C1–C7, alle drei Halbtöne, je Datei auf
+  gleichstufig umgestimmt, beim Laden je nach Tonhöhe auf 3–10 s gekürzt), Anschlagstärke über Lautstärke
+  und Helligkeit, Hall. Bis die Samples geladen sind bzw. ohne Netz die
+  Web-Audio-Synthese (zwei verstimmte "Saiten", Obertöne nach dem
+  Hammer-Anschlagpunkt, dunkler werdender Tiefpass, Hammergeräusch).
+  Klang-Selbsttest: `await piano.selfCheckAudio()`.
 - `licks.html` — „Licks & Grooves“, Synth-Licks: kurze Synthesizer-Linien nach
   Gehör lernen (hören → mitsingen → Startton finden → stückweise → ganz →
   durchhalten über 4 bis 16 Takte, zuletzt mit stillen Takten ohne Schlagzeug →
-  Notenbild/Piano-Roll, abschaltbar), Bildschirmtasten mit Mehrfach-Touch, fünf
+  Notenbild/Piano-Roll, abschaltbar), Bildschirmtasten mit Mehrfach-Touch oder –
+  Einstellung „Singen“ – übers Mikrofon (nur während der eigenen Runde, nur live
+  ausgewertet, nichts wird aufgenommen; Tonhöhe per `detectPitch` als Kopie aus
+  `uebe-lab.html`, Anschläge aus stimmhaften Abschnitten ab 80 ms, `sungOnsets`;
+  Vorspiel, Liegeton und Tastatur in der Lage der eigenen Stimme), fünf
   Synth-Klänge (Kopie aus `groove-lab.js`, ohne Hall) und Groove-Begleitung
   (Kopie aus `metronom.html`). Während des eigenen Spielens keine Marke, kein
   Raster, keine leuchtenden Tasten, kein Taktzähler. Status (Neu → Lerne →
@@ -188,6 +279,16 @@ chorApp.selfTestAsync()
 chorApp.selfTestAudioPath()
 ```
 
+Die Tool-Seiten haben eigene Prüfungen in ihrer Konsole (`uebeLab.selfCheck()`,
+`einsingen.selfCheck()`, `licks.selfCheck()`, `piano.selfCheck()`). In
+`uebeLab.selfCheck()` (≈ 20 s) laufen die Melodie-Prüfungen (`popSingCheck`,
+`rhythmMelodyCheck`, fester Zufalls-Startwert) als Stichprobe von 100 Melodien
+je Übung, Stufe und Stimme. Ihr Fingerabdruck (erzeugte Melodien plus Quelltext
+der Prüfregeln) wird mit `MELODY_VERIFIED` verglichen; weicht er ab, läuft
+zusätzlich die volle Prüfung mit 1000 je Kombination (≈ 2 min), und die Konsole
+nennt den neuen Wert zum Eintragen. `uebeLab.selfCheck({ full: true })` prüft
+immer voll.
+
 Geprüft wird alles, was ohne Browser-Automatisierung möglich ist (Datei- und
 Titelerkennung, Speicher-Warteschlangen, Aufräumlogik). Fokusreihenfolge,
 Kontrast im echten Rendering, Quota-Verhalten und Service-Worker-Updates
@@ -231,8 +332,10 @@ Drei Punkte dazu:
 ## Übe-Programme
 
 An drei Stellen (aktuelle Setliste, übrige Setlisten, Loops und REC im
-Player) öffnet ein Hantel-Symbol einen Dialog zum Zusammenstellen eines
-Übe-Programms: eine Folge aus „N mal auf Tempo X als Stimme Y, dann …",
+Player) öffnet ein Knopf (in der Loop-Leiste beschriftet „Üben", sonst ein
+Hantel-Symbol) einen Dialog zum Zusammenstellen eines
+Übe-Programms (Choirgym; Vorlagen-Chips „Kennenlernen", „Festigen",
+„Durchsingen" belegen die Schritte vor): eine Folge aus „N mal auf Tempo X als Stimme Y, dann …",
 danach automatisch der nächste Song/Loop/REC. Je Setliste bzw. Song wird
 genau ein zuletzt benutztes Programm gespeichert (`meta`-Typ `routine`) und
 beim nächsten Öffnen des Dialogs wieder vorbelegt — gespeichert wird erst

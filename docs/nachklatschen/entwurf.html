@@ -1,0 +1,52 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fff7ec;--surface:#fff;--text:#241b3d;--muted:#766a91;--line:#f6dbe9;--ok:#21b17f;--okfg:#157a55;--warn:#ffb100;--warnfg:#8a5a00;--orange:#f08a24;--danger:#ff4d6d;--dangerfg:#c8102e}
+body{margin:0;background:#efe9e2;font-family:-apple-system,system-ui,sans-serif;color:var(--text);padding:24px;display:flex;gap:24px;flex-wrap:wrap}
+.phone{width:358px;background:var(--bg);border-radius:28px;padding:16px;box-sizing:border-box}
+.cap{font:700 13px system-ui;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 10px 4px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:18px}
+.verdict{display:flex;align-items:center;gap:14px}
+.badge{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.badge svg{width:34px;height:34px}
+.word{font:800 34px/1 'Baloo 2',sans-serif;margin:0}
+.sub{margin:4px 0 0;font-size:15px;color:var(--muted);font-weight:600}
+.dots{display:flex;gap:8px;margin:18px 0 6px;flex-wrap:wrap}
+.d{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:700 12px system-ui}
+.d.g{background:var(--ok)} .d.k{background:var(--warn)} .d.m{border:2.5px dashed var(--danger);box-sizing:border-box}
+.d.x{background:var(--orange);width:10px;border-radius:5px;align-self:center;height:26px}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--muted);flex-wrap:wrap;margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+.tip{margin:14px 0 0;padding:10px 12px;border-radius:14px;background:#fff3f9;font-size:15px;line-height:1.35}
+.meta{display:flex;justify-content:space-between;margin-top:12px;font-size:13px;color:var(--muted)}
+.gut .badge{background:var(--ok);color:#fff} .gut .word{color:var(--okfg)}
+.okay .badge{background:var(--warn);color:var(--text)} .okay .word{color:var(--warnfg)}
+.fast .badge{background:var(--orange);color:#fff} .fast .word{color:#a5520a}
+.noch .badge{background:#ffe1e7;color:var(--dangerfg)} .noch .word{color:var(--dangerfg)}
+</style></head><body>
+<div class="phone"><p class="cap">Alles getroffen, sauber</p>
+<div class="card gut"><div class="verdict"><span class="badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span><div><p class="word">Gut!</p><p class="sub">6 von 6 · genau im Takt</p></div></div>
+<div class="dots"><span class="d g"></span><span class="d g"></span><span class="d g"></span><span class="d g"></span><span class="d g"></span><span class="d g"></span></div>
+<p class="tip">Sitzt. Nächste Runde – oder eine Stufe höher.</p>
+<div class="meta"><span>Runde 4</span><span>3 in Folge ✓</span></div></div></div>
+
+<div class="phone"><p class="cap">Alles da, Timing knapp</p>
+<div class="card okay"><div class="verdict"><span class="badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 12h12"/></svg></span><div><p class="word">Okay</p><p class="sub">6 von 6 · eher spät</p></div></div>
+<div class="dots"><span class="d g"></span><span class="d k"></span><span class="d g"></span><span class="d k"></span><span class="d k"></span><span class="d g"></span></div>
+<p class="tip">Alle Schläge da, aber oft knapp danach. Klatsch mit dem Schlag, nicht hinterher.</p>
+<div class="meta"><span>Runde 4</span><span>83 % getroffen</span></div></div></div>
+
+<div class="phone"><p class="cap">Ein, zwei Fehler</p>
+<div class="card fast"><div class="verdict"><span class="badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M4 12h3M10.5 12h3M17 12h3"/></svg></span><div><p class="word">Fast</p><p class="sub">5 von 6 · 1 verpasst</p></div></div>
+<div class="dots"><span class="d g"></span><span class="d g"></span><span class="d m"></span><span class="d g"></span><span class="d k"></span><span class="d g"></span></div>
+<p class="tip">Nur der 3. Schlag fehlte. Hör beim nächsten Mal genau auf diese Stelle.</p>
+<div class="meta"><span>Runde 4</span><span>83 % getroffen</span></div></div></div>
+
+<div class="phone"><p class="cap">Mehr daneben</p>
+<div class="card noch"><div class="verdict"><span class="badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/></svg></span><div><p class="word">Nochmal</p><p class="sub">4 von 6 · 2 verpasst · 2 zu viel</p></div></div>
+<div class="dots"><span class="d m"></span><span class="d k"></span><span class="d x"></span><span class="d k"></span><span class="d m"></span><span class="d k"></span><span class="d x"></span><span class="d k"></span></div>
+<p class="tip">Erst ganz zuhören, innerlich mitsprechen („ta ti-ti“) – dann klatschen.</p>
+<div class="meta"><span>Runde 4</span><span>67 % getroffen</span></div></div></div>
+
+<div class="phone" style="width:100%;max-width:760px;background:transparent;padding:0"><div class="legend" style="font-size:14px"><span><i style="background:var(--ok)"></i>genau</span><span><i style="background:var(--warn)"></i>knapp</span><span><i style="border:2px dashed var(--danger);box-sizing:border-box"></i>verpasst</span><span><i style="background:var(--orange);border-radius:3px;width:5px"></i>zu viel</span><span>· Punkte in Reihenfolge der Schläge, ohne Noten (Nachklatschen bleibt „nach Gehör“)</span></div></div>
+</body></html>

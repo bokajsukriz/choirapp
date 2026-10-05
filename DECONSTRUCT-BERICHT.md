@@ -1,0 +1,172 @@
+# de:construct – Bericht
+
+Wunsch des Chorleiters: „Im Groovelab soll es eine Funktion ‚de:construct‘
+geben, in der ein fertiger Song läuft, den man versucht nachzubauen. Dazu gibt
+es dann A/B-Schalter (Original, meine Version) und man kann dann Stück für
+Stück versuchen, Elemente rauszuhören, Bassline, Beats usw. Das bleibt dann
+erhalten, bis man später wieder weitermacht oder einen neuen Song erstellt.“
+
+## Konzept
+
+- **Original**: einer von festen, eigens komponierten Pop-Songs für den
+  Popchor – je Stufe 9–10 (`DC_SONGS` in `groove-lab.js`, gewählt in der
+  Auswahl; Ballade, Eurodance, Punk-Pop, Boyband, Disco, Reggae, Soul,
+  Rock-Oper …, keine echten Titel oder Melodien). Raster,
+  Basslinie, Tempo, Swing, Tonart, Modus, Akkordfolge (Stufen wie im
+  Akkord-Editor), Melodie (Takte wie im Melodie-Editor) und Klang-Preset
+  stehen ausgeschrieben im Katalog; `dcBuild(songId)` macht daraus
+  Original und Startstand. Jeder Song ist komplett mit den Reitern
+  nachbaubar (Selbsttest „Nachbau“). Früher: zufällig aus Seed und
+  Loop-Vorlagen erzeugt (`dcGenerate`, entfernt).
+  Das Original ist nur hörbar, nie in einem Editor sichtbar.
+- **Meine Version**: ist ganz normal `this.state` des Labs. Gebaut wird mit
+  den vorhandenen Reitern (Beat, Harmonie, Melodie, Klang …) – nichts
+  doppelt. Start: leeres Raster, Tempo 100, ein einziger Akkord, Melodie
+  aus, ein anderer Klang.
+- **Vorgegeben**: Der Grundton ist immer vorgegeben – absolutes Hören ist
+  keine Chor-Fähigkeit, gesucht wird relativ (Stufen, Funktionen, Groove).
+  Was die Stufe nicht abfragt, steht in „Meine Version“ schon richtig.
+- **Stufen** (Gehörbildung vom Groben ins Feine):
+  - *Leicht*: Tempo & Takt, Beat, Bass – „vom Fundament zur Synkope“:
+    Grundbeat, Offbeat-Bass, Motown-Stomp, One-Drop, Swing, Funk-Synkopen.
+    Nur 4/4; Tonart und Akkordfolge vorgegeben (die Basslinie folgt ihnen).
+  - *Mittel*: dazu die Akkordfolge als Funktionen – von I–V–vi–IV über
+    Doo-Wop, vi–IV–I–V und Zwei-Takt-Ballade bis ii–V–I und Moll mit V7.
+  - *Schwer*: der ganze Song mit Melodie und Klang, auch 3/4 und 6/8
+    (Piano-Bar-Mitsinger, Doo-Wop-Soul, Rock-Oper), Mixolydisch/Dorisch.
+    Melodien: ein Takt je Akkordtakt, Mittellage, Sprünge ≤ Sexte.
+
+## Bedienung
+
+- Einstieg: nur im Groove Lab über die Ansichtswahl (Chor · Studio · Kurs
+  · de:construct; auf dem Handy die Auswahlliste oben).
+- **Auswahl** (ohne Song bzw. nach „Neuer Song“): „de:construct“ mit einem
+  Satz Zweck, Stufenwahl als Segmented Control (Leicht/Mittel/Schwer) mit
+  Beschreibung in Alltagssprache, Fortschritt „Songs … 3 von 9“ (gelöste
+  Songs der Stufe) und die Songliste als Zeilen: Nummer, Name, darunter
+  Genre · Tempo-Gefühl (ruhig/mittel/zügig/schnell, aus BPM und Taktart
+  abgeleitet – nie die BPM-Zahl), rechts ✓ (gelöst) oder „2/4“ (laufender
+  Song). Unten der breite Startknopf „<Song> starten“ bzw. „Weiter mit
+  <Song>“ (laufender Song: zurück ohne Neustart). Der Hinweis „ersetzt
+  deinen bisherigen Nachbau“ erscheint nur bei einem anderen Song, wenn
+  der laufende schon Fortschritt hat. „So geht’s“ ist eingeklappt. Das
+  Antippen von „starten“ startet zugleich das Original.
+- **Bauen**: Element-Leiste (Tempo · Beat · Bass · Akkorde …) mit Status
+  als Symbol ✓ ≈ ✗ ○; die Hinweis-Karte zeigt nur das aktive Element (mit
+  Eselsbrücke und Hinhören-Chips), der Editor liegt direkt darunter,
+  „Danach: …“ schlägt das nächste Element vor (keine Pflichtreihenfolge).
+  Im Untertitel stehen Songnummer, Name, Genre und Stufe.
+- **Tempo per Tap**: großer Tap-Knopf („Tipp mit auf die Snare“); er setzt
+  immer „Meine Version“, nie das Original.
+- **Prüfen** (Knopf in der unteren Leiste, prüft das aktive Element):
+  Bottom-Sheet mit ✓/≈/✗ je Spur (z. B. Bass: Rhythmus/Töne), ohne
+  Schritte des Originals zu verraten; bei „stimmt“ geht es zum nächsten
+  Element.
+- **Gestufte Hilfe** ab dem 3. Fehlversuch je Element: „Nur diese Spur
+  hören“, dann „Nur dieses Element auflösen“ (zählt nicht als geschafft).
+- **A/B**: Schalter in der Leiste (A Original / B Meine Version, `aria-pressed`);
+  während A klingt, trägt die Transportleiste einen Akzentrand.
+- **Auflösen** (⋯-Menü, zweistufig): Beat und Bass als Mini-Raster
+  Original vs. meins (stimmt / fehlt gestrichelt / zu viel ×), Akkorde als
+  Kacheln mit Stufen; „Original als meine Version übernehmen“ lädt es in
+  die Editoren (ein Undo-Schritt).
+- **Neuer Song** (⋯-Menü): öffnet die Auswahl; „Weiter mit <laufender
+  Song>“ führt zurück.
+
+## Rückmeldungen (`dcCompare`)
+
+Die Hinweise sagen, *was* passt und in welche Richtung es geht – nie die
+Lösung (keine Schrittnummern, keine Akkord- oder Loopnamen).
+
+| Element | stimmt | fast | Hinweise |
+|---|---|---|---|
+| Tempo & Takt | gleiche Taktart, ±3 BPM, Swing ±0,15 | ±10 BPM oder Swing anders | „ein bisschen/deutlich schneller/langsamer“, „Taktart passt nicht“, „Swing?“ |
+| Beat | alle Drum-Spuren gleiche Schläge, gleiche Ghost-Notes | nur Lautstärke anders oder genau eine Spur falsch | „Passt: Kick, Hi-Hat. Noch nicht: Snare.“ |
+| Bass | Rhythmus und Stufen gleich | Rhythmus oder Töne passen | „Rhythmus passt, Töne noch nicht“ u. ä. |
+| Akkorde | jeder Takt dieselben Töne | Grundtöne richtig, nur Dur/Moll/Septimen falsch; richtige Folge, falsches Wechseltempo; ≥ 60 % der Takte | „Grundtöne passen – Dur/Moll noch nicht“, „wechseln schneller“ |
+| Melodie | Einsätze und Tonhöhen gleich (gegen die Harmonie des Originals gerechnet, also unabhängig von den eigenen Akkorden) | Oktave falsch; Rhythmus richtig; ≥ 75 % der Töne | „andere Oktave“, „Rhythmus passt, Töne noch nicht“ |
+| Klang | Wellenform, Cutoff, Attack, Release passen (`soundMatch` der Klang-Challenge) | mindestens 2 von 4 | „Passt: Wellenform, Cutoff. Noch nicht: …“ |
+
+Beat, Bass, Akkorde und Melodie lassen sich nur in derselben Taktart
+vergleichen („Erst die Taktart finden …“).
+
+## Technische Entscheidungen
+
+- **A/B ohne Anhalten**: Der Scheduler bleibt unverändert; `_dcHeard(fn)`
+  setzt für die Dauer eines Schritts `this.state` auf das Original (alle
+  abgeleiteten Werte – Takt, Tempo, Harmonie, Klang, Mix – lesen
+  `this.state`). Umschalten greift ab dem nächsten Schritt, die Position
+  (`globalStep`) läuft weiter. Bei anderer Taktart springt sie an den
+  Anfang des nächsten Takts mit derselben Taktnummer (`dcSwitchStep`), damit
+  Akkord und Melodietakt an ihrer Stelle im Song bleiben. Gesamtlautstärke
+  bleibt die eigene. Während einer Aufnahme klingt immer „Meine Version“.
+- **Nichts verraten**: Akkordanzeige, Akkordleiste und SATB-Noten zeigen
+  während A nichts vom Original. Tempoanzeige und Editoren zeigen immer die
+  eigene Version. Würfeln ist in de:construct ausgeblendet (es würde den
+  vorgegebenen Grundton verstellen).
+- **Zustand und Undo**: Beim Betreten wird der Studio-Stand samt Undo-Stapel
+  beiseitegelegt (`_dcStash`) und „Meine Version“ geladen; beim Verlassen
+  umgekehrt. Undo wirkt nur innerhalb von de:construct.
+- **Speichern**: im vorhandenen Groove-Lab-Datensatz (IndexedDB,
+  meta-Schlüssel `grooveLab`, über die Ablage aus `app.js`) als neues Feld
+  `deconstruct = { v: 2, song, level, created, original, mine, checks, done,
+  revealed, solved }` (`solved`: Song-Id → Datum, ganz nachgebaut ohne
+  Auflösen; wandert von Song zu Song mit, ✓ in der Auswahl). Das Original
+  entsteht beim Laden immer neu aus dem Katalog. `_persist` aktualisiert `mine`, zusätzlich gebündelt 1,5 s
+  nach Eingaben (übersteht ein Beenden der App). Schließen in de:construct
+  merkt die Ansicht, das nächste Öffnen macht dort weiter. Alte Ablagen ohne
+  Feld und alte v1-Stände (zufällige Songs, nur Seed) → `null` (Auswahl
+  erscheint); fehlt nur „Meine Version“, entsteht sie aus der Song-Id neu; unbekannte Status/Daten fallen weg. Nur ein neues
+  Feld, keine Bedeutungsänderung → **kein** `DATA_VERSION`-Sprung.
+  `sanitizeState` kennt `view: 'deconstruct'` (Liste `VIEWS`).
+- Custom-Element-Regel: Der Konstruktor darf keine Attribute am Host setzen
+  – die Markierung „A klingt“ sitzt deshalb als Klasse an der
+  Transportleiste.
+- Neue Texte in DE/EN/PL (`lab.dc.*`, `lab.viewDeconstruct`,
+  ), du-Form, „…“ und –.
+
+## Tests
+
+In `runMusicSelfTests` (app.js), läuft mit `runSelfTests()`/Selbsttest-Tor:
+
+1. Katalog: 5–10 Songs je Stufe, Ids eindeutig, Rasterzeilen in Taktlänge
+   und nur mit antippbaren Werten; je Song deterministisch,
+   `sanitizeState`-fest, Grundton vorgegeben, Original gegen sich selbst
+   „stimmt“, Start nie schon gelöst, Leicht: Akkorde vorgegeben,
+   Leicht/Mittel nur 4/4. Nachbau nur mit Editor-Schritten (Taktart-Knopf,
+   Zellen, Tempo/Swing, Modus + Akkord-Editor, Melodie-Editor mit dessen
+   Längen/Umfang, Preset) ergibt für jedes Element jedes Songs „stimmt“.
+2. Vergleich je Element mit gebauten Fällen (Tempo ±2/−6/+20, Swing,
+   Taktart, Bass Töne/Rhythmus/leer/aus, Beat ohne Hi-Hat verrät keine
+   Schritte, Ghost-Notes, Akkorde aus/halbes Wechseltempo/anderes
+   Tongeschlecht, Melodie Oktave/aus/gegen andere Akkorde/andere Stufen,
+   Klang); alle Hinweis-Schlüssel existieren in DE/EN/PL.
+3. A/B: `dcSwitchStep` (gleiche Taktart → gleicher Schritt, sonst gleiche
+   Taktnummer) und in einer echten, nicht eingehängten Lab-Instanz für 4/4
+   und 3/4: Laden von „Meine Version“, A spielt das Original (Tempo hörbar),
+   A→B behält die Position, Prüfen markiert „geschafft“ dauerhaft,
+   Verlassen/Wiederkommen tauscht Studio-Stand und eigene Version korrekt.
+4. Speichern/Laden: Roundtrip, alte Ablage ohne Feld, Müll, alte v1-Stände, nur Song-Id, Original nie aus der Ablage,
+   kaputte Fortschrittsfelder, `view` bleibt erhalten.
+
+Zusätzlich per Playwright (390×844) durchgeklickt: Tools-Kachel → Einstieg →
+Song starten (Original läuft, Anzeige „Original“) → A/B → „Nur Bass“ → Loop
+wählen, Tempo knapp daneben → Prüfen (fast/stimmt/noch nicht) → Bauen
+(Sprung in den Beat-Reiter) → Auflösen (Rückfrage, Lösungen) → Neu laden:
+Stand, Fortschritt und Ansicht kommen zurück → Neuer Song (Warnung) →
+Schwer → zurück ins Studio (Studio-Stand unverändert). Keine Konsolenfehler.
+
+## Offene Punkte
+
+- Die Hinweistexte des letzten Prüfens werden nicht gespeichert – nach dem
+  Neuladen steht der Status, darunter wieder die Bau-Anleitung.
+- Die Taktpunkte in der Transportleiste folgen der eigenen Taktart, auch
+  während ein Original in anderer Taktart klingt.
+- Bei einem A/B-Wechsel zwischen verschiedenen Taktarten springt die
+  Wiedergabe an den nächsten Taktanfang (bewusst; kein Crossfade).
+- Die Lösung der Basslinie wird als Zeichenkette angezeigt (`1··5 ··8·` =
+  Stufe je Sechzehntel); eine Mini-Grafik wäre anschaulicher.
+- Ohne Song in de:construct spielt der Play-Knopf den (unsichtbaren)
+  Studio-Stand.
+- Echte Pop-Songs (Strophe/Refrain, Formteile) gibt es nicht – das
+  „Original“ ist ein Loop aus den vorhandenen Bausteinen.
