@@ -47,6 +47,8 @@
     while (i0 < len && Math.abs(mono[i0]) < peak * .02) i0++;
     i0 = Math.max(0, i0 - Math.round(sr * .001));
     const n = Math.min(len - i0, Math.round(keepSec * sr));
+    // Leere/stumme Datei: AudioBuffer der Länge 0 wäre ein NotSupportedError.
+    if (!(n > 0) || !(peak > 0)) throw new Error('Klavier: leere Datei');
     const out = mono.slice(i0, i0 + n);
     const fade = Math.min(n >> 2, Math.round(Math.min(.8, keepSec * .25) * sr));
     for (let i = 0; i < fade; i++) out[n - 1 - i] *= i / fade;
@@ -79,13 +81,16 @@
     const dec = new OAC(1, 1, 44100); // AudioBuffer gehören keinem Kontext
     const bufs = {};
     const queue = [...notes];
+    let failed = false; // ein Fehler (offline) → die übrigen Worker hören auf
     const worker = async () => {
-      while (queue.length) {
-        const n = queue.shift();
-        const r = await fetch(`${base}${n}.mp3`);
-        if (!r.ok) throw new Error(`Klavier ${n}: ${r.status}`);
-        bufs[n] = prepare(await dec.decodeAudioData(await r.arrayBuffer()), keepSec(n));
-      }
+      try {
+        while (queue.length && !failed) {
+          const n = queue.shift();
+          const r = await fetch(`${base}${n}.mp3`);
+          if (!r.ok) throw new Error(`Klavier ${n}: ${r.status}`);
+          bufs[n] = prepare(await dec.decodeAudioData(await r.arrayBuffer()), keepSec(n));
+        }
+      } catch (err) { failed = true; throw err; }
     };
     const p = Promise.all([worker(), worker(), worker()]).then(() => Object.freeze({ notes: [...notes], bufs, gain: levels(bufs) }));
     sets.set(key, p);

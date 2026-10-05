@@ -60,3 +60,16 @@ gegen diese Liste prüfen.
 - Auf `*-PLAN.md` verweisende Kommentare (z. B. „siehe LICHTSHOW-PLAN.md")
   sind oft Verweise auf längst gelöschte Planungsdokumente — nicht danach
   suchen, sie existieren im Repo nicht mehr.
+- Abgearbeitete Arbeitsanweisungen, Berichte, Reviews und Fortschritts-
+  Dateien liegen in `docs/archiv/`. Kommentare im Code nennen oft nur den
+  Dateinamen (z. B. „siehe ARBEITSANWEISUNG-WORKSHOP.md") — dann dort suchen.
+- Neue Arbeitsanweisungen (`ARBEITSANWEISUNG-*.md`) dürfen für die Dauer
+  ihres Auftrags im Hauptverzeichnis liegen. Ist der Auftrag erledigt, kommen
+  Anweisung, Bericht und Fortschritts-Datei in derselben PR nach
+  `docs/archiv/` — im Hauptverzeichnis bleiben nur `README.md`, `CLAUDE.md`,
+  `THIRD-PARTY.md`, `TODO.md` und die Lizenztexte.
+- Tool-Seiten (`uebe-lab.html`, `licks.html`, `einsingen.html`, `piano.html`,
+  `metronom.html`) haben je eine eigene Content-Security-Policy im `<head>`
+  (ein iframe erbt die von `index.html` nicht). Lädt eine davon etwas Neues
+  (Worker, Worklet, `blob:`, eine weitere Herkunft), die CSP dort erweitern —
+  sonst blockiert der Browser es still.

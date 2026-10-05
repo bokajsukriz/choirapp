@@ -2295,7 +2295,7 @@ $('#settings-back').addEventListener('click', () => {
 window.addEventListener('popstate', () => {
   // Eigener Rücksprung beim Schließen eines Tools bzw. beim Abgleich der
   // Tool-Ebenen (siehe popToolHistory/syncToolHistory).
-  if (skipPops) { skipPops--; syncToolHistory(); return; }
+  if (skipPops) { skipPops--; if (!skipPops) clearTimeout(skipPopsTimer); syncToolHistory(); return; }
   // Zurück-Geste/-Taste bei offenem Tool: nur das Tool schließen.
   if (closeToolOverlayFromHistory()) return;
   applyRoute({ fromPop: true });
@@ -4244,7 +4244,9 @@ async function askDropboxUrl({ allowClear = false } = {}) {
 
 /** Öffnet den hinterlegten Ordner; ohne Link wird zuerst danach gefragt. */
 async function openDropbox() {
-  let url = settings.dropboxUrl;
+  // Gespeicherten Link vor dem Öffnen erneut prüfen (Altbestand direkt in
+  // IndexedDB) — ungültig zählt wie „kein Link“ und wird neu erfragt.
+  let url = normalizeDropboxUrl(settings.dropboxUrl);
   if (!url) {
     url = await askDropboxUrl();
     if (!url) return;
@@ -16951,6 +16953,143 @@ function metaWithAudioParts(meta, base64) {
  * `new File(parts, …)` fügt die Teile aneinander, ohne je einen JS-String
  * über die gesamte Dateigröße anzulegen.
  */
+/* ---- Übe-Daten in der Sicherung -------------------------------------------
+   Fortschritt (`progress`) und die Stände der Übe-Tools: eigene Einsing-
+   Programme, Licks, Kurs und Stufen in Rhythmus/Hören/Singen, Groove Lab,
+   Metronom und Piano. Bewusst nicht dabei, weil nur für dieses Gerät gültig:
+   die Latenz-Kalibrierung (`tool:calibration`), die Latenzwerte im Stand von
+   uebe-lab.html und der Merker „Mikrofon verweigert“. Die Tools prüfen ihren
+   Stand beim Laden selbst (Whitelist je Feld) — hier nur Form und Größe. */
+const BACKUP_TOOL_STATES = {
+  einsingen: { key: 'tool:einsingen', type: 'toolState' },
+  licks: { key: 'tool:licks', type: 'toolState' },
+  playground: { key: 'tool:playground', type: 'toolState' },
+  metronome: { key: 'tool:metronome', type: 'toolState' },
+  piano: { key: 'tool:piano', type: 'toolState' },
+  grooveLab: { key: 'grooveLab', type: 'grooveLab' },
+};
+const BACKUP_MAX_TOOL_STATE_LEN = 2_000_000; // Zeichen JSON je Tool-Stand
+const isPlainObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const jsonClone = (v) => JSON.parse(JSON.stringify(v));
+
+/** Gerätegebundene Latenzen aus dem Stand von uebe-lab.html (Pfade). */
+const PLAYGROUND_DEVICE_FIELDS = [['latency'], ['rhythm', 'micLatencyMs'], ['sing', 'singLatencyMs']];
+function stripPlaygroundDevice(data) {
+  const out = jsonClone(data);
+  for (const path of PLAYGROUND_DEVICE_FIELDS) {
+    const parent = path.length === 1 ? out : out[path[0]];
+    if (isPlainObject(parent)) delete parent[path[path.length - 1]];
+  }
+  return out;
+}
+
+/** Übe-Daten für die Sicherung, oder null, wenn noch nie geübt wurde. */
+async function practiceBackupData() {
+  const tools = {};
+  for (const [id, { key }] of Object.entries(BACKUP_TOOL_STATES)) {
+    const rec = await DB.metaGet(key).catch(() => null);
+    if (!isPlainObject(rec?.data)) continue;
+    tools[id] = id === 'playground' ? stripPlaygroundDevice(rec.data) : jsonClone(rec.data);
+  }
+  let progress = await window.chorProgress.data().catch(() => null);
+  if (progress && !Object.keys(progress.days).length && !Object.keys(progress.levels).length) progress = null;
+  if (progress) {
+    progress = jsonClone(progress);
+    delete progress.memory.micDenied;
+    progress.today = null; // Tagesplan gilt nur heute und nur hier
+  }
+  if (!progress && !Object.keys(tools).length) return null;
+  return { progress, tools };
+}
+
+/** Listen mit `id` vereinigen: erst alle aus `a`, dann die neuen aus `b`. */
+function unionById(a, b) {
+  const out = Array.isArray(a) ? [...a] : [];
+  const ids = new Set(out.map((x) => x?.id).filter((id) => typeof id === 'string'));
+  for (const x of Array.isArray(b) ? b : []) {
+    if (isPlainObject(x) && typeof x.id === 'string' && !ids.has(x.id)) { ids.add(x.id); out.push(x); }
+  }
+  return out;
+}
+/** Fehlende Schlüssel eines Objekts aus einem anderen ergänzen. */
+function fillMissing(base, other) {
+  const out = isPlainObject(base) ? base : {};
+  if (isPlainObject(other)) for (const [k, v] of Object.entries(other)) if (!(k in out)) out[k] = v;
+  return out;
+}
+
+/**
+ * Tool-Stand aus der Sicherung mit dem hiesigen zusammenführen. Einstellungen
+ * (einzelne Werte) kommen vom neueren Stand — der hiesige gilt als neuer,
+ * wenn er nach dem Erstellen der Sicherung gespeichert wurde (`updatedAt`).
+ * Selbst Erarbeitetes geht dabei nie verloren: eigene Programme, Melodien und
+ * Akkordfolgen, geschaffte Lektionen und der Stand je Lick/Groove werden
+ * vereinigt (beim selben Eintrag gewinnt der neuere Stand). Die Latenzen
+ * dieses Geräts bleiben immer erhalten.
+ */
+function mergeToolState(id, localRec, imported, exportedMs) {
+  const local = isPlainObject(localRec?.data) ? localRec.data : null;
+  if (!local) return jsonClone(imported);
+  const localNewer = Number.isFinite(localRec.updatedAt) && Number.isFinite(exportedMs) && localRec.updatedAt > exportedMs;
+  const base = jsonClone(localNewer ? local : imported);
+  const other = jsonClone(localNewer ? imported : local);
+  if (id === 'einsingen') {
+    base.ownPrograms = unionById(base.ownPrograms, other.ownPrograms);
+  } else if (id === 'licks') {
+    for (const k of ['items', 'octave', 'sound']) if (isPlainObject(other[k])) base[k] = fillMissing(base[k], other[k]);
+  } else if (id === 'playground') {
+    const r = isPlainObject(base.rhythm) ? base.rhythm : (base.rhythm = {});
+    const o = isPlainObject(other.rhythm) ? other.rhythm : {};
+    if (isPlainObject(o.course)) {
+      r.course = isPlainObject(r.course) ? r.course : {};
+      const done = [...(Array.isArray(r.course.done) ? r.course.done : []), ...(Array.isArray(o.course.done) ? o.course.done : [])];
+      r.course.done = [...new Set(done.filter((x) => typeof x === 'string'))];
+    }
+    if (isPlainObject(o.grooves)) r.grooves = fillMissing(r.grooves, o.grooves);
+    // Latenzen: immer die dieses Geräts (oder keine, dann Standard).
+    for (const path of PLAYGROUND_DEVICE_FIELDS) {
+      const src = path.length === 1 ? local : local[path[0]];
+      const dst = path.length === 1 ? base : base[path[0]];
+      const k = path[path.length - 1];
+      if (!isPlainObject(dst)) continue;
+      if (isPlainObject(src) && k in src) dst[k] = src[k];
+      else delete dst[k];
+    }
+  } else if (id === 'grooveLab') {
+    base.melodies = unionById(base.melodies, other.melodies);
+    base.progressions = unionById(base.progressions, other.progressions);
+    if (Array.isArray(other.slots)) {
+      base.slots = [0, 1, 2, 3].map((i) => (Array.isArray(base.slots) && base.slots[i]) || other.slots[i] || null);
+    }
+  }
+  return base;
+}
+
+/** Übe-Daten aus einer Sicherung einspielen. → { tools, progress } (Anzahl/bool). */
+async function restorePracticeData(practice, exportedAt) {
+  const result = { tools: 0, progress: false };
+  if (!isPlainObject(practice)) return result;
+  const exportedMs = Date.parse(exportedAt);
+  if (isPlainObject(practice.progress)) {
+    result.progress = await window.chorProgress.merge(practice.progress).then(() => true, (err) => { console.warn('[backup] Fortschritt nicht übernommen', err); return false; });
+  }
+  const tools = isPlainObject(practice.tools) ? practice.tools : {};
+  for (const [id, { key, type }] of Object.entries(BACKUP_TOOL_STATES)) {
+    const raw = tools[id];
+    if (!isPlainObject(raw)) continue;
+    let size = 0;
+    try { size = JSON.stringify(raw).length; } catch { continue; }
+    if (size > BACKUP_MAX_TOOL_STATE_LEN) continue;
+    const localRec = await DB.metaGet(key).catch(() => null);
+    const data = mergeToolState(id, localRec, id === 'playground' ? stripPlaygroundDevice(raw) : raw, exportedMs);
+    try {
+      await DB.metaPut({ key, type, data, updatedAt: Date.now() });
+      result.tools++;
+    } catch (err) { console.warn('[backup] Tool-Stand nicht übernommen', id, err); }
+  }
+  return result;
+}
+
 async function buildBackupParts(opts, onProgress) {
   const [songs, loops, playlists, notes, lyricsNotes, recordings] = await Promise.all([
     DB.metaByType('song'), DB.metaByType('loop'), DB.metaByType('playlist'),
@@ -16983,7 +17122,22 @@ async function buildBackupParts(opts, onProgress) {
       lightshowShow: settings.lightshowShow, lightshowSeed: settings.lightshowSeed,
       voiceProfile: settings.voiceProfile,
       toolSolfa: settings.toolSolfa,
+      // Vorlieben für Wiedergabe, Recorder und Import. Gerätegebunden und
+      // deshalb nicht dabei: Latenz-Versatz (recBackingOffsetMs), HD-
+      // Rechenoptionen, WebKit-Schalter, Kanalmodus und der Dropbox-Link.
+      repeatMode: settings.repeatMode, shuffleMode: settings.shuffleMode,
+      keepScreenOn: settings.keepScreenOn, presentTheme: settings.presentTheme,
+      songSearchService: settings.songSearchService, defaultImportScope: settings.defaultImportScope,
+      slowMode: settings.slowMode, recBacking: settings.recBacking,
+      recBackingVolume: settings.recBackingVolume, recCountIn: settings.recCountIn,
     })}`);
+  }
+  if (opts.practice) {
+    const practice = await practiceBackupData();
+    if (practice) {
+      parts.push(`,"practice":${JSON.stringify(practice)}`);
+      counts.practiceTools = Object.keys(practice.tools).length;
+    }
   }
   if (opts.loops) {
     const arr = loops.map((l) => ({
@@ -17127,7 +17281,7 @@ async function buildBackupParts(opts, onProgress) {
 async function showBackupOptionsDialog() {
   const est = await backupSizeEstimate();
   const opts = {
-    loops: true, notes: true, lyricsNotes: true, playlists: true, settings: true,
+    loops: true, notes: true, lyricsNotes: true, playlists: true, settings: true, practice: true,
     recordings: est.recCount > 0,
     songAudio: false,
   };
@@ -17158,9 +17312,9 @@ async function showBackupOptionsDialog() {
 
     let presetBtnUser, presetBtnFull;
     const isUserDataPreset = () => !opts.songAudio && opts.loops && opts.notes && opts.lyricsNotes
-      && opts.playlists && opts.settings && opts.recordings === (est.recCount > 0);
+      && opts.playlists && opts.settings && opts.practice && opts.recordings === (est.recCount > 0);
     const isFullPreset = () => opts.songAudio && opts.loops && opts.notes && opts.lyricsNotes
-      && opts.playlists && opts.settings && opts.recordings === (est.recCount > 0);
+      && opts.playlists && opts.settings && opts.practice && opts.recordings === (est.recCount > 0);
     const updatePresetHighlight = () => {
       presetBtnUser.setAttribute('aria-pressed', isUserDataPreset() ? 'true' : 'false');
       presetBtnFull.setAttribute('aria-pressed', isFullPreset() ? 'true' : 'false');
@@ -17169,7 +17323,7 @@ async function showBackupOptionsDialog() {
     const applyPreset = (full) => {
       opts.songAudio = full;
       opts.recordings = est.recCount > 0;
-      opts.loops = opts.notes = opts.lyricsNotes = opts.playlists = opts.settings = true;
+      opts.loops = opts.notes = opts.lyricsNotes = opts.playlists = opts.settings = opts.practice = true;
       for (const [key, cb] of Object.entries(checkboxes)) cb.checked = opts[key];
       updateTotal();
       updatePresetHighlight();
@@ -17183,6 +17337,7 @@ async function showBackupOptionsDialog() {
       ['lyricsNotes', t('backup.scopeLyrics'), null, null],
       ['playlists', t('backup.scopePlaylists'), null, null],
       ['settings', t('backup.scopeSettings'), t('backup.scopeSettingsHint'), null],
+      ['practice', t('backup.scopePractice'), t('backup.scopePracticeHint'), null],
     ];
     const checkboxes = {};
     const rowNodes = checkboxRows.map(([key, title, hint, bytes]) => {
@@ -17481,6 +17636,17 @@ function sanitizeSettingsPatch(raw) {
     if (vp.part || vp.low != null || vp.load !== 'normal') patch.voiceProfile = vp;
   }
   if (TOOL_SOLFA.includes(raw.toolSolfa)) patch.toolSolfa = raw.toolSolfa;
+  if (raw.repeatMode === 'song' || raw.repeatMode === 'next') patch.repeatMode = raw.repeatMode;
+  for (const key of ['shuffleMode', 'keepScreenOn', 'recBacking', 'recCountIn']) {
+    if (typeof raw[key] === 'boolean') patch[key] = raw[key];
+  }
+  if (PRESENT_THEMES.some((th) => th.id === raw.presentTheme)) patch.presentTheme = raw.presentTheme;
+  if (SONG_SEARCH_SERVICES.some((sv) => sv.id === raw.songSearchService)) patch.songSearchService = raw.songSearchService;
+  if (['mine', 'full', 'all'].includes(raw.defaultImportScope)) patch.defaultImportScope = raw.defaultImportScope;
+  if (raw.slowMode === 'standard' || raw.slowMode === 'hd') patch.slowMode = raw.slowMode;
+  if (typeof raw.recBackingVolume === 'number' && Number.isFinite(raw.recBackingVolume)) {
+    patch.recBackingVolume = Math.max(0, Math.min(0.6, raw.recBackingVolume));
+  }
   return patch;
 }
 
@@ -17516,7 +17682,8 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
         .replace('{recs}', recordingsIn.length ? t('backup.restoreConfirmRecs').replace('{recs}', tPlural(recordingsIn.length, 'count.recOne', 'count.recMany')) : '')
         .replace('{audio}', songAudioIn.length ? t('backup.restoreConfirmAudio').replace('{songs}', tPlural(songAudioIn.length, 'common.songOne', 'common.songMany')) : '')
         + ' '
-        + t('backup.restoreConfirmMatched').replace('{matched}', matched).replace('{unmatched}', loops.length - matched),
+        + t('backup.restoreConfirmMatched').replace('{matched}', matched).replace('{unmatched}', loops.length - matched)
+        + (isPlainObject(data.practice) ? ` ${t('backup.restoreConfirmPractice')}` : ''),
     okLabel: t('common.merge'),
   });
   if (!ok) return;
@@ -17932,6 +18099,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   if (Object.keys(settingsPatch).length) {
     await saveSettings(settingsPatch); // accentColor/language wenden sich in saveSettings gleich mit an
   }
+  const practiceRestored = await restorePracticeData(data.practice, data.exportedAt);
 
   await renderPlaylists();
   await renderSettings();
@@ -17950,6 +18118,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
     + (addedRecordings ? t('backup.restoreRecs').replace('{recs}', nRecs(addedRecordings)) : '')
     + (songsCreated ? t('backup.restoreSongs').replace('{songs}', nSongs(songsCreated)) : '')
     + (scoresRestored ? t('backup.restoreScores').replace('{scores}', nScores(scoresRestored)) : '')
+    + (practiceRestored.tools || practiceRestored.progress ? t('backup.restorePractice') : '')
     + (keptPending ? t('backup.restorePending').replace('{n}', keptPending) : '')
     + (skippedNotes ? t('backup.restoreSkippedNotes').replace('{notes}', nNotes(skippedNotes)) : '')
     + (skippedLyricsNotes ? t('backup.restoreSkippedLyrics').replace('{lyrics}', nLyrics(skippedLyricsNotes)) : '')
@@ -18330,6 +18499,29 @@ function runSelfTests() {
     if ('voiceProfile' in sanitizeSettingsPatch({ voiceProfile: 'kaputt' })) failed.push('sanitizeSettingsPatch: kaputtes voiceProfile übernommen');
     if (sanitizeSettingsPatch({ toolSolfa: 'syllables' }).toolSolfa !== 'syllables') failed.push('sanitizeSettingsPatch: toolSolfa aus Sicherung nicht übernommen');
     if ('toolSolfa' in sanitizeSettingsPatch({ toolSolfa: 'solfège' }) || 'toolSolfa' in sanitizeSettingsPatch({})) failed.push('sanitizeSettingsPatch: ungültiges/fehlendes toolSolfa übernommen');
+    // Wiedergabe-/Recorder-Vorlieben: Gültiges übernehmen, Ungültiges und Gerätegebundenes nie.
+    const prefs = sanitizeSettingsPatch({ repeatMode: 'song', shuffleMode: true, presentTheme: 'light', slowMode: 'hd', recBackingVolume: 5, songSearchService: 'youtube', defaultImportScope: 'all' });
+    if (prefs.repeatMode !== 'song' || prefs.shuffleMode !== true || prefs.presentTheme !== 'light' || prefs.slowMode !== 'hd' || prefs.recBackingVolume !== 0.6 || prefs.songSearchService !== 'youtube' || prefs.defaultImportScope !== 'all') failed.push('sanitizeSettingsPatch: Wiedergabe-Vorlieben aus Sicherung nicht übernommen');
+    const badPrefs = sanitizeSettingsPatch({ repeatMode: 'off', shuffleMode: 'ja', presentTheme: 'url(x)', slowMode: 'hq', songSearchService: 'evil', recBackingOffsetMs: 300, dropboxUrl: 'https://x.example', channelMode: 'mono', hdOptions: {} });
+    if (Object.keys(badPrefs).length) failed.push(`sanitizeSettingsPatch: Ungültiges/Gerätegebundenes übernommen (${Object.keys(badPrefs).join(', ')})`);
+  }
+  checks++;
+  {
+    // Übe-Daten zusammenführen (mergeToolState): Erarbeitetes beider Seiten
+    // bleibt, Einzelwerte vom neueren Stand, Latenzen immer von diesem Gerät.
+    const exported = Date.parse('2026-01-02T00:00:00Z');
+    const older = { updatedAt: exported - 1000 }, newer = { updatedAt: exported + 1000 };
+    const ein = mergeToolState('einsingen', { ...older, data: { load: 'leicht', ownPrograms: [{ id: 'own-a', name: 'A' }] } }, { load: 'kraeftig', ownPrograms: [{ id: 'own-b', name: 'B' }, { id: 'own-a', name: 'A alt' }] }, exported);
+    if (ein.load !== 'kraeftig' || ein.ownPrograms.map((x) => x.id).join() !== 'own-b,own-a' || ein.ownPrograms[1].name !== 'A alt') failed.push('mergeToolState: Einsingen (älterer hiesiger Stand)');
+    const ein2 = mergeToolState('einsingen', { ...newer, data: { load: 'leicht', ownPrograms: [{ id: 'own-a', name: 'A' }] } }, { load: 'kraeftig', ownPrograms: [{ id: 'own-b', name: 'B' }] }, exported);
+    if (ein2.load !== 'leicht' || ein2.ownPrograms.map((x) => x.id).join() !== 'own-a,own-b') failed.push('mergeToolState: Einsingen (neuerer hiesiger Stand)');
+    const pg = mergeToolState('playground', { ...older, data: { latency: 0.12, rhythm: { micLatencyMs: 90, course: { done: ['l1'] }, grooves: { g1: { hold: 1 } } } } },
+      stripPlaygroundDevice({ latency: 0.3, rhythm: { micLatencyMs: 300, course: { done: ['l2'] }, grooves: { g2: { hold: 2 } } } }), exported);
+    if (pg.latency !== 0.12 || pg.rhythm.micLatencyMs !== 90 || pg.rhythm.course.done.join() !== 'l2,l1' || !pg.rhythm.grooves.g1 || !pg.rhythm.grooves.g2) failed.push('mergeToolState: Übe-Lab (Kurs, Grooves, Latenz)');
+    const fresh = mergeToolState('licks', null, { v: 1, items: { x: { step: 2 } } }, exported);
+    if (fresh.items?.x?.step !== 2) failed.push('mergeToolState: ohne hiesigen Stand nicht übernommen');
+    const lab = mergeToolState('grooveLab', { ...older, data: { slots: [null, { state: 1 }, null, null], melodies: [{ id: 'm1' }] } }, { slots: [{ state: 2 }, { state: 3 }, null, null], melodies: [{ id: 'm2' }] }, exported);
+    if (lab.slots[0]?.state !== 2 || lab.slots[1]?.state !== 3 || lab.melodies.map((m) => m.id).join() !== 'm2,m1') failed.push('mergeToolState: Groove Lab (Plätze, Melodien)');
   }
   checks++;
   if (songSearchQuery({ title: 'Neuer Song', artist: 'Aktueller Chor' }) !== 'Aktueller Chor Neuer Song') {
@@ -23265,7 +23457,7 @@ async function openGrooveLab(entry = 'egg') {
       // taucht in keiner Song-/Setlisten-Abfrage auf (die laufen per Typ-Index).
       storage: {
         load: () => DB.metaGet('grooveLab').then((record) => record?.data ?? null),
-        save: (data) => DB.metaPut({ key: 'grooveLab', type: 'grooveLab', data }),
+        save: (data) => DB.metaPut({ key: 'grooveLab', type: 'grooveLab', data, updatedAt: Date.now() }),
       },
     });
     // Schließen per Zurück-Geste und Wischen vom linken Rand (siehe
@@ -23317,6 +23509,17 @@ let toolFrameReturnFocus = null;
    erst in der Zurück-Geste (popstate) entsteht, markiert Chrome als
    überspringbar, und das nächste „zurück“ verließe die App. */
 let skipPops = 0;
+let skipPopsTimer = 0;
+/** Eigenen Rücksprung um `steps` Einträge auslösen. Bleibt das popstate aus
+ *  (z.B. weniger Einträge als erwartet, etwa nach Neuladen mit altem
+ *  history.state), setzt ein Zeitlimit den Zähler zurück — sonst blockierten
+ *  push-/syncToolHistory dauerhaft und „zurück“ verließe die App. */
+function goToolHistory(steps) {
+  skipPops++;
+  clearTimeout(skipPopsTimer);
+  skipPopsTimer = setTimeout(() => { skipPops = 0; }, 1500);
+  history.go(steps);
+}
 const toolLevelOf = (state) => (state?.toolOverlay ? state.toolLevel || 1 : 0);
 function pushToolHistory(level = 1) {
   // Ein Zurückspringen (popToolHistory) läuft noch: history.state ist noch
@@ -23328,8 +23531,7 @@ function pushToolHistory(level = 1) {
 function popToolHistory() {
   const level = toolLevelOf(history.state);
   if (!level) return;
-  skipPops++;
-  history.go(-level);
+  goToolHistory(-level);
 }
 /** Verlaufseinträge an die Tiefe der offenen Tool-Seite angleichen. */
 function syncToolHistory() {
@@ -23340,7 +23542,7 @@ function syncToolHistory() {
   const want = 1 + depth;
   const have = toolLevelOf(history.state);
   if (want > have) for (let l = Math.max(have, 0) + 1; l <= want; l++) history.pushState({ ...(history.state || {}), toolOverlay: true, toolLevel: l }, '', location.href);
-  else if (want < have) { skipPops++; history.go(want - have); }
+  else if (want < have) goToolHistory(want - have);
 }
 /** Tiefe der Seite beobachten (Ansichten, Blätter: hidden/class im Dokument). */
 function watchToolDepth(frame) {
@@ -23905,6 +24107,23 @@ function makeProgressStore(store = {
     setToday(fn) { const prev = todayPatch; todayPatch = prev ? (t) => fn(prev(t)) : fn; schedule(); return flush(); },
     flush,
     async data() { return current(); },
+    /** Fortschritt aus einer Sicherung ergänzen: fehlende Tage, Verläufe,
+     *  Stufen und Merker kommen dazu, Vorhandenes bleibt (wie bei Notizen). */
+    merge(raw) {
+      const incoming = sanitizeProgress(raw);
+      const run = chain.then(async () => {
+        const data = await read();
+        for (const [date, day] of Object.entries(incoming.days)) if (!data.days[date]) data.days[date] = day;
+        for (const [area, list] of Object.entries(incoming.recent)) if (!data.recent[area]?.length) data.recent[area] = list;
+        for (const [area, level] of Object.entries(incoming.levels)) if (!(area in data.levels)) data.levels[area] = level;
+        for (const [key, value] of Object.entries(incoming.memory)) if (key !== 'micDenied' && !(key in data.memory)) data.memory[key] = value;
+        pruneProgress(data, now());
+        await store.save(data);
+        cache = data;
+      });
+      chain = run.catch(() => {});
+      return run;
+    },
   };
 }
 window.chorProgress = makeProgressStore();
@@ -24110,7 +24329,8 @@ const LICKS_TILE_STORES = ['licks', 'playground'];
 window.chorToolStorage = {
   load: (id) => DB.metaGet(`tool:${id}`).then((record) => record?.data ?? null),
   save: (id, data) => {
-    const done = DB.metaPut({ key: `tool:${id}`, type: 'toolState', data: JSON.parse(JSON.stringify(data)) });
+    // updatedAt: Sicherungen spielen einen älteren Stand nicht über diesen (mergeToolState).
+    const done = DB.metaPut({ key: `tool:${id}`, type: 'toolState', data: JSON.parse(JSON.stringify(data)), updatedAt: Date.now() });
     // Speichern, das erst nach dem Schließen des Tools fertig wird: Die Kacheln
     // sind dann schon mit dem alten Stand gezeichnet — nachziehen.
     if (LICKS_TILE_STORES.includes(id)) {
@@ -24143,6 +24363,13 @@ function initGrooveLabEasterEgg() {
 /** Tools-Reiter: Metronom, Tuner, Piano und Groove Lab (Einsingen und Üben laufen
  *  über QUICK_STARTS, die Lichtshow hängt wie bisher an #btn-open-lightshow). */
 function initTools() {
+  // Neu geladen, während ein Tool offen war: history.state trägt noch dessen
+  // Ebene, obwohl kein Tool offen ist — pushToolHistory legte sonst keinen
+  // Eintrag mehr an, und „zurück“ schlösse nicht das nächste Tool.
+  if (history.state?.toolOverlay) {
+    const { toolOverlay, toolLevel, ...rest } = history.state;
+    history.replaceState(rest, '', location.href);
+  }
   initQuickStart();
   $('#btn-open-metronome').addEventListener('click', () => openToolFrame('metronom.html', 'settings.tools.metronome'));
   $('#btn-open-groove-lab').addEventListener('click', () => openGrooveLab('tools'));

@@ -1,6 +1,6 @@
 # „Einsatz finden“: Song-Katalog für den Popchor
 
-Entwurf, noch nicht in die App übernommen (siehe ARBEITSANWEISUNG-EINSATZ-FINDEN-SONGS.md). Die Daten liegen maschinenlesbar in `docs/einsatz-finden/songs.js` (`DB_SONGS`, `SONG_LEVELS`, `SONG_PATTERNS` und die Referenzfunktionen `songEvents`, `songFairness`, `songPeriodFairness`). Die Steckbriefe unten sind aus genau diesen Daten erzeugt, Datei und Steckbriefe stimmen also überein.
+In die App übernommen (`uebe-lab.html`, Block `DB_SONGS`); Songs nur in `gen/songs-src.mjs` ändern, dann `node docs/einsatz-finden/gen/build.mjs` (Auftrag: `docs/archiv/ARBEITSANWEISUNG-EINSATZ-FINDEN-SONGS.md`). Die Daten liegen maschinenlesbar in `docs/einsatz-finden/songs.js` (`DB_SONGS`, `SONG_LEVELS`, `SONG_PATTERNS` und die Referenzfunktionen `songEvents`, `songFairness`, `songPeriodFairness`). Die Steckbriefe unten sind aus genau diesen Daten erzeugt, Datei und Steckbriefe stimmen also überein.
 
 **Urheberrecht.** Alle {{COUNT}} Songs sind frei erfunden: Namen, Akkordfolgen, Melodien und Riffs. Sie übernehmen nur Stil, Besetzung und Groove-Typ, also gerade Rock-Achtel, Piano-Rock, Folk-Stomp, Disco-Indie, Halftime-Bridge, 6/8-Ballade, „Whoa-oh“-Chöre, Glam/Opern-Rock. Akkordfolgen wie I–V–vi–IV sind Allgemeingut. Die Melodien sind eigene, kurze Linien aus Stufen.
 
