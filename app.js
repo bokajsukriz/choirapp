@@ -23461,7 +23461,7 @@ function openToolFrame(page, titleKey, query = '') {
     const frame = document.createElement('iframe');
     frame.src = `./${page}?embedded=1${query ? `&${query}` : ''}`;
     frame.title = t(titleKey);
-    frame.allow = 'microphone; autoplay; screen-wake-lock';
+    frame.allow = 'microphone; autoplay; screen-wake-lock; fullscreen'; // fullscreen: Zwei Hände (Vollbild-Knopf)
     if (page === METRONOME_PAGE) frame.dataset.tool = 'metronome';
     // Wischgeste auch im iframe (gleiche Herkunft, Dokument erreichbar).
     frame.addEventListener('load', () => {
