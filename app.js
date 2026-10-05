@@ -20936,47 +20936,46 @@ async function runMusicSelfTests({ log = true } = {}) {
     } catch (err) {
       failed.push(`de:construct Ansicht: ${err?.message || err}`);
     }
-    // Beat-Lupe und Bestätigung vor „Raster leeren“/„Original“ (echte, nicht eingehängte Ansicht).
-    {
-      const nativeConfirm = window.confirm;
-      try {
-        const z = document.createElement('chor-groove-lab');
-        z._setTab('beat');
-        z._setBeatZoom(true);
-        if (!z.classList.contains('beat-zoom') || z.$all('.zoom-btn').length !== 2 || !z.$('.zoom-done')) failed.push('Beat-Lupe: öffnet nicht');
-        const half = String(Math.ceil(T.METERS[z._meter()].steps / 2));
-        if (z.$('.track-list .step-row')?.style.getPropertyValue('--half') !== half) failed.push('Beat-Lupe: halbe Spaltenzahl fehlt');
-        z._setTab('harmony');
-        if (z.classList.contains('beat-zoom') || z.ui.beatZoom) failed.push('Beat-Lupe: Reiterwechsel schließt sie nicht');
-        z._setBeatZoom(true);
-        if (z.classList.contains('beat-zoom')) failed.push('Beat-Lupe: geht außerhalb des Beat-Reiters auf');
-        z._setTab('beat');
-        z._handleAction('beat-zoom');
-        z._handleAction('beat-zoom-close');
-        if (z.classList.contains('beat-zoom')) failed.push('Beat-Lupe: „Fertig“ schließt nicht');
-        z.state.beat.kick = { 0: 1, 3: 1 };
-        z.state.beatEdited = true;
-        window.confirm = () => false;
-        z._handleAction('reset-beat');
-        if (!z.state.beatEdited || Object.keys(z.state.beat.kick).length !== 2) failed.push('Original: ohne Bestätigung zurückgesetzt');
-        window.confirm = () => true;
-        z._handleAction('reset-beat');
-        if (z.state.beatEdited) failed.push('Original: mit Bestätigung nicht zurückgesetzt');
-        z._saved.deconstruct = T.dcNewSong(T.DC_SONGS[0].id);
-        z._applyView('deconstruct');
-        z.state.beat.kick = { 0: 1 };
-        window.confirm = () => false;
-        z._handleAction('dc-clear-grid');
-        if (!Object.keys(z.state.beat.kick).length) failed.push('Raster leeren: ohne Bestätigung geleert');
-        window.confirm = () => true;
-        z._handleAction('dc-clear-grid');
-        if (Object.values(z.state.beat).some((tr) => Object.keys(tr).length)) failed.push('Raster leeren: mit Bestätigung nicht geleert');
-        z._applyView('studio');
-      } catch (err) {
-        failed.push(`Beat-Lupe/Bestätigung: ${err?.message || err}`);
-      } finally {
-        window.confirm = nativeConfirm;
-      }
+    // Beat-Lupe und Rückfrage vor „Raster leeren“/„Original“ (echte, nicht eingehängte Ansicht).
+    try {
+      const z = document.createElement('chor-groove-lab');
+      z._setTab('beat');
+      z._setBeatZoom(true);
+      if (!z.classList.contains('beat-zoom') || z.$all('.zoom-btn').length !== 2 || !z.$('.zoom-done')) failed.push('Beat-Lupe: öffnet nicht');
+      const half = String(Math.ceil(T.METERS[z._meter()].steps / 2));
+      if (z.$('.track-list .step-row')?.style.getPropertyValue('--half') !== half) failed.push('Beat-Lupe: halbe Spaltenzahl fehlt');
+      z._setTab('harmony');
+      if (z.classList.contains('beat-zoom') || z.ui.beatZoom) failed.push('Beat-Lupe: Reiterwechsel schließt sie nicht');
+      z._setBeatZoom(true);
+      if (z.classList.contains('beat-zoom')) failed.push('Beat-Lupe: geht außerhalb des Beat-Reiters auf');
+      z._setTab('beat');
+      z._handleAction('beat-zoom');
+      z._handleAction('beat-zoom-close');
+      if (z.classList.contains('beat-zoom')) failed.push('Beat-Lupe: „Fertig“ schließt nicht');
+      const asked = () => !z.$('.confirm').hidden;
+      z.state.beat.kick = { 0: 1, 3: 1 };
+      z.state.beatEdited = true;
+      z._handleAction('reset-beat');
+      if (!asked() || !z.$('.confirm-text').textContent) failed.push('Original: keine Rückfrage');
+      z._handleAction('confirm-no');
+      if (asked() || !z.state.beatEdited || Object.keys(z.state.beat.kick).length !== 2) failed.push('Original: „Abbrechen“ setzt trotzdem zurück');
+      z._handleAction('reset-beat');
+      z._handleAction('confirm-yes');
+      if (asked() || z.state.beatEdited) failed.push('Original: nach Bestätigung nicht zurückgesetzt');
+      z._saved.deconstruct = T.dcNewSong(T.DC_SONGS[0].id);
+      z._applyView('deconstruct');
+      z.state.beat.kick = { 0: 1 };
+      z._handleAction('dc-clear-grid');
+      if (!asked() || !Object.keys(z.state.beat.kick).length) failed.push('Raster leeren: ohne Rückfrage geleert');
+      z._handleAction('confirm-no');
+      if (!Object.keys(z.state.beat.kick).length) failed.push('Raster leeren: „Abbrechen“ leert trotzdem');
+      z._handleAction('dc-clear-grid');
+      z._handleAction('confirm-yes');
+      if (Object.values(z.state.beat).some((tr) => Object.keys(tr).length)) failed.push('Raster leeren: nach Bestätigung nicht geleert');
+      if (z.$('.dc-meter')?.tagName !== 'SELECT' || z.$('.dc-meter').options.length !== Object.keys(T.METERS).length) failed.push('de:construct: Taktart nicht als Auswahlliste');
+      z._applyView('studio');
+    } catch (err) {
+      failed.push(`Beat-Lupe/Rückfrage: ${err?.message || err}`);
     }
     // Auswahl: Tempo-Gefühl (Grenzen in Vierteln, 6/8 über Achtel) und Songliste der echten, nicht eingehängten Lab-Instanz.
     try {

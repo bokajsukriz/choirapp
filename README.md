@@ -61,7 +61,8 @@ ein Dialog mit echter Wahl).
   Beat-Editor (Studio und de:construct): Lupe öffnet ihn bildschirmfüllend
   mit großen Feldern (`_setBeatZoom`; hochkant zwei Zeilen je Takt, Transport
   bleibt); „Raster leeren“ und „Original“ (bei verändertem Beat) erst nach
-  Bestätigung.
+  Rückfrage im Lab (kein Browser-Dialog — der beendet das Vollbild); die Lupe
+  sperrt am Handy aufs Querformat (Vollbild + Orientation-Lock).
   Ansicht „de:construct“ (nur im Lab über die
   Ansichtswahl): Einer von festen, komplett nachbaubaren Songs läuft
   verborgen (`DC_SONGS`/`dcBuild`, je Stufe leicht/mittel/schwer 9–10 eigene Pop-

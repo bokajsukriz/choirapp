@@ -2895,6 +2895,7 @@
     }
 
     async close() {
+      this._closeConfirm();
       this._setBeatZoom(false);
       this.stop();
       this._releaseAllKeys();
@@ -3184,6 +3185,47 @@
       this.$('.lab-body').scrollTop = 0;
       const target = on ? this.$('.zoom-done') : [...this.$all('.zoom-btn')].find((b) => b.getClientRects().length);
       target?.focus({ preventScroll: true });
+      if (on) this._zoomLandscape(); else this._zoomRelease();
+    }
+
+    /** Lupe am Handy quer: Das Manifest hält die installierte App im
+     *  Hochformat (Android dreht dann gar nicht mit) — deshalb wie beim Piano
+     *  Vollbild und Querformat-Sperre, beim Schließen wieder frei. Wo es das
+     *  nicht gibt (iOS), bleibt das Drehen des Geräts bzw. hochkant die
+     *  zweizeilige Ansicht. */
+    async _zoomLandscape() {
+      if (!global.matchMedia?.('(pointer: coarse)').matches) return;
+      try {
+        if (!document.fullscreenElement && this.requestFullscreen) { await this.requestFullscreen({ navigationUI: 'hide' }); this._zoomFs = true; }
+      } catch { /* ohne Vollbild */ }
+      try { await global.screen?.orientation?.lock?.('landscape'); this._zoomLocked = true; } catch { /* nicht unterstützt */ }
+      if (!this.ui.beatZoom) this._zoomRelease(); // schon wieder zu
+    }
+
+    _zoomRelease() {
+      if (this._zoomLocked) { try { global.screen.orientation.unlock(); } catch { /* nichts zu entsperren */ } }
+      if (this._zoomFs && document.fullscreenElement === this) document.exitFullscreen?.().catch(() => {});
+      this._zoomLocked = false;
+      this._zoomFs = false;
+    }
+
+    /** Rückfrage im Lab selbst — window.confirm beendet das Vollbild der Lupe. */
+    _confirm({ text, ok, onOk }) {
+      this._confirmOk = onOk;
+      this._confirmReturn = this.shadowRoot.activeElement;
+      this.$('.confirm-text').textContent = text;
+      this.$('.confirm-yes').textContent = ok;
+      this.$('.confirm').hidden = false;
+      this.$('.confirm-no').focus();
+    }
+
+    _closeConfirm() {
+      const box = this.$('.confirm');
+      this._confirmOk = null;
+      if (box.hidden) return;
+      box.hidden = true;
+      if (this._confirmReturn?.isConnected) this._confirmReturn.focus({ preventScroll: true });
+      this._confirmReturn = null;
     }
 
     /** Neuer Song: ersetzt Original, „Meine Version“ und Fortschritt.
@@ -5002,7 +5044,7 @@
       this.$('[data-out="swing"]').textContent = `${Math.round(s.swing * 100)} %`;
       this.$('[data-field="pump"]').value = String(s.pump);
       this.$('[data-out="pump"]').textContent = `${Math.round(s.pump * 100)} %`;
-      this._chips(this.$('.dc-meter'), METER_IDS.map((id) => ({ value: id, label: id })), this._meter(), 'meter');
+      this.$('.dc-meter').value = this._meter();
       this._chips(this.$('.bass-chips'), BASS_SOUNDS.map((b) => ({ value: b.id, label: b.name })), s.bassSoundId, 'bass-sound');
       this._renderKit();
     }
@@ -6858,6 +6900,7 @@
         const s = this.state;
         const field = el.dataset.field;
         if (field === 'chordBars') { s.chordBars = Number(el.value); this._renderNow(); }
+        else if (field === 'meter') this._handleAction('meter', el.value, el);
         else if (field === 'arpMode') s.arpMode = el.value;
         else if (field === 'arpDivision') s.arpDivision = Number(el.value);
         else if (field === 'arpRhythm') s.arpRhythm = el.value;
@@ -6989,8 +7032,10 @@
         case 'dc-check-active': this._dcCheck(this._dcActiveElement()); break;
         case 'dc-tpl': this.ui.dc.tpl = !this.ui.dc.tpl; this._renderDeconstruct(); break;
         case 'dc-clear-grid':
-          if (global.confirm(t('lab.dc.clearGridConfirm'))) this._dcClearGrid();
+          this._confirm({ text: t('lab.dc.clearGridConfirm'), ok: t('lab.dc.clearGrid'), onOk: () => this._dcClearGrid() });
           break;
+        case 'confirm-yes': { const onOk = this._confirmOk; this._closeConfirm(); onOk?.(); break; }
+        case 'confirm-no': this._closeConfirm(); break;
         case 'beat-zoom': this._setBeatZoom(true); break;
         case 'beat-zoom-close': this._setBeatZoom(false); break;
         case 'dc-reveal': this._dcReveal(); break;
@@ -7042,11 +7087,12 @@
         case 'ws-go': this._wsChGo(); break;
         case 'ws-listen': this._wsChListen(value); break;
         case 'track-toggle': s.trackOn[value] = !s.trackOn[value]; this._renderTracks(); break;
-        case 'reset-beat':
-          if (s.beatEdited && !global.confirm(t('lab.resetBeatConfirm'))) break;
-          this._pushHistory();
-          s.beat = beatFromPattern(this._pattern()); s.beatEdited = false; this._renderBeat();
+        case 'reset-beat': {
+          const reset = () => { this._pushHistory(); s.beat = beatFromPattern(this._pattern()); s.beatEdited = false; this._renderBeat(); };
+          if (s.beatEdited) this._confirm({ text: t('lab.resetBeatConfirm'), ok: t('lab.resetBeat'), onOk: reset });
+          else reset();
           break;
+        }
         case 'kit-reset': this._pushHistory(); s.kit = { ...KIT_DEFAULTS }; this._renderKit(); if (!this.playing) this._preview('kick', 1); break;
         case 'bass-sound': s.bassSoundId = value; this._renderBeat(); if (!this.playing) this._preview('bass', 0); break;
 
@@ -7300,7 +7346,8 @@
     _handleKeydown(event) {
       if (event.key === 'Escape') {
         event.preventDefault();
-        if (this.ui.picker) this._closePicker();
+        if (!this.$('.confirm').hidden) this._closeConfirm();
+        else if (this.ui.picker) this._closePicker();
         else if (!this.$('.dc-sheet').hidden) this._dcSheetClose();
         else if (this.ui.dc.menu) { this.ui.dc.menu = false; this.ui.dc.revealAsk = false; this._renderDeconstruct(); this.$('.dc-more')?.focus(); }
         else if (!this.$('.sheet').hidden) this._closeSheet();
@@ -7342,7 +7389,7 @@
     }
 
     _trapFocus(event) {
-      const scope = [this.$('.picker-card'), this.$('.sheet'), this.$('.dc-sheet-card')].find((el) => !el.closest('[hidden]')) || this.shadowRoot;
+      const scope = [this.$('.confirm-card'), this.$('.picker-card'), this.$('.sheet'), this.$('.dc-sheet-card')].find((el) => !el.closest('[hidden]')) || this.shadowRoot;
       const focusable = Array.from(scope.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea, summary'))
         .filter((el) => el.offsetParent !== null || el === this.shadowRoot.activeElement)
         .filter((el) => scope !== this.shadowRoot || !el.closest('.sheet, .picker'));
@@ -7516,7 +7563,7 @@
     border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--muted);
   }
   .zoom-btn svg { width: 18px; height: 18px; }
-  .dc-tools .zoom-btn { width: 44px; height: 44px; margin-left: auto; }
+  .dc-tools .zoom-btn { width: 44px; height: 44px; margin-left: auto; flex-shrink: 0; }
   .zoom-head, .zoom-hint { display: none; }
   :host(.beat-zoom) .lab-head, :host(.beat-zoom) .tab-bar,
   :host(.beat-zoom) .lab-body > :not([data-tab-panel="beat"]),
@@ -7726,7 +7773,10 @@
   .is-dc .dc-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
   .is-dc .dc-tools .chip { min-height: 44px; }
   .dc-meter { display: none; }
-  .is-dc.is-dc-hard .dc-meter { display: flex; }
+  .is-dc.is-dc-hard .dc-meter { display: block; flex: 0 0 auto; min-height: 44px; border-radius: 999px; padding: 0 10px; font-weight: 700; color: var(--text); }
+  /* Werkzeugzeile bleibt einzeilig: Texte kürzen sich, die Lupe bleibt rechts */
+  .is-dc .dc-tools { flex-wrap: nowrap; }
+  .is-dc .dc-tools .chip { flex: 0 1 auto; min-width: 0; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .is-dc .dc-tpl-panel, .is-dc .dc-bass-panel, .is-dc .reset-beat, .is-dc .dc-pattern-head { display: none; }
   .is-dc.is-dc-tpl .dc-tpl-panel { display: block; }
   .is-dc:not(.is-dc-hard) .kit-box { display: none; }
@@ -7737,6 +7787,12 @@
   .dc-solution p { margin: 0 0 8px; }
   .dc-menu .dc-reveal.is-ask { color: #c0364a; background: #fde4e8; }
   /* Prüf-Blatt: unten im Lab, über der Transportleiste (Höhe per --dc-bar-h) */
+  .confirm { position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(36,27,61,.38); }
+  .confirm-card { width: min(100%, 340px); background: var(--surface); border-radius: 20px; padding: 18px; box-shadow: 0 12px 40px rgba(36,27,61,.3); }
+  .confirm-text { margin: 0 0 16px; font-size: .9rem; font-weight: 700; line-height: 1.4; }
+  .confirm-row { display: flex; justify-content: flex-end; gap: 8px; }
+  .confirm-row .chip { min-height: 44px; padding: 0 16px; font-size: .78rem; }
+  .confirm-yes { background: var(--accent); border-color: var(--accent); color: #fff; }
   .dc-sheet { position: absolute; left: 0; right: 0; top: 0; bottom: var(--dc-bar-h, 0px); z-index: 6; display: flex; align-items: flex-end; justify-content: center; }
   .dc-sheet-backdrop { position: absolute; inset: 0; background: rgba(36,27,61,.38); }
   .dc-sheet-card { position: relative; width: 100%; max-width: 520px; max-height: 92%; overflow-y: auto; display: grid; gap: 14px; background: var(--surface);
@@ -8345,7 +8401,7 @@
       <div class="zoom-head"><h2>${t('lab.pattern')}</h2><button class="chip zoom-done" type="button" data-action="beat-zoom-close">${t('lab.zoomClose')}</button></div>
       <div class="panel-head dc-pattern-head"><h2>${t('lab.pattern')}</h2>${help('editHint')}<button class="chip reset-beat" type="button" data-action="reset-beat">${t('lab.resetBeat')}</button>${zoomBtn}</div>
       <div class="dc-tools">
-        <div class="chip-row dc-meter" role="group" aria-label="${t('lab.dc.meterAria')}"></div>
+        <select class="dc-meter" data-field="meter" aria-label="${t('lab.dc.meterAria')}">${METER_IDS.map((id) => `<option value="${id}">${id}</option>`).join('')}</select>
         <button class="chip" type="button" data-action="dc-tpl" aria-expanded="false">${t('lab.dc.tpl')}</button>
         <button class="chip" type="button" data-action="dc-clear-grid">${t('lab.dc.clearGrid')}</button>
         ${zoomBtn}
@@ -8668,6 +8724,16 @@
     <textarea class="code-in" aria-label="${t('lab.importTitle')}" placeholder="GL1.…"></textarea>
     <div class="pill-row" style="margin-top:6px"><button class="chip" type="button" data-action="import-code">${t('lab.importCode')}</button></div>
     <p class="sheet-status" role="status"></p>
+  </div>
+</div>
+
+<div class="confirm" hidden>
+  <div class="confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="gl-confirm-text">
+    <p class="confirm-text" id="gl-confirm-text"></p>
+    <div class="confirm-row">
+      <button class="chip confirm-no" type="button" data-action="confirm-no">${t('common.cancel')}</button>
+      <button class="chip confirm-yes" type="button" data-action="confirm-yes"></button>
+    </div>
   </div>
 </div>
 
