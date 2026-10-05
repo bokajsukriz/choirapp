@@ -2105,6 +2105,7 @@
     lock: svg('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
     unlock: svg('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.6-1.7"/>'),
     undo: svg('<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>'),
+    zoom: svg('<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5M10.5 7.5v6M7.5 10.5h6"/>'),
     save: svg('<path d="M6 3h12v18l-6-4-6 4Z"/>'),
     reset: svg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'),
     speaker: svg('<path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>'),
@@ -2894,6 +2895,7 @@
     }
 
     async close() {
+      this._setBeatZoom(false);
       this.stop();
       this._releaseAllKeys();
       this._stopDrone();
@@ -3169,6 +3171,19 @@
       this.state.beatEdited = true;
       this._renderBeat();
       this._dcAutosave();
+    }
+
+    /** Lupe: Beat-Editor bildschirmfüllend mit großen Feldern (Kopf, Reiter
+     *  und übrige Panels weg, Transport bleibt). Hochkant teilt sich jeder
+     *  Takt auf zwei Zeilen, damit die Felder breit genug zum Tippen sind. */
+    _setBeatZoom(on) {
+      on = !!on && this.ui.tab === 'beat';
+      if (!!this.ui.beatZoom === on) return;
+      this.ui.beatZoom = on;
+      this.classList.toggle('beat-zoom', on);
+      this.$('.lab-body').scrollTop = 0;
+      const target = on ? this.$('.zoom-done') : [...this.$all('.zoom-btn')].find((b) => b.getClientRects().length);
+      target?.focus({ preventScroll: true });
     }
 
     /** Neuer Song: ersetzt Original, „Meine Version“ und Fortschritt.
@@ -4328,6 +4343,7 @@
     /* ---- Reiter ---- */
 
     _setTab(tab) {
+      if (tab !== 'beat') this._setBeatZoom(false);
       this.ui.tab = tab;
       this.$all('.tab-btn').forEach((btn) => btn.setAttribute('aria-selected', String(btn.dataset.tab === tab)));
       this.$all('.tab-panel').forEach((panel) => { panel.hidden = panel.dataset.tabPanel !== tab; });
@@ -5041,6 +5057,7 @@
         const cells = document.createElement('div');
         cells.className = 'step-row';
         cells.style.gridTemplateColumns = `repeat(${meter.steps}, 1fr)`;
+        cells.style.setProperty('--half', String(Math.ceil(meter.steps / 2))); // Lupe hochkant: zwei Zeilen je Takt
         for (let i = 0; i < meter.steps; i++) {
           const value = s.beat[track][i];
           const cell = document.createElement('button');
@@ -6971,7 +6988,11 @@
         case 'dc-pick': this._dcPick(value); break;
         case 'dc-check-active': this._dcCheck(this._dcActiveElement()); break;
         case 'dc-tpl': this.ui.dc.tpl = !this.ui.dc.tpl; this._renderDeconstruct(); break;
-        case 'dc-clear-grid': this._dcClearGrid(); break;
+        case 'dc-clear-grid':
+          if (global.confirm(t('lab.dc.clearGridConfirm'))) this._dcClearGrid();
+          break;
+        case 'beat-zoom': this._setBeatZoom(true); break;
+        case 'beat-zoom-close': this._setBeatZoom(false); break;
         case 'dc-reveal': this._dcReveal(); break;
         case 'dc-adopt': this._dcAdopt(); break;
         case 'toggle-transport': if (this.playing) this.stop(); else this.start(); break;
@@ -7022,6 +7043,7 @@
         case 'ws-listen': this._wsChListen(value); break;
         case 'track-toggle': s.trackOn[value] = !s.trackOn[value]; this._renderTracks(); break;
         case 'reset-beat':
+          if (s.beatEdited && !global.confirm(t('lab.resetBeatConfirm'))) break;
           this._pushHistory();
           s.beat = beatFromPattern(this._pattern()); s.beatEdited = false; this._renderBeat();
           break;
@@ -7282,6 +7304,7 @@
         else if (!this.$('.dc-sheet').hidden) this._dcSheetClose();
         else if (this.ui.dc.menu) { this.ui.dc.menu = false; this.ui.dc.revealAsk = false; this._renderDeconstruct(); this.$('.dc-more')?.focus(); }
         else if (!this.$('.sheet').hidden) this._closeSheet();
+        else if (this.ui.beatZoom) this._setBeatZoom(false);
         else this.close();
         return;
       }
@@ -7341,6 +7364,8 @@
       // klappen darunter auf — der Text steht nicht mehr dauerhaft im Weg.
       const help = (key) => `<button class="help-btn" type="button" data-action="help" data-help="${key}" aria-expanded="false" aria-label="${t('lab.helpAria')}">?</button>`;
       const helpText = (key) => `<p class="help-text" data-help-text="${key}" hidden>${t(`lab.${key}`)}</p>`;
+      // Lupe: Beat-Editor bildschirmfüllend (Studio im Kopf, de:construct in der Werkzeugzeile).
+      const zoomBtn = `<button class="zoom-btn" type="button" data-action="beat-zoom" aria-label="${t('lab.zoomAria')}" title="${t('lab.zoomAria')}">${UI_ICON.zoom}</button>`;
       // Aktuelle Auswahl mit ‹ › — ein Tipp auf die Mitte öffnet den Auswahl-Dialog.
       const pickerTrigger = (which) => `<div class="picker-trigger" data-picker="${which}">
         <button class="picker-step" type="button" data-action="picker-step" data-picker="${which}" data-value="-1" aria-label="${t('lab.prevAria')}">${UI_ICON.prev}</button>
@@ -7484,6 +7509,52 @@
   .step-cell.is-soft { background: rgba(var(--accent-rgb), .45); }
   .step-cell[data-label]::after { content: attr(data-label); }
   .step-cell.is-now { outline: 2px solid var(--text); outline-offset: 1px; }
+
+  /* Lupe (Beat-Editor bildschirmfüllend, _setBeatZoom) */
+  .zoom-btn {
+    width: 36px; height: 36px; flex: 0 0 auto; display: grid; place-items: center; padding: 0;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--muted);
+  }
+  .zoom-btn svg { width: 18px; height: 18px; }
+  .dc-tools .zoom-btn { width: 44px; height: 44px; margin-left: auto; }
+  .zoom-head, .zoom-hint { display: none; }
+  :host(.beat-zoom) .lab-head, :host(.beat-zoom) .tab-bar,
+  :host(.beat-zoom) .lab-body > :not([data-tab-panel="beat"]),
+  :host(.beat-zoom) [data-tab-panel="beat"] > :not(.beat-panel),
+  :host(.beat-zoom) .beat-panel > .panel-head, :host(.beat-zoom) .beat-panel .kit-box, :host(.beat-zoom) .beat-panel .help-text,
+  :host(.beat-zoom) .zoom-btn, :host(.beat-zoom) .dc-tools [data-action="dc-tpl"] { display: none !important; }
+  :host(.beat-zoom) .lab-body { padding-top: max(10px, env(safe-area-inset-top)); }
+  /* Kopfzeile: Überschrift · Werkzeuge (de:construct) · Fertig — alles Weitere volle Breite */
+  :host(.beat-zoom) .beat-panel { margin: 0; padding: 0; border: 0; background: none; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+  :host(.beat-zoom) .beat-panel > * { grid-column: 1 / -1; }
+  :host(.beat-zoom) .zoom-head { display: contents; }
+  :host(.beat-zoom) .zoom-head h2 { grid-column: 1; grid-row: 1; }
+  :host(.beat-zoom) .zoom-done { grid-column: 3; grid-row: 1; }
+  :host(.beat-zoom) .dc-tools { grid-column: 2; grid-row: 1; margin: 0; justify-content: flex-end; }
+  :host(.beat-zoom) .zoom-head h2 { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 0; font-weight: 800; }
+  :host(.beat-zoom) .zoom-done { min-height: 44px; padding: 0 18px; background: var(--accent); border-color: var(--accent); color: #fff; }
+  :host(.beat-zoom) .track-list { gap: 12px; }
+  :host(.beat-zoom) .track-row { grid-template-columns: 40px 54px 1fr 44px; gap: 8px; }
+  :host(.beat-zoom) .track-roll { width: 40px; height: 40px; }
+  :host(.beat-zoom) .track-name { font-size: .74rem; }
+  :host(.beat-zoom) .track-toggle { padding: 12px 0; font-size: .66rem; }
+  :host(.beat-zoom) .step-row { gap: 4px; }
+  :host(.beat-zoom) .step-cell { height: clamp(34px, calc((100dvh - 250px) / 6 - 12px), 64px); border-radius: 8px; font-size: .74rem; }
+  @media (orientation: portrait) {
+    :host(.beat-zoom) .step-row { grid-template-columns: repeat(var(--half, 8), 1fr) !important; row-gap: 6px; }
+    :host(.beat-zoom) .step-cell { height: 42px; }
+    :host(.beat-zoom) .zoom-hint { display: block; margin: 0; font-size: .7rem; color: var(--muted); }
+  }
+  /* Quer auf dem Handy: alle sechs Spuren ohne Scrollen */
+  @media (orientation: landscape) and (max-height: 520px) {
+    :host(.beat-zoom) .lab-body { padding-top: max(6px, env(safe-area-inset-top)); padding-bottom: 6px; }
+    :host(.beat-zoom) .beat-panel { row-gap: 6px; }
+    :host(.beat-zoom) .zoom-done, :host(.beat-zoom) .dc-tools .chip { min-height: 36px; }
+    :host(.beat-zoom) .track-list { gap: 6px; }
+    :host(.beat-zoom) .track-roll { width: 30px; height: 30px; }
+    :host(.beat-zoom) .track-toggle { padding: 7px 0; }
+    :host(.beat-zoom) .step-cell { height: clamp(28px, calc((100dvh - 190px) / 6 - 6px), 64px); }
+  }
 
   .slider-line { display: grid; grid-template-columns: 72px 1fr 44px; gap: 10px; align-items: center; font-size: .72rem; font-weight: 700; margin: 6px 0; }
   .slider-line output { font-size: .68rem; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
@@ -8270,13 +8341,16 @@
       <div class="panel-head"><h2>${t('lab.drumloop')}</h2>${lockBtn('beat')}</div>
       ${pickerTrigger('beat')}
     </section>
-    <section class="panel">
-      <div class="panel-head dc-pattern-head"><h2>${t('lab.pattern')}</h2>${help('editHint')}<button class="chip reset-beat" type="button" data-action="reset-beat">${t('lab.resetBeat')}</button></div>
+    <section class="panel beat-panel">
+      <div class="zoom-head"><h2>${t('lab.pattern')}</h2><button class="chip zoom-done" type="button" data-action="beat-zoom-close">${t('lab.zoomClose')}</button></div>
+      <div class="panel-head dc-pattern-head"><h2>${t('lab.pattern')}</h2>${help('editHint')}<button class="chip reset-beat" type="button" data-action="reset-beat">${t('lab.resetBeat')}</button>${zoomBtn}</div>
       <div class="dc-tools">
         <div class="chip-row dc-meter" role="group" aria-label="${t('lab.dc.meterAria')}"></div>
         <button class="chip" type="button" data-action="dc-tpl" aria-expanded="false">${t('lab.dc.tpl')}</button>
         <button class="chip" type="button" data-action="dc-clear-grid">${t('lab.dc.clearGrid')}</button>
+        ${zoomBtn}
       </div>
+      <p class="zoom-hint">${t('lab.zoomHint')}</p>
       ${helpText('editHint')}
       <div class="track-list"></div>
       <details class="kit-box">

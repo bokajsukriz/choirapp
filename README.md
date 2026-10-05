@@ -58,6 +58,10 @@ ein Dialog mit echter Wahl).
 - `sw.js` — Service Worker (App-Shell-Cache, Offline-Betrieb).
 - `groove-lab.js` — Groove Lab (Beat/Synth), nachgeladen über den
   Tools-Reiter oder das Easter Egg (7× auf den Songtitel im Player).
+  Beat-Editor (Studio und de:construct): Lupe öffnet ihn bildschirmfüllend
+  mit großen Feldern (`_setBeatZoom`; hochkant zwei Zeilen je Takt, Transport
+  bleibt); „Raster leeren“ und „Original“ (bei verändertem Beat) erst nach
+  Bestätigung.
   Ansicht „de:construct“ (nur im Lab über die
   Ansichtswahl): Einer von festen, komplett nachbaubaren Songs läuft
   verborgen (`DC_SONGS`/`dcBuild`, je Stufe leicht/mittel/schwer 9–10 eigene Pop-
