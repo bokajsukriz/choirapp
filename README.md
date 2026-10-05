@@ -79,7 +79,7 @@ ein Dialog mit echter Wahl).
   Original vs. meins, Akkorde als Kacheln. Stand (Original, eigene Version,
   Fortschritt) liegt im Feld `deconstruct` des
   Groove-Lab-Datensatzes (`sanitizeDeconstruct`), bis ein neuer Song
-  beginnt. Details: `DECONSTRUCT-BERICHT.md`.
+  beginnt. Details: `docs/archiv/DECONSTRUCT-BERICHT.md`.
 - `harmony.js` — gemeinsame Harmonik der Musik-Tools (`window.ChorHarmony`,
   klassisches Skript ohne DOM): Modi, Akkordbau (Dur-Dominante in Moll,
   Dominantseptakkorde), Tonnamen tonartabhängig (`spell`/`noteLabel`,
@@ -196,8 +196,8 @@ ein Dialog mit echter Wahl).
   „re“ nach „do“ will. Im Zahnrad lassen sich Silben/Zahlen (gemeinsam mit
   „Singen“), die Tonart für 5 Aufgaben halten, die Kadenz nur bei neuer Tonart
   und die Auflösung ein- oder ausschalten. Logik und Auflösungstabellen:
-  `ARBEITSANWEISUNG-HOEREN-IN-DER-TONART.md`, Bericht:
-  `BERICHT-HOEREN-IN-DER-TONART.md`.
+  `docs/archiv/ARBEITSANWEISUNG-HOEREN-IN-DER-TONART.md`, Bericht:
+  `docs/archiv/BERICHT-HOEREN-IN-DER-TONART.md`.
 - `einsingen.html` — Einsingen (Übungen nach Stimmlage und Belastung,
   Körperübungen, geführte und eigene Einsing-Programme).
 - Stimmprofil, Fortschritt und Schnellstart liegen in `app.js`
@@ -211,7 +211,7 @@ ein Dialog mit echter Wahl).
   unabhängig. Die
   Tool-Seiten lesen und melden über diese Schnittstellen, schreiben aber nie
   selbst in den Fortschritt. Tools schließen sich auch per Zurück-Geste bzw.
-  Wischen vom linken Rand. Bericht zur Umsetzung: `BERICHT-DIDAKTIK.md`.
+  Wischen vom linken Rand. Bericht zur Umsetzung: `docs/archiv/BERICHT-DIDAKTIK.md`.
 - `piano.html` — Klavier zum Singen-Üben (Querformat zuerst, Mehrfinger und
   Gleiten, Beschriftung C D E / Do Re Mi, Pedal). Klang: Salamander Grand Piano aus
   `samples/salamander/` über `piano-samples.js` (C1–C7, alle drei Halbtöne, je Datei auf

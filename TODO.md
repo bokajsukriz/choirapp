@@ -24,6 +24,7 @@ Ausdrücklich außerhalb des obigen Auftrags — keine belegten Fehler, nur Idee
 - Weitere Modularisierung von `app.js` über die bereits ausgelagerten
   Blattmodule (`lightshow.js`, `strings.js`, `zip-reader.js`) hinaus; ein
   Komplettumbau und ein Bundler sind nicht automatisch das Ziel.
-- Weitergehende CSP-/Hosting-Header, SBOM-/Paket-Werkzeuge, natives
+- Weitergehende CSP-/Hosting-Header (die Tool-Seiten haben seit v500 eine
+  eigene CSP, noch mit `'unsafe-inline'` für Skripte), SBOM-/Paket-Werkzeuge, natives
   `<dialog>` und ein IndexedDB-Migrations-/Rollbackkonzept jeweils separat
   bewerten.
