@@ -112,6 +112,19 @@ ein Dialog mit echter Wahl).
   (`duoBarsSvg`, wie die Auflösung bei „Einsatz finden“); das Trefferfenster
   der Rhythmus-Auswertung (`evaluate`) wandert wie bei `judgeHold` bis
   ±60 ms mit einem gleichbleibenden eigenen Versatz mit;
+  Zwei Hände (eigene Ansicht `views.rhythm = 'hands'`, `renderHands`): beide
+  Stimmen selbst klopfen, je eine pro Hand, auf zwei großen Flächen (links L
+  tief, rechts R hoch; Multitouch, Desktop F/J; hoch/quer, Vollbild, Wake
+  Lock). Stufe 1–4 generiert (`nextHandsTask`: Einstiegsaufgaben
+  `STARTER_TWOHANDS`, Stütze aus festen Vorlagen, Rhythmus-Stimme aus
+  `makePattern`, Regeln `handsRuleErrors` über Anschläge bzw. Notenbild, jede
+  4. Aufgabe in Stufe 3/4 eine Figur aus dem Kurs per ID, `HANDS_POOL`), Stufe
+  5/6 Polyrhythmen 2:3 und 3:4 (`HANDS_FIGURES`, Unterstufen a–g, Tempo in
+  Figuren pro Minute je Figur, `handsFigAdvance`). Ablauf Einzähler →
+  Vorspielen → Mitklopfen → allein; Auswertung je Hand (`judgeHands`) mit
+  Mitziehen, Vertauscht und Verschliffen, Auflösung `handsBarsSvg`. Noten,
+  Raster und Silben sind Hilfen zum Einschalten (`visibleAids` mit
+  `mode: 'hands'`), Ablage `rhythm.hands`;
   Rhythmus-Training mit Stufen, Phrasen,
   Auftakt, Rhythmussprache, Eingabe per Tippen oder Mikrofon;
   Hören: Intervalle, Klänge, Schlüsse, Töne in der Tonart, Akkorde in der
