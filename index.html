@@ -560,6 +560,7 @@ button.card-row:focus-visible {
    zu luftig, deshalb eine engere eigene Regel statt eines Inline-Styles. */
 .gig-list { margin: 8px 0 0; padding-left: 20px; line-height: 1.35; }
 .gig-list > li + li { margin-top: 3px; }
+.gig-practice { position: absolute; right: 16px; bottom: 14px; }
 .gig-list-line { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
 .gig-list-line .placeholder-badge svg { width: 15px; height: 15px; }
 
@@ -932,10 +933,16 @@ button.card-row:focus-visible {
   bottom: 50%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
   width: min(240px, calc(100vw - 32px));
   transform-origin: bottom center;
   animation: fab-menu-in .16s ease-out;
+  /* Ein Kasten mit Trennlinien statt einzelner Pills — klar vom Hintergrund
+     abgesetzt. */
+  background: var(--surface);
+  border: 1px solid rgba(var(--accent-rgb), .35);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.22), 0 2px 6px rgba(0,0,0,.12);
+  overflow: hidden;
 }
 /* Klappt das Menü nach unten auf (siehe placeFabMenu), steht der wichtigste
    Eintrag wieder direkt am Knopf — also am oberen Rand statt am unteren. */
@@ -950,22 +957,27 @@ button.card-row:focus-visible {
 .fab-menu-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  min-height: 48px;
   padding: 12px 16px;
-  border-radius: 999px;
-  border: 1px solid rgba(var(--accent-rgb), .28);
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface) 88%);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--text);
   font-weight: 650;
   font-size: 0.92rem;
   text-align: left;
-  box-shadow: 0 3px 10px rgba(0,0,0,.16);
 }
-.fab-menu-item:active { background: color-mix(in srgb, var(--accent) 22%, var(--surface) 78%); }
+/* Trennlinien zwischen den Einträgen; nach unten aufgeklappt steht die
+   Reihenfolge umgekehrt (column-reverse), dann liegt die Linie anders. */
+.fab-menu-item:not(:last-child) { border-bottom: 1px solid var(--line); }
+.fab-menu--below .fab-menu-item { border-bottom: 0; }
+.fab-menu--below .fab-menu-item:not(:first-child) { border-bottom: 1px solid var(--line); }
+.fab-menu-item:active, .fab-menu-item:focus-visible { background: color-mix(in srgb, var(--accent) 14%, var(--surface) 86%); }
 .fab-menu-item svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--accent-foreground); }
 /* Löschen-Einträge (Loops/RECs): dieselbe rote Warnfarbe wie die übrigen
    Löschen-Knöpfe im Bestand, statt der neutralen Akzentfarbe. */
-.fab-menu-item--danger { color: var(--danger-fg); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+.fab-menu-item--danger { color: var(--danger-fg); }
 .fab-menu-item--danger svg { color: var(--danger); }
 
 /* Leere Reiter im Player (eigener Liedtext, Notiz): derselbe +-Gedanke wie

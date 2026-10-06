@@ -872,9 +872,16 @@ function wireFabMenu(btnSel, backdropSel, onAction) {
  * Baut Menü und Backdrop bei Bedarf, entfernt sie nach der Auswahl wieder.
  * Löst mit dem gewählten value auf, oder null bei Abbruch (daneben/Escape).
  */
+let closeFloatingMenu = null; // offenes floatingMenu schließen (Ansichtswechsel, siehe applyRoute)
 function floatingMenu(btn, items) {
+  closeFloatingMenu?.();
   return new Promise((resolve) => {
-    const done = (v) => { closeModal(backdrop); backdrop.remove(); resolve(v); };
+    const done = (v) => {
+      if (!backdrop.isConnected) return;
+      closeFloatingMenu = null;
+      closeModal(backdrop); backdrop.remove(); resolve(v);
+    };
+    closeFloatingMenu = () => done(null);
     const menu = el('div', { class: 'fab-menu', role: 'menu' },
       items.map((it) => {
         const item = el('button', {
@@ -2226,6 +2233,8 @@ function applyRoute({ fromPop = false } = {}) {
   // Reiterleiste wegnavigiert, statt es über einen seiner eigenen Wege
   // (Aktion, Backdrop, ×-Knopf) zu schließen.
   if (isFabMenuOpen()) closeFabMenu();
+  // Ebenso die Menüs der Loops, RECs und Setlisten (z. B. Zurück-Geste).
+  closeFloatingMenu?.();
 
   const raw = (location.hash || '#songs').slice(1);
   const slash = raw.indexOf('/');
@@ -4761,6 +4770,9 @@ async function setupAudioGraph() {
     // damit ein erneuter Play-Tipp wieder genau dieselbe Stelle abspielt.
     if (Audio.previewBound && s >= Audio.previewBound.end - 0.02) {
       audioPause();
+      // Der mitlaufende Originaltrack (REC-Mitlauf) hält mit an — er lief
+      // sonst nach dem Auswahlende einfach weiter.
+      if (Audio.bg && !Audio.bg.paused) Audio.bg.pause();
       el.currentTime = Audio.previewBound.start;
       Audio.position = Audio.previewBound.start;
       setPlayIcon(false);
@@ -6719,7 +6731,11 @@ function audioPause() {
 }
 
 function audioSeek(seconds) {
-  const s = Math.max(0, Math.min(seconds, Audio.duration || 0));
+  let s = Math.max(0, Math.min(seconds, Audio.duration || 0));
+  // Zugeschnittenes REC: nur innerhalb der Auswahl (knapp vor dem Ende,
+  // sonst stoppte der Sprung sofort an der Grenze, siehe timeupdate).
+  const b = Audio.previewBound;
+  if (b) s = Math.max(b.start, Math.min(s, Math.max(b.start, b.end - 0.15)));
   Audio.position = s;
   if (Audio.el) Audio.el.currentTime = s;
   lastPosLog = { wall: performance.now(), pos: s };
@@ -9830,17 +9846,32 @@ async function repairBrokenSong(song) {
   if (!(await DB.metaGet(song.key).catch(() => null))) showView('import');
 }
 
+/**
+ * Sichtbarer Ausschnitt der Suchleiste: normal die ganze Aufnahme; bei einem
+ * zugeschnittenen REC (Vorschau mit Trim-Auswahl bzw. dessen Dauerschleife)
+ * nur die Auswahl — Anzeige ab 0:00, Spulen nur innerhalb. Vorher lief die
+ * Leiste über die ganze Datei: ein Tipp hinter das Auswahlende löste sofort
+ * das Auswahlende aus (Sprung an den Anfang, Stopp), und die Zeit begann bei
+ * z. B. 0:04.
+ */
+function seekWindow() {
+  const b = Audio.previewBound || (audioPreview && recordingLoopId && Audio.loop) || null;
+  if (b && b.end > b.start) return { base: b.start, span: b.end - b.start };
+  return { base: 0, span: Audio.duration || 0 };
+}
+
 function updateSeekUI(seconds) {
-  const dur = Audio.duration || 0;
-  const pct = dur > 0 ? Math.min(100, (seconds / dur) * 100) : 0;
+  const { base, span } = seekWindow();
+  const rel = Math.max(0, Math.min(seconds - base, span));
+  const pct = span > 0 ? Math.min(100, (rel / span) * 100) : 0;
   $('#seek-fill').style.width = `${pct}%`;
   $('#seek-knob').style.left = `${pct}%`;
-  $('#time-cur').textContent = fmtTime(seconds);
-  $('#time-tot').textContent = fmtTime(dur);
+  $('#time-cur').textContent = fmtTime(rel);
+  $('#time-tot').textContent = fmtTime(span);
   const seek = $('#seek');
-  seek.setAttribute('aria-valuemax', String(Math.round(dur)));
-  seek.setAttribute('aria-valuenow', String(Math.round(seconds)));
-  seek.setAttribute('aria-valuetext', fmtTime(seconds));
+  seek.setAttribute('aria-valuemax', String(Math.round(span)));
+  seek.setAttribute('aria-valuenow', String(Math.round(rel)));
+  seek.setAttribute('aria-valuetext', fmtTime(rel));
   updateLoopMarks();
 }
 
@@ -9997,8 +10028,13 @@ async function openPlayer(songId) {
   }
   // Eine laufende Vorschau gehört zum alten Song — Audio.el wird gleich für
   // den neuen ohnehin frisch geladen, ein Rücksprung ergäbe hier keinen Sinn.
+  // Auch ihre Trim-Grenze und Dauerschleife: blieben sie stehen, stoppte der
+  // nächste Song (z. B. in der Setliste nach einem zugeschnittenen REC) beim
+  // Spulen bzw. an der alten Auswahlgrenze und sprang an deren Anfang zurück.
   stopBacking();
   audioPreview = null;
+  Audio.previewBound = null;
+  recordingLoopId = null;
 
   playerSong = song;
   $('#btn-song-search').disabled = false;
@@ -10490,6 +10526,8 @@ function closePlayer() {
   }
   // audioReset() hat die Blob-URL einer laufenden Vorschau schon freigegeben.
   audioPreview = null;
+  Audio.previewBound = null;
+  recordingLoopId = null;
   playerSong = null;
   $('#player-title').textContent = t('player.emptyTitle');
   $('#btn-song-search').hidden = true;
@@ -10716,7 +10754,8 @@ function renderShuffleMode() {
   const posFromEvent = (e) => {
     const r = track.getBoundingClientRect();
     const x = Math.max(0, Math.min(e.clientX - r.left, r.width));
-    return (x / r.width) * (Audio.duration || 0);
+    const { base, span } = seekWindow();
+    return base + (x / r.width) * span;
   };
 
   seek.addEventListener('pointerdown', (e) => {
@@ -15994,19 +16033,23 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
     } else {
       lineWrap.append(title);
     }
-    if (i === titles.length - 1) lineWrap.append(el('span', { style: 'flex:1' }), practice);
+    // Letzte Zeile: rechts Platz für den Üben-Knopf (liegt absolut unten
+    // rechts in der Karte) — in der Zeile selbst machte er sie höher als die
+    // übrigen, die letzte Nummer stand dann mit Abstand abgesetzt.
+    if (i === titles.length - 1) lineWrap.style.paddingRight = '56px';
     li.append(lineWrap);
     list.append(li);
   });
-  if (!titles.length) list.append(el('li', { style: 'display:flex; justify-content:flex-end' }, practice));
+  if (titles.length) practice.classList.add('gig-practice');
+  else list.append(el('li', { style: 'display:flex; justify-content:flex-end' }, practice));
 
-  host.append(el('div', { class: 'card' },
+  host.append(el('div', { class: 'card', style: 'position:relative' },
     el('div', { class: 'row', style: 'align-items:flex-start' },
       el('div', { style: 'flex:1; min-width:0' },
         el('p', { class: 'small muted', style: 'margin:0' }, t('playlists.nextGig')),
         el('strong', { text: favorite.name })),
       play),
-    list));
+    list, titles.length ? practice : null));
 }
 
 async function renderPlaylists() {
@@ -16064,22 +16107,30 @@ async function renderPlaylists() {
     const menu = el('button', {
       class: 'icon-btn', type: 'button', 'aria-label': t('playlists.menuAria').replace('{name}', pl.name),
       onclick: async () => {
-        const choice = await choiceDialog({
-          title: pl.name, text: t('playlists.whatToDo'),
-          options: [
-            { value: 'practice', label: t('playlists.practice') },
-            { value: 'file', label: t('playlists.saveAsFile') },
-            { value: 'text', label: t('playlists.showAsText') },
-            { value: 'edit', label: t('common.edit') },
-          ],
-        });
+        // Schwebendes Menü wie bei Loops und RECs.
+        const choice = await floatingMenu(menu, [
+          { value: 'practice', label: t('playlists.menuPractice'), icon: practiceIcon() },
+          { value: 'text', label: t('common.export'), icon: ICON_EXPORT },
+          { value: 'edit', label: t('common.edit'), icon: ICON_EDIT },
+          { value: 'delete', label: t('common.delete'), icon: ICON_DELETE, danger: true },
+        ]);
         if (choice === 'practice') await openRoutineDialogForSetlist(pl);
-        else if (choice === 'file') await sharePlaylistFile(pl);
         else if (choice === 'text') openPlaylistTextDialog(pl);
         else if (choice === 'edit') navigate(`#playlist/${pl.id}`);
+        else if (choice === 'delete') {
+          const ok = await confirmDialog({
+            title: t('playlists.deleteTitle'),
+            text: t('playlists.deleteText').replace('{name}', pl.name),
+            okLabel: t('common.delete'), danger: true,
+          });
+          if (!ok) return;
+          await DB.metaDelete(pl.key);
+          if (plDraft?.id === pl.id) { plDraft = null; plDirty = false; }
+          await renderPlaylists();
+        }
       },
     });
-    menu.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+    menu.innerHTML = hamburgerIcon();
 
     const actions = el('div', { style: 'display:flex; gap:2px' }, fav, menu);
     ul.append(el('li', { style: 'display:flex; gap:8px; align-items:stretch; margin-bottom:8px' },
@@ -16504,7 +16555,7 @@ function openPlaylistTextDialog(pl) {
     el('p', { class: 'small muted', text: t('playlists.pasteHint') }),
     textarea,
     el('div', { class: 'dialog-actions' },
-      el('button', { class: 'btn', type: 'button', text: t('common.copy'), onclick: async () => {
+      el('button', { class: 'btn', type: 'button', style: 'flex:1 1 0; white-space:nowrap; padding-left:8px; padding-right:8px', text: t('common.copy'), onclick: async () => {
         try {
           await navigator.clipboard.writeText(textarea.value);
           banner(t('common.copiedClipboard'), { kind: 'ok' });
@@ -16512,16 +16563,21 @@ function openPlaylistTextDialog(pl) {
           textarea.select();
         }
       } }),
-      el('button', { class: 'btn', type: 'button', text: t('common.paste'), onclick: async () => {
+      el('button', { class: 'btn', type: 'button', style: 'flex:1 1 0; white-space:nowrap; padding-left:8px; padding-right:8px', text: t('common.paste'), onclick: async () => {
         try {
           textarea.value = await navigator.clipboard.readText();
         } catch {
           banner(t('playlists.pasteUnavailable'), { kind: 'error' });
         }
+      } }),
+      // Als Datei: der gerade sichtbare Text (auch ungespeichert geändert).
+      el('button', { class: 'btn', type: 'button', style: 'flex:1 1 0; white-space:nowrap; padding-left:8px; padding-right:8px', text: t('playlists.asFile'), onclick: async () => {
+        const parsed = parsePlaylistText(textarea.value, pl.name);
+        await sharePlaylistFile(parsed.error || !parsed.titles.length ? pl : { ...pl, name: parsed.name || pl.name, songTitles: parsed.titles });
       } })),
     el('div', { class: 'dialog-actions', style: 'margin-top:10px' },
       el('button', { class: 'btn', type: 'button', text: t('common.close'), onclick: done }),
-      el('button', { class: 'btn btn--primary', type: 'button', text: t('common.apply'), onclick: async () => {
+      el('button', { class: 'btn btn--primary', type: 'button', text: t('common.save'), onclick: async () => {
         const result = parsePlaylistText(textarea.value, pl.name);
         if (result.error) {
           banner(result.error, { kind: 'error' });
