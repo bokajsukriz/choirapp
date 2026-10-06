@@ -2200,6 +2200,12 @@
                                     ├→ Hall-Send     │  und Chorus)
                                     └→ Echo-Send     │
        Liegeton: eigene Ebene, geht am Pumpen vorbei ┘
+       Hall-Send → Vorverzögerung 25 ms → Convolver → Hochpass 250 Hz
+                 → reverbReturn → master   (am Pumpen vorbei: die Hallfahne
+                                            pumpt nicht mit)
+       Echo-Send → Delay → duck           (pumpt mit)
+       Limiter: threshold -3, ratio 20, attack 2 ms — fängt nur Spitzen,
+       kein Bus-Kompressor (der pumpte hörbar).
      ------------------------------------------------------------------------ */
 
   class GrooveEngine {
@@ -2231,8 +2237,13 @@
 
       const master = gain(.8);
       const limiter = ctx.createDynamicsCompressor();
-      limiter.threshold.value = -13; limiter.ratio.value = 6;
-      master.connect(limiter).connect(ctx.destination);
+      limiter.threshold.value = -3; limiter.knee.value = 0; limiter.ratio.value = 20;
+      limiter.attack.value = .002; limiter.release.value = .12;
+      // Fester Vorpegel: gleicht die Lautheit an den früheren Kompressor an
+      // (gemessen: Default-Groove, Peak -1,1 dBFS, Lautheit ±0,7 dB zu vorher) und hält
+      // den Peak unter -1 dBFS. Bewusst nicht am Nutzer-Regler "master".
+      const limiterTrim = gain(.78);
+      master.connect(limiterTrim).connect(limiter).connect(ctx.destination);
 
       const drums = gain(.72, master);
       const bass = gain(.8, master);
@@ -2263,7 +2274,13 @@
       convolver.buffer = this._impulseResponse(1.8);
       this._reverbLength = 1.8;
       const reverbIn = gain(1);
-      reverbIn.connect(convolver).connect(duck);
+      // Hall am Pumpen vorbei, mit Vorverzögerung und Hochpass: die Fahne
+      // soll weder mitpumpen noch den Bass-/Kick-Bereich zuschmieren.
+      const preDelay = ctx.createDelay(.1); preDelay.delayTime.value = .025;
+      const reverbHP = ctx.createBiquadFilter();
+      reverbHP.type = 'highpass'; reverbHP.frequency.value = 250; reverbHP.Q.value = .7;
+      const reverbReturn = gain(1, master);
+      reverbIn.connect(preDelay).connect(convolver).connect(reverbHP).connect(reverbReturn);
 
       const echoIn = gain(1);
       const delay = ctx.createDelay(2); delay.delayTime.value = .3;
@@ -2287,7 +2304,7 @@
         this.layers[id] = { input, shaper, level, reverbSend, echoSend };
       }
 
-      this.buses = { master, drums, bass, duck, synthSum, chorusWet, convolver, delay, feedback, reverbIn, echoIn };
+      this.buses = { master, drums, bass, duck, synthSum, chorusWet, convolver, delay, feedback, reverbIn, reverbReturn, echoIn };
       this.noiseBuffer = this._whiteNoise(.5);
       this.lastMidi = {};
       this.monoVoice = {};
@@ -8790,7 +8807,7 @@
     melodyOffset, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree,
     spell, noteLabel, spellCheck, SPELL_CASES, romanNumeral, chordName, chordQuality,
     sanitizeProgLibrary, sanitizeState, defaultState, sanitizeMelodyLibrary, sanitizeMelodyBars, recNotesToBars, melodyMidi,
-    CHOIR_TASKS, choirTaskState, melodyNotesAt, choirTargetPc, patternIndexByName, beatFromPattern,
+    GrooveEngine, CHOIR_TASKS, choirTaskState, melodyNotesAt, choirTargetPc, patternIndexByName, beatFromPattern,
     // Workshop
     LESSON_TIERS, LESSON_AREAS, WORKSHOP_LESSONS, lessonState, applyTaskSet, sanitizeWorkshopProgress, focusKeyKnown,
     stepsOn, sameSteps, hitAt, progOf, progDegreesOf, progSeventhsOf, melodyBarsOf, lastPlayed, hasRun,
