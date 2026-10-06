@@ -93,7 +93,7 @@
   .replay-row { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
   .replay-row .k-btn { gap: 6px; }
   /* Merkhilfe Intervalle (Songanfänge) */
-  .iv-songs { display: grid; gap: 10px; }
+  .iv-songs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .iv-song { border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 10px 12px; }
   .iv-song.is-off { opacity: .55; }
   .iv-song.is-asked { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .25); }
@@ -102,11 +102,32 @@
   .iv-dir-head { display: flex; align-items: center; justify-content: space-between; font-size: .7rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
   .iv-play { width: 34px; height: 34px; border-radius: 50%; background: rgba(var(--accent-rgb), .15); color: var(--accent-foreground, #db0a73); display: grid; place-items: center; }
   .iv-play svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
-  .iv-dir ul { margin: 2px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
-  .iv-dir li { font-size: .82rem; line-height: 1.3; }
-  .iv-dir li small { display: block; color: var(--muted); font-size: .7rem; font-weight: 600; }
+  /* Eine Zeile je Richtung: Pfeil · Titel + Stelle (gekürzt) · ▶. Im Bearbeiten-Modus
+     ist die Zeile ein Knopf (gestrichelt, Stift rechts) und öffnet die Auswahl. */
+  .iv-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; min-height: 36px; }
+  .iv-arrow { flex: none; width: 1.1em; text-align: center; font-weight: 800; color: var(--muted); }
+  .iv-line { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: .82rem; line-height: 1.3; text-align: left; }
+  .iv-line > span:first-child { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .iv-line .iv-empty { color: var(--muted); font-weight: 600; }
+  .iv-line svg { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); }
+  button.iv-line { min-height: 36px; padding: 4px 10px; border: 1px dashed var(--accent); border-radius: 10px; background: rgba(var(--accent-rgb), .06); }
+  button.iv-line:focus-visible, .iv-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .iv-cue { color: var(--accent-foreground, #db0a73); font-weight: 700; }
   .iv-none { margin: 0; font-size: .76rem; color: var(--muted); }
+  .icon-btn[aria-pressed="true"] { background: rgba(var(--accent-rgb), .15); border-color: var(--accent); color: var(--accent-foreground, #db0a73); }
+  .head-actions { display: flex; gap: 8px; }
+  .iv-pick-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .iv-opts { display: grid; gap: 6px; }
+  .iv-opt { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; font-size: .82rem; line-height: 1.3; }
+  .iv-opt > span { flex: 1 1 auto; min-width: 0; }
+  .iv-opt small { display: block; color: var(--muted); font-size: .7rem; font-weight: 600; }
+  .iv-opt svg { flex: none; width: 18px; height: 18px; fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; visibility: hidden; }
+  .iv-opt[aria-pressed="true"] { border-color: var(--accent); background: rgba(var(--accent-rgb), .1); }
+  .iv-opt[aria-pressed="true"] svg { visibility: visible; }
+  .iv-own { display: grid; gap: 6px; }
+  .iv-own input { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: inherit; padding: 10px 12px; font: inherit; font-size: .85rem; }
+  .iv-own input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .iv-own .chip { justify-self: start; }
   .help-btn[aria-expanded="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
   .help-text { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-size: .74rem; line-height: 1.45; }
   .help-text b { font-weight: 800; }
@@ -1309,7 +1330,10 @@
 <div class="sheet" hidden>
   <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
     <div class="panel-head"><h2 id="sheet-title">Einstellungen</h2>
-      <button class="icon-btn" type="button" data-ear="close-settings" aria-label="Schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      <div class="head-actions">
+        <button class="icon-btn" type="button" data-ear="songs-edit" aria-pressed="false" aria-label="Beispiele bearbeiten" hidden><svg viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg></button>
+        <button class="icon-btn" type="button" data-ear="close-settings" aria-label="Schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div></div>
     <div class="sheet-body"></div>
     <p class="sheet-hint" role="status"></p>
     <div class="ear-controls"><button class="big-btn" type="button" data-ear="close-settings">Fertig</button></div>
@@ -9135,7 +9159,9 @@
   /* ---- Merkhilfe Intervalle: bekannte Songanfänge (Noten-Knopf neben dem Zahnrad) ----
      Mit einer Musikpädagogin für einen Popchor (20–40 Jahre) zusammengestellt:
      nur Stellen, bei denen das Intervall sicher stimmt — lieber eine Lücke als
-     ein falsches Beispiel. [Halbtöne, Richtung, Titel, Herkunft, Stelle]. */
+     ein falsches Beispiel. [Halbtöne, Richtung, Titel, Herkunft, Stelle].
+     Je Richtung steht der erste Eintrag in der Liste; die anderen sind Vorschläge
+     in der Auswahl (Stift oben im Blatt). */
   const INTERVAL_SONGS = [
     [1, 'up', 'Der weiße Hai', 'John Williams, Filmmusik', 'die ersten zwei Töne'],
     [1, 'up', 'Der rosarote Panther', 'Henry Mancini, Filmmusik', 'die ersten zwei Töne'],
@@ -9184,21 +9210,104 @@
     [12, 'up', 'Somewhere Over the Rainbow', 'Der Zauberer von Oz', 'Some – where'],
     [12, 'down', 'Super Mario Bros.', 'Koji Kondo, Videospiel', 'Titelmelodie, hohes – tiefes G'],
   ];
+  /* Auswahl je Intervall und Richtung (Stift oben im Blatt): ein Song pro Zeile.
+     Gespeichert wird je „Halbtöne:Richtung“ der ganze Eintrag { t: Titel, w: Herkunft,
+     c: Stelle } — oder { none: true } für „kein Beispiel“. Ohne Eintrag gilt der erste
+     Song der Liste oben. Die Auswahl liegt im Fortschritt der App (memory.intervalSongs). */
+  const ivSongs = { map: {}, edit: false, pick: null }; // pick: 'n:dir' = Auswahl offen
+  const IV_DIRS = [['up', '↑', 'aufwärts'], ['down', '↓', 'abwärts']];
+  const ivToSong = ([, , t, w, c]) => ({ t, w, c });
+  const ivCandidates = (n, dir) => INTERVAL_SONGS.filter(([iv, d]) => iv === n && d === dir).map(ivToSong);
+  /** Song der Zeile oder null (kein Beispiel). */
+  function ivSongFor(n, dir) {
+    const own = ivSongs.map[`${n}:${dir}`];
+    if (own) return own.none ? null : own;
+    return ivCandidates(n, dir)[0] || null;
+  }
+  /** Gespeicherte Auswahl übernehmen (nur gültige Schlüssel, Texte gekürzt). */
+  function sanitizeIvSongs(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    for (const [key, v] of Object.entries(raw)) {
+      const m = /^(\d{1,2}):(up|down)$/.exec(key);
+      if (!m || Number(m[1]) < 1 || Number(m[1]) > 12 || !v || typeof v !== 'object') continue;
+      if (v.none === true) { out[key] = { none: true }; continue; }
+      const text = (x) => (typeof x === 'string' ? x.trim().slice(0, 60) : '');
+      if (!text(v.t)) continue;
+      out[key] = { t: text(v.t), ...(text(v.w) ? { w: text(v.w) } : {}), ...(text(v.c) ? { c: text(v.c) } : {}) };
+    }
+    return out;
+  }
+  function setIvSong(n, dir, song) {
+    const key = `${n}:${dir}`;
+    if (song === undefined) delete ivSongs.map[key]; else ivSongs.map[key] = song;
+    saveMemory('intervalSongs', ivSongs.map);
+  }
+  /** Zeile in der Liste: Einzeiler; im Bearbeiten-Modus ein Knopf zur Auswahl. */
+  function ivRowHtml(n, name, dir, arrow, word) {
+    const song = ivSongFor(n, dir);
+    const play = `<button type="button" class="iv-play" data-iv-play="${n}:${dir}" aria-label="${esc(name)} ${word} anhören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>`;
+    const text = song
+      ? `<span><b>${esc(song.t)}</b>${song.c ? ` <span class="iv-cue">${esc(song.c)}</span>` : ''}</span>`
+      : '<span class="iv-empty">kein Beispiel</span>';
+    const line = ivSongs.edit
+      ? `<button type="button" class="iv-line" data-iv-edit="${n}:${dir}" aria-label="${esc(name)} ${word}: ${song ? esc(song.t) : 'kein Beispiel'} – ändern">${text}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg></button>`
+      : `<div class="iv-line"${song ? ` title="${esc(song.t)}${song.w ? ` · ${esc(song.w)}` : ''}"` : ''}>${text}</div>`;
+    return `<div class="iv-row"><span class="iv-arrow" aria-hidden="true">${arrow}</span>${line}${play}</div>`;
+  }
   function renderIntervalSongs() {
+    const sheet = $('.sheet');
+    sheet.classList.toggle('is-picking', !!ivSongs.pick);
+    const editBtn = $('[data-ear="songs-edit"]');
+    editBtn.hidden = !!ivSongs.pick;
+    editBtn.setAttribute('aria-pressed', String(ivSongs.edit));
+    if (ivSongs.pick) { renderIntervalPick(); return; }
+    $('#sheet-title').textContent = 'Intervalle: Songanfänge';
     const chosen = ear.settings.intervals;
     const asked = ear.task?.kind === 'interval' && ear.revealed ? ear.task.semis : null;
     const rows = INTERVALS.map(([n, name]) => {
-      const songs = INTERVAL_SONGS.filter(([iv]) => iv === n);
-      const dirs = [['up', '↑ aufwärts'], ['down', '↓ abwärts']].map(([dir, label]) => {
-        const list = songs.filter(([, d]) => d === dir);
-        if (!list.length) return '';
-        return `<div class="iv-dir"><div class="iv-dir-head"><span>${label}</span><button type="button" class="iv-play" data-iv-play="${n}:${dir}" aria-label="${esc(name)} ${dir === 'up' ? 'aufwärts' : 'abwärts'} anhören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div>
-          <ul>${list.map(([, , title, who, cue]) => `<li><b>${esc(title)}</b> <span class="iv-cue">${esc(cue)}</span><small>${esc(who)}</small></li>`).join('')}</ul></div>`;
-      }).join('');
+      const dirs = IV_DIRS.map(([dir, arrow, word]) => (ivSongs.edit || ivSongFor(n, dir) ? ivRowHtml(n, name, dir, arrow, word) : '')).join('');
       return `<section class="iv-song${chosen.includes(n) ? '' : ' is-off'}${asked === n ? ' is-asked' : ''}" data-iv="${n}"><h3>${esc(name)}</h3>${dirs || '<p class="iv-none">Kein sicheres Beispiel – hier hilft nur Hören und Vergleichen.</p>'}</section>`;
     }).join('');
-    $('.sheet-body').innerHTML = `<p class="foot-note" style="text-align:left;margin-top:0">Ein bekannter Liedanfang hilft, ein Intervall wiederzuerkennen: Sing den Anfang innerlich und vergleiche. ▶ spielt das Intervall vor. Blasser = gerade nicht in deiner Auswahl.</p><div class="iv-songs">${rows}</div>`;
+    const note = ivSongs.edit
+      ? 'Tippe auf eine Zeile, um den Song zu wechseln oder einen eigenen einzutragen. Mit dem Stift oben bist du fertig.'
+      : 'Ein bekannter Liedanfang hilft, ein Intervall wiederzuerkennen: Sing den Anfang innerlich und vergleiche. ▶ spielt das Intervall vor. Blasser = gerade nicht in deiner Auswahl. Mit dem Stift oben änderst du die Beispiele.';
+    $('.sheet-body').innerHTML = `<p class="foot-note" style="text-align:left;margin-top:0">${note}</p><div class="iv-songs">${rows}</div>`;
     if (asked) $(`.iv-song[data-iv="${asked}"]`)?.scrollIntoView({ block: 'start' });
+  }
+  /** Auswahl für eine Zeile: Songs zu diesem Intervall, eigener Eintrag, zurücksetzen. */
+  function renderIntervalPick() {
+    const [n, dir] = ivSongs.pick.split(':'), semis = Number(n);
+    const [, arrow, word] = IV_DIRS.find(([d]) => d === dir);
+    const name = intervalName(semis);
+    $('#sheet-title').textContent = `${name} ${arrow}`;
+    const cur = ivSongFor(semis, dir);
+    const stored = ivSongs.map[ivSongs.pick];
+    const cands = ivCandidates(semis, dir);
+    const isOwn = !!cur && !cands.some((c) => c.t === cur.t);
+    const opts = cands.map((c, i) => `<button type="button" class="iv-opt" data-iv-choose="${i}" aria-pressed="${!!cur && c.t === cur.t}"><span><b>${esc(c.t)}</b> <span class="iv-cue">${esc(c.c)}</span><small>${esc(c.w)}</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>`).join('');
+    $('.sheet-body').innerHTML = `<div class="iv-pick-head"><p class="foot-note" style="text-align:left;margin:0">${esc(name)} ${word}: Welcher Songanfang soll hier stehen?</p>
+        <button type="button" class="iv-play" data-iv-play="${semis}:${dir}" aria-label="${esc(name)} ${word} anhören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div>
+      ${cands.length ? `<span class="sub-label">Vorschläge</span><div class="iv-opts">${opts}</div>` : '<p class="iv-none" style="margin-top:10px">Für diese Richtung gibt es keinen Vorschlag – trag unten einen eigenen ein.</p>'}
+      <span class="sub-label">Eigener Song</span>
+      <form class="iv-own" data-iv-form>
+        <input type="text" name="t" maxlength="60" autocomplete="off" placeholder="Titel, z. B. Hey Jude" aria-label="Titel" value="${isOwn ? esc(cur.t) : ''}">
+        <input type="text" name="c" maxlength="60" autocomplete="off" placeholder="Stelle, z. B. Hey – Jude (optional)" aria-label="Stelle im Lied (optional)" value="${isOwn ? esc(cur.c || '') : ''}">
+        <button type="submit" class="chip">Übernehmen</button>
+      </form>
+      <div class="chip-row" style="margin-top:12px">
+        <button type="button" class="chip" data-iv-none aria-pressed="${!cur}">Kein Beispiel</button>
+        ${stored ? '<button type="button" class="chip" data-iv-reset>Standard</button>' : ''}
+      </div>`;
+  }
+  /** Eine Ebene zurück: Auswahl → Liste. true = es gab eine Auswahl zu schließen. */
+  function closeIntervalPick() {
+    if (sheetKind !== 'songs' || !ivSongs.pick) return false;
+    const key = ivSongs.pick;
+    ivSongs.pick = null;
+    renderIntervalSongs();
+    $(`[data-iv-edit="${key}"]`)?.focus();
+    return true;
   }
   /** ▶ in der Merkhilfe: Intervall vom c′ aus (abwärts vom c″). */
   async function playIntervalDemo(semis, dir) {
@@ -9225,15 +9334,20 @@
     sheetKind = kind;
     $('#sheet-title').textContent = kind === 'songs' ? 'Intervalle: Songanfänge' : kind === 'course' ? `Alle Lektionen · ${courseCounts().done}/${courseCounts().total} geschafft` : kind === 'rhythm' ? 'Rhythmus-Einstellungen' : kind === 'singhelp' || kind === 'earhelp' || kind === 'handshelp' || kind === 'singtaphelp' ? 'Hilfen' : kind === 'hands' ? 'Zwei Hände' : kind === 'singtap' ? 'Singen und klopfen' : 'Einstellungen';
     lastSettingsBtn = document.activeElement;
+    ivSongs.edit = false; ivSongs.pick = null;
+    $('.sheet').classList.remove('is-picking');
+    $('[data-ear="songs-edit"]').hidden = kind !== 'songs';
     $('.sheet').hidden = false;
     renderSettings();
     $('.sheet [data-ear="close-settings"]').focus();
   }
 
   function closeSettings() {
+    if (closeIntervalPick()) return;
     const problem = settingsProblem();
     if (problem) { $('.sheet-hint').textContent = problem; return; }
     $('.sheet').hidden = true;
+    $('[data-ear="songs-edit"]').hidden = true;
     if (sheetKind === 'singhelp') { renderSing(); $('[data-sing="helps"]')?.focus(); return; }
     if (sheetKind === 'singtaphelp' || sheetKind === 'singtap') { singtap.topKey = ''; renderSingTap(); $(`[data-singtap="${sheetKind === 'singtap' ? 'settings' : 'helps'}"]`)?.focus(); return; }
     if (sheetKind === 'handshelp' || sheetKind === 'hands') { hands.topKey = ''; renderHands(); $(`[data-hands="${sheetKind === 'hands' ? 'settings' : 'helps'}"]`)?.focus(); return; }
@@ -14976,6 +15090,16 @@
     // --- Hören
     const ivPlay = e.target.closest('[data-iv-play]');
     if (ivPlay) { const [n, dir] = ivPlay.dataset.ivPlay.split(':'); playIntervalDemo(Number(n), dir); return; }
+    // Songanfänge: Zeile bearbeiten, Song wählen, Eintrag leeren/zurücksetzen
+    const ivEdit = e.target.closest('[data-iv-edit]');
+    if (ivEdit) { ivSongs.pick = ivEdit.dataset.ivEdit; renderIntervalSongs(); $('.sheet-body').scrollTop = 0; $('.sheet-card').scrollTop = 0; return; }
+    if (ivSongs.pick && !$('.sheet').hidden) {
+      const [pn, pdir] = ivSongs.pick.split(':'), pick = Number(pn);
+      const choose = e.target.closest('[data-iv-choose]');
+      if (choose) { const c = ivCandidates(pick, pdir)[Number(choose.dataset.ivChoose)]; if (c) { setIvSong(pick, pdir, Number(choose.dataset.ivChoose) === 0 ? undefined : c); closeIntervalPick(); } return; }
+      if (e.target.closest('[data-iv-none]')) { setIvSong(pick, pdir, { none: true }); closeIntervalPick(); return; }
+      if (e.target.closest('[data-iv-reset]')) { setIvSong(pick, pdir, undefined); closeIntervalPick(); return; }
+    }
     const earBtn = e.target.closest('[data-ear]');
     if (earBtn) {
       let action = earBtn.dataset.ear;
@@ -14988,6 +15112,7 @@
       if (!$('.sheet').hidden && sheetKind === 'earhelp') closeSettings();
       if (action === 'settings') openSettings('ear');
       else if (action === 'songs') openSettings('songs');
+      else if (action === 'songs-edit') { ivSongs.edit = !ivSongs.edit; renderIntervalSongs(); }
       else if (action === 'close-settings') closeSettings();
       else if (action === 'play') { if (!ear.task) { nextEar(); } else playEar(); }
       else if (action === 'confirm-part') confirmPart();
@@ -15193,12 +15318,25 @@
   /** Zahl der Zurück-Schritte bis zur obersten Ebene (wie chorToolBack): die
    *  App legt je Ebene einen Verlaufseintrag an (syncToolHistory in app.js). */
   window.chorToolDepth = () => {
-    const sheets = (!$('.level-sheet').hidden) + (!$('.sheet:not(.level-sheet)').hidden);
+    const sheets = (!$('.level-sheet').hidden) + (!$('.sheet:not(.level-sheet)').hidden) + ($('.sheet:not(.level-sheet)').classList.contains('is-picking') && !$('.sheet:not(.level-sheet)').hidden ? 1 : 0);
     const v = views[state.tab];
     if (v === 'list' || (tunerTool && state.tab === 'voice' && sing.mode === 'tuner')) return sheets;
     if (v === 'grooves') return sheets + (gv.fromHub ? 1 : 0) + (gv.view !== 'list' ? 1 : 0);
     return sheets + 1;
   };
+
+  /** Songanfänge: eigener Song aus der Auswahl übernehmen (Enter im Feld genügt). */
+  document.addEventListener('submit', (e) => {
+    const form = e.target.closest?.('[data-iv-form]');
+    if (!form) return;
+    e.preventDefault();
+    if (!ivSongs.pick) return;
+    const [n, dir] = ivSongs.pick.split(':');
+    const song = sanitizeIvSongs({ [ivSongs.pick]: { t: form.elements.t.value, c: form.elements.c.value } })[ivSongs.pick];
+    if (!song) { form.elements.t.focus(); return; }
+    setIvSong(Number(n), dir, song);
+    closeIntervalPick();
+  });
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('.level-sheet').hidden) { closeLevelSheet(); return; }
@@ -19935,13 +20073,14 @@
   }
   function loadMemory() {
     if (!progressApi) return;
-    for (const key of ['intervalLog', 'singLog', 'micDenied']) {
+    for (const key of ['intervalLog', 'singLog', 'intervalSongs', 'micDenied']) {
       try {
         Promise.resolve(progressApi.memory(key)).then((v) => {
           if (v === undefined) return;
           memoryCache[key] = v;
           if (key === 'intervalLog') ear.stats.intervalLog = sanitizeLog(v);
           if (key === 'singLog') sing.log = sanitizeLog(v);
+          if (key === 'intervalSongs') { ivSongs.map = sanitizeIvSongs(v); if (sheetKind === 'songs' && !$('.sheet').hidden) renderIntervalSongs(); }
         }).catch(() => {});
       } catch { /* App weg */ }
     }
