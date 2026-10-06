@@ -12171,6 +12171,7 @@ function renderPendingTake() {
   // Kein Song ist vorausgewählt — die Liste erscheint erst mit dem Take.
   if (recHost === 'recorder' && isNew) {
     $('#rec-song-search').value = '';
+    recSongShowAll = false;
     renderRecSongPicker();
   }
 }
@@ -12286,16 +12287,16 @@ function renderRecorderVoices() {
   host.textContent = '';
   for (const voice of REC_VOICE_CHOICES) {
     const pressed = (takeDraft?.voice ?? null) === voice;
+    // Dieselben farbigen Stimm-Pills wie bei „Meine Stimme“ und beim Bearbeiten eines RECs.
     const btn = el('button', {
-      class: 'rc-voice', type: 'button', 'aria-pressed': pressed ? 'true' : 'false',
+      class: 'chip chip--voice', type: 'button', 'aria-pressed': pressed ? 'true' : 'false',
       onclick: () => {
         if (!takeDraft) return;
         takeDraft.voice = voice;
         renderRecorderVoices();
       },
-    }, el('span', { class: 'rc-voice-dot', 'aria-hidden': 'true' }),
-    el('span', { text: voice ? voiceName(voice) : t('rec.voiceNone') }));
-    btn.style.setProperty('--voice-c', voice ? (VOICE_COLOR[voice] || VOICE_COLOR.OTHER) : 'var(--line)');
+    }, voice ? voiceName(voice) : t('rec.voiceNone'));
+    btn.style.setProperty('--voice-c', voice ? (VOICE_COLOR[voice] || VOICE_COLOR.OTHER) : 'var(--muted)');
     host.append(btn);
   }
 }
@@ -12470,6 +12471,7 @@ async function renderRecSongPicker() {
   const rawQuery = query.trim();
   const visible = filterSongsByQuery(songs, query).sort((a, b) => collator.compare(a.title || '', b.title || ''));
   host.textContent = '';
+  $('#btn-rec-song-all').setAttribute('aria-expanded', recSongShowAll ? 'true' : 'false');
 
   const selectSong = (song) => {
     takeDraft.songId = song.id;
@@ -12481,7 +12483,7 @@ async function renderRecSongPicker() {
   // eindeutig, was gespeichert wird. Das X nimmt ihn wieder heraus.
   const search = $('#rec-song-search');
   const picked = takeDraft?.songId ? songs.find((s) => s.id === takeDraft.songId) : null;
-  search.closest('.rc-search').hidden = !!picked;
+  search.closest('.rc-search-row').hidden = !!picked;
   if (picked) {
     const label = songLabel(picked);
     const clear = el('button', {
@@ -12502,6 +12504,15 @@ async function renderRecSongPicker() {
 
   // Leere Suche: nur Vorschläge als Chips — der gerade offene Song und die
   // zuletzt mit einem REC bedachten. Die volle Liste kommt erst beim Tippen.
+  // Liste-Knopf neben der Suche: alle Songs zum Durchblättern, wenn einem
+  // der Titel nicht einfällt.
+  if (!rawQuery && recSongShowAll) {
+    for (const song of visible) {
+      host.append(el('button', { class: 'list-item', type: 'button', onclick: () => selectSong(song) },
+        el('div', { style: 'flex:1; min-width:0' }, el('strong', { text: songLabel(song) }))));
+    }
+    return;
+  }
   if (!rawQuery) {
     const byId = new Map(songs.map((s) => [s.id, s]));
     const ids = [];
@@ -12545,10 +12556,17 @@ async function renderRecSongPicker() {
 }
 const REC_SONG_SUGGESTIONS = 3;
 const REC_SONG_RESULTS = 8;
+let recSongShowAll = false;
+$('#btn-rec-song-all').addEventListener('click', () => {
+  recSongShowAll = !recSongShowAll;
+  if (recSongShowAll) $('#rec-song-search').value = '';
+  renderRecSongPicker();
+});
 
 // Entprellt wie die Songsuche in der Bibliothek (siehe #search).
 let recSongSearchTimer = 0;
 $('#rec-song-search').addEventListener('input', () => {
+  recSongShowAll = false;
   clearTimeout(recSongSearchTimer);
   recSongSearchTimer = setTimeout(renderRecSongPicker, 120);
 });

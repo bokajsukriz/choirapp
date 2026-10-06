@@ -2694,9 +2694,20 @@ input[type="checkbox"] {
 }
 .rc-song-list { display: flex; flex-direction: column; gap: 8px; }
 .rc-song-list:empty { display: none; }
-.rc-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.rc-search-row { display: flex; align-items: center; gap: 8px; }
+.rc-search-row[hidden] { display: none; }
+.rc-search-row .rc-search { flex: 1 1 auto; min-width: 0; }
+.rc-all-btn {
+  flex: 0 0 auto; width: var(--tap); height: var(--tap); border-radius: 14px; display: grid; place-items: center;
+  border: 1px solid rgba(var(--accent-rgb), .32); background: var(--surface); color: var(--text);
+}
+.rc-all-btn svg { width: 20px; height: 20px; }
+.rc-all-btn[aria-expanded="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+/* Vorschläge bleiben einzeilig: lieber hart am Rand abgeschnitten als umbrochen. */
+.rc-chips { display: flex; flex-wrap: nowrap; gap: 8px; overflow: hidden; }
 .rc-chip {
-  min-height: 40px; padding: 0 14px; border-radius: 999px; max-width: 100%;
+  flex: 0 0 auto;
+  min-height: 40px; padding: 0 14px; border-radius: 999px; max-width: 80%;
   border: 1.5px solid rgba(var(--accent-rgb), .32); background: var(--surface); color: var(--text);
   font-weight: 650; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   appearance: none; -webkit-appearance: none;
@@ -2705,15 +2716,7 @@ input[type="checkbox"] {
 .rc-list-note { margin: 0; font-size: 12px; color: var(--muted); }
 .rc-song-list .list-item { margin: 0; min-height: var(--tap); }
 .rc-create small { display: block; }
-.rc-voices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.rc-voice {
-  min-height: var(--tap); border-radius: 12px; padding: 4px 6px;
-  border: 1.5px solid rgba(var(--accent-rgb), .32); background: var(--surface); color: var(--text);
-  font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px;
-  appearance: none; -webkit-appearance: none; min-width: 0;
-}
-.rc-voice-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--voice-c, var(--muted)); }
-.rc-voice[aria-pressed="true"] { border-color: var(--text); background: rgba(var(--accent-rgb), .09); }
+.rc-voices.voice-pill-picker { justify-content: flex-start; gap: 8px; }
 .rc-input {
   width: 100%; min-height: var(--tap); padding: 0 14px; border-radius: 14px;
   border: 1px solid rgba(var(--accent-rgb), .32); background: var(--surface); color: var(--text);
@@ -4204,18 +4207,23 @@ input[type="checkbox"] {
 
       <div class="rc-field" id="recorder-song-picker">
         <label class="rc-field-label" for="rec-song-search" data-i18n="rec.songLabel">Song</label>
-        <div class="rc-search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
-          <input id="rec-song-search" type="search" inputmode="search"
-                 autocomplete="off" autocorrect="off" spellcheck="false"
-                 placeholder="Song suchen …" data-i18n-placeholder="songs.searchPlaceholder">
+        <div class="rc-search-row">
+          <div class="rc-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+            <input id="rec-song-search" type="search" inputmode="search"
+                   autocomplete="off" autocorrect="off" spellcheck="false"
+                   placeholder="Song suchen …" data-i18n-placeholder="songs.searchPlaceholder">
+          </div>
+          <button class="rc-all-btn" id="btn-rec-song-all" type="button" aria-expanded="false" aria-controls="rec-song-list" aria-label="Alle Songs zeigen" data-i18n-aria="rec.allSongsAria">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>
+          </button>
         </div>
         <div class="song-pick-list rc-song-list" id="rec-song-list"></div>
       </div>
 
       <div class="rc-field">
         <span class="rc-field-label" id="recorder-voice-label"><span data-i18n="rec.voiceLabel">Stimme</span> <span class="rc-field-optional" data-i18n="rec.optional">(optional)</span></span>
-        <div class="rc-voices" id="recorder-voices" role="group" aria-labelledby="recorder-voice-label"></div>
+        <div class="chip-grid chip-grid--lg voice-pill-picker rc-voices" id="recorder-voices" role="group" aria-labelledby="recorder-voice-label"></div>
       </div>
 
       <div class="rc-field">
