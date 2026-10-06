@@ -2641,6 +2641,41 @@ input[type="checkbox"] {
   flex: 0 0 auto; padding: 18px 16px; border-radius: 24px; border: 1px solid var(--pill-line);
   box-shadow: 0 6px 20px rgba(36,27,61,.07);
 }
+/* Ab dem Start der Aufnahme (und bis der Take gespeichert oder verworfen
+   ist) überlagert der Player-Recorder den Bildschirm von unten — wie der
+   allgemeine Recorder: oben der Song, Mitte große Zeit und Pegel, unten das
+   Dock bzw. Wellenform und Blatt „Speichern unter“. */
+.rc-full-head { display: none; }
+.rc-host--player.rc-host--full {
+  position: fixed; inset: 0; z-index: 65; background: var(--bg);
+  display: flex; flex-direction: column; overflow: hidden;
+  padding-top: var(--safe-top);
+  animation: rc-full-in .26s cubic-bezier(.2, .8, .2, 1);
+}
+@keyframes rc-full-in { from { transform: translateY(100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .rc-host--player.rc-host--full { animation: none; } }
+.rc-host--full .rc-full-head {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 14px calc(20px + var(--safe-right)) 6px calc(20px + var(--safe-left));
+  font-family: var(--font-display); font-weight: 700; font-size: 18px; line-height: 1.2; text-align: center;
+}
+.rc-full-song { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-host--full .rc-live, .rc-host--full .rc-take { flex: 1 1 auto; min-height: 0; margin: 0; }
+.rc-host--full .rc-live { flex-direction: column; }
+.rc-host--full .rc-stage { flex: 1 1 auto; overflow-y: auto; gap: 18px; padding: 18px calc(24px + var(--safe-right)) 18px calc(24px + var(--safe-left)); }
+.rc-host--full .rc-timer { font-size: clamp(60px, 22vw, 84px); }
+.rc-host--full .rc-meter-canvas { height: 150px; }
+.rc-host--full .rc-dock {
+  border: 0; border-radius: 28px 28px 0 0; box-shadow: 0 -8px 30px rgba(36,27,61,.08);
+  padding: 22px calc(20px + var(--safe-right)) calc(26px + var(--safe-bottom)) calc(20px + var(--safe-left));
+}
+.rc-host--full .rc-take { overflow-y: auto; -webkit-overflow-scrolling: touch; gap: 0; }
+.rc-host--full .rc-review { border: 0; border-radius: 0; background: none; padding: 16px calc(24px + var(--safe-right)) 18px calc(24px + var(--safe-left)); }
+.rc-host--full .rc-trim { margin: 0 20px; }
+.rc-host--full .rc-sheet {
+  flex: 1 0 auto; border: 0; border-radius: 28px 28px 0 0; box-shadow: 0 -8px 30px rgba(36,27,61,.10);
+  padding: 18px calc(20px + var(--safe-right)) calc(26px + var(--safe-bottom)) calc(20px + var(--safe-left));
+}
 .rc-song-fixed { margin: 0; min-height: var(--tap); border-color: var(--accent); background: rgba(var(--accent-rgb),.09); cursor: default; }
 .rc-sheet-grip { align-self: center; width: 40px; height: 5px; border-radius: 3px; background: var(--line); }
 .rc-sheet-title { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 22px; line-height: 1.1; }
@@ -3692,6 +3727,9 @@ input[type="checkbox"] {
            steht im Player schon fest). Pause gibt es hier nicht — der REC ist am
            weiterlaufenden Song verankert (captureRecAnchor). -->
       <div class="rc-host rc-host--player" id="rec-host" data-state="idle">
+        <!-- Nur bildschirmfüllend (rc-host--full: Aufnahme läuft oder Take offen):
+             der Song, zu dem aufgenommen wird. -->
+        <div class="rc-full-head"><span class="rc-full-song" id="rec-full-song"></span></div>
         <div class="rc-live" id="rec-controls">
           <div class="rc-stage">
             <span class="rc-pill" aria-live="polite"><span class="rc-pill-dot" aria-hidden="true"></span><span id="rec-pill-text"></span></span>
