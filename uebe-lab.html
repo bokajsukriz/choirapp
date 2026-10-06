@@ -9,6 +9,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>Ausbildung</title>
+<!-- In der App eingebettet: nichts zeigen, bis der gespeicherte Stand geladen
+     und die Ansicht gewählt ist (unbooted() hebt es auf). Schon hier im Kopf,
+     sonst malt der Browser beim Nachladen von harmony.js/piano-samples.js
+     kurz die statische Rhythmus-Übersicht — beim Öffnen von „Hören“ blitzte
+     so ein anderer Bildschirm auf. -->
+<script>if (window.parent !== window) { document.documentElement.classList.add('is-booting'); setTimeout(() => document.documentElement.classList.remove('is-booting'), 4000); /* Notbremse */ }</script>
 <!--
   AUSBILDUNG (Datei: uebe-lab.html, früher „Spielplatz“) — Übe-Seite mit
   Rhythmus-Training (nachklatschen, vom Blatt), Gehörbildung
@@ -83,6 +89,24 @@
   /* ---- Rhythmus ---- */
   .head-tools { display: flex; align-items: center; gap: 6px; }
   .help-btn { width: 24px; height: 24px; flex: none; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: .72rem; font-weight: 800; line-height: 1; display: inline-grid; place-items: center; }
+  /* Nach der Auflösung: Nochmal-hören-Knöpfe in der Bühnenmitte. */
+  .replay-row { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .replay-row .k-btn { gap: 6px; }
+  /* Merkhilfe Intervalle (Songanfänge) */
+  .iv-songs { display: grid; gap: 10px; }
+  .iv-song { border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 10px 12px; }
+  .iv-song.is-off { opacity: .55; }
+  .iv-song.is-asked { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .25); }
+  .iv-song h3 { margin: 0 0 4px; font-size: .9rem; }
+  .iv-dir + .iv-dir { margin-top: 6px; }
+  .iv-dir-head { display: flex; align-items: center; justify-content: space-between; font-size: .7rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .iv-play { width: 34px; height: 34px; border-radius: 50%; background: rgba(var(--accent-rgb), .15); color: var(--accent-foreground, #db0a73); display: grid; place-items: center; }
+  .iv-play svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
+  .iv-dir ul { margin: 2px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+  .iv-dir li { font-size: .82rem; line-height: 1.3; }
+  .iv-dir li small { display: block; color: var(--muted); font-size: .7rem; font-weight: 600; }
+  .iv-cue { color: var(--accent-foreground, #db0a73); font-weight: 700; }
+  .iv-none { margin: 0; font-size: .76rem; color: var(--muted); }
   .help-btn[aria-expanded="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
   .help-text { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-size: .74rem; line-height: 1.45; }
   .help-text b { font-weight: 800; }
@@ -966,9 +990,10 @@
   .db-cell.is-ok i { background: var(--ok, #2f9e5b); border-color: var(--ok, #2f9e5b); }
   .db-cell.is-part i { background: var(--rep-bg, #FFF1D6); border-color: var(--rep-line, #e0a400); }
   .db-cell.is-miss i { border: 2px dashed var(--bad, #c62828); }
-  /* Töne in der Tonart: die Leiter liegt quer – links tief, rechts hoch, Halbtöne enger. */
+  /* Töne in der Tonart: die Leiter liegt quer – links tief, rechts hoch. Gleiche
+     Abstände (die engeren Halbtöne wirkten quer nur unregelmäßig). */
   .ear-page .answer-grid.is-ladder { display: flex; flex-direction: row; align-items: flex-start; gap: 0; }
-  .ear-page .rung, .ear-panel.ear-page:has(.slot-row.is-pattern) .rung:not(.is-top) { flex: 1 1 0; min-width: 0; margin: 0 calc(var(--gap, 10px) * .6) 0 0; display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
+  .ear-page .rung, .ear-panel.ear-page:has(.slot-row.is-pattern) .rung:not(.is-top) { flex: 1 1 0; min-width: 0; margin: 0 6px 0 0; display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
   .ear-page .rung.is-top { margin-right: 0; }
   .ear-page .rung.is-alt { margin-left: 0; }
   .ear-page .answer-grid.is-ladder { align-items: center; }
@@ -1098,6 +1123,19 @@
   .th-pad[data-hand="R"] { border-color: var(--hand-r); color: var(--hand-r); background: var(--hand-r-bg); }
   .th-pad[data-hand="L"] { border-color: var(--hand-l); color: var(--hand-l); background: var(--hand-l-bg); }
   .th-pad.is-you { border-width: 5px; }
+  .th-pad.is-rest { opacity: .35; border-style: dashed; }
+  /* Aufbau: drei Schritte nebeneinander, der aktuelle gefüllt in der Farbe der Akzente */
+  .th-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .th-steps button { width: 100%; font: inherit; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px;
+    border-radius: 12px; border: 1px solid var(--tint-line); background: var(--surface); color: var(--muted); cursor: pointer; padding: 4px 6px; }
+  .th-steps button span { width: 20px; height: 20px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 12px; background: var(--tint); color: var(--text); }
+  .th-steps .is-done button { color: var(--text); }
+  .th-steps .is-done button span { background: var(--text); color: var(--bg); }
+  .th-steps .is-now button { border: 2px solid var(--accent); color: var(--text); }
+  .th-steps .is-now button span { background: var(--accent); color: var(--accent-ink); }
+  .th-steps button:disabled { cursor: default; }
+  .th-steps button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .th-step-text { margin: 0; font-size: 14px; font-weight: 600; }
   .th-pad.is-lit[data-hand="R"] { animation: th-lit-r .22s ease-out; } .th-pad.is-lit[data-hand="L"] { animation: th-lit-l .22s ease-out; }
   .th-pad.is-tap { animation: tap .16s ease-out; }
   @keyframes th-lit-r { from { background: var(--hand-r); color: #fff; } to { background: var(--hand-r-bg); } }
@@ -1168,7 +1206,7 @@
     <!-- Liste der Übungsarten (Start) und Übungsansicht (siehe renderArea). -->
     <div class="mode-list-wrap" data-list="ear"></div>
     <div data-exview="ear" hidden>
-    <div class="ex-head"><button class="back-btn" type="button" data-back="ear" data-own-back-btn aria-label="Zurück zu Hören" title="Zurück zu Hören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Hören</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="icon-btn" type="button" data-ear="settings" aria-label="Einstellungen: was geübt wird" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
+    <div class="ex-head"><button class="back-btn" type="button" data-back="ear" data-own-back-btn aria-label="Zurück zu Hören" title="Zurück zu Hören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Hören</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="icon-btn" type="button" data-ear="songs" hidden aria-label="Merkhilfe: bekannte Songanfänge je Intervall" title="Songanfänge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></button><button class="icon-btn" type="button" data-ear="settings" aria-label="Einstellungen: was geübt wird" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
     <!-- Gerüst wie Singen (Anweisung Hören-UI): Stufen-Karte, Phasenleiste
          Hören · Du · Lösung, Bühne mit fester Höhe (Zähler oben rechts,
          Meldungszeile), Antwortfeld mit fester Höhe, Daumen-Dock. -->
@@ -1335,13 +1373,7 @@
   'use strict';
 
   if (new URLSearchParams(location.search).has('embedded')) document.documentElement.classList.add('is-embedded');
-  // In der App mit Direkt-Aufruf (Klatsch-Grooves, Schnellstart, Übung): bis
-  // der gespeicherte Stand geladen und die Ansicht gewählt ist, nichts zeigen –
-  // sonst blitzt kurz die Übersicht des Bereichs auf (unbooted() hebt es auf).
-  if (window.parent !== window && /[?&](grooves|mode|from)=/.test(location.search)) {
-    document.documentElement.classList.add('is-booting');
-    setTimeout(() => document.documentElement.classList.remove('is-booting'), 4000); // Notbremse
-  }
+  // is-booting (eingebettet bis zum geladenen Stand unsichtbar): siehe <head>.
   // Eigener runder Zurück-Knopf (ueben.css): eingebettet schließt der Knopf im
   // Seitenkopf das Tool, die App blendet ihren Schließen-Knopf dann aus
   // (syncToolFrameBack in app.js). Eigenständig gibt es nichts zu schließen.
@@ -2814,6 +2846,16 @@
   const TUNING_WANDER_CENTS = 1;
   const SOFT_GAIN = .74; // engine.soft: so laut wie engine.keys bei gleicher velocity (selfCheckAudio)
   const CLAP_WITH_ACCOMP = 3;
+  /* Echte Samples (samples/drums/, VCSL) für Vorklatschen und Begleit-Groove,
+     sobald geladen (loadSampleGroup('drums') beim Start der Engine); bis dahin
+     bzw. offline die Synthese. Musikpädagogische Empfehlung: in der Begleitung
+     snare-soft und rim statt Clap/voller Snare (sonst klingt sie wie das
+     Vorklatschen), leise Hi-Hat. Klick, Holzblock, Zwei Hände, Intonation und
+     Halteton bleiben bewusst synthetisch (punktgenau, ohne Ausklang). Die
+     Pegel sind so gewählt, dass die Samples nach Hochpass (300 Hz) so laut
+     wie die Synthese sind — selfCheckAudio prüft beide Wege. */
+  const CLAP_SAMPLE_GAIN = .076;
+  const DRUM_SAMPLE = { kick: ['kick', .4], snare: ['snare-soft', .15], rim: ['rim', .11], hat: ['hat-soft', .066], open: ['open', .065] };
   /** Hi-Hat-Raster (nur Stufe 'full'): Ticks `at` innerhalb jeder Periode. */
   function hatGridFor({ shuffle = false, triplets = false, sixteenths = false }) {
     if (shuffle) return { period: 12, at: [0, 8] };
@@ -2998,6 +3040,8 @@
       const ctx = new Ctx({ latencyHint: hint });
       this.ctx = ctx;
       this.hint = hint;
+      // Schlagzeug-Samples (≈ 100 kB) für Vorklatschen und Begleitung vorladen.
+      loadSampleGroup('drums').catch(() => {});
       this.master = ctx.createGain();
       this.master.gain.value = .8;
       const limiter = ctx.createDynamicsCompressor();
@@ -3070,6 +3114,8 @@
     /** kind: 'kick' | 'snare' | 'rim' | 'hat'. */
     drum(kind, time, vel = 1, dest) {
       const v = vel * ACCOMP_GAIN;
+      const smp = !this.synthOnly && DRUM_SAMPLE[kind] && samples.drums?.[DRUM_SAMPLE[kind][0]];
+      if (smp) { this.sampleHit(smp, time, v * DRUM_SAMPLE[kind][1], dest); return; }
       switch (kind) {
         case 'kick': {
           const ctx = this.ctx;
@@ -3113,7 +3159,20 @@
       src.start(time); src.stop(time + length + .02);
     },
 
+    /** Ein Schlagzeug-Sample; rate leicht verstimmt (Vorklatschen: lebendiger). */
+    sampleHit(buf, time, gain, dest, rate = 1) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf; src.playbackRate.value = rate;
+      const g = this.ctx.createGain();
+      g.gain.value = gain;
+      src.connect(g).connect(dest || this.master);
+      src.start(time);
+    },
+
     clap(time, dest, gain = 1) {
+      const smp = !this.synthOnly && samples.drums?.clap;
+      // Echtes Klatschen: je Schlag Tonhöhe ±3 % und Pegel ±2 dB, sonst klingt es mechanisch.
+      if (smp) { this.sampleHit(smp, time, CLAP_SAMPLE_GAIN * gain * 10 ** ((Math.random() * 4 - 2) / 20), dest, 1 + (Math.random() * .06 - .03)); return; }
       [0, .012, .026].forEach((o, i) => this.burst(time + o, { cutoff: 1500, q: 3.2, length: i === 2 ? .11 : .04, volume: (i === 2 ? .3 : .18) * gain }, dest));
     },
 
@@ -4377,7 +4436,7 @@
     // eingeschaltet (Vom Blatt: Noten an). Wiedergabe-Marke nicht in deinem Teil.
     if (mode === 'hands') {
       const notes = !!(ha?.notes || ha?.read);
-      return { mark: notes && phase !== 'you', timeline: false, liveTaps: false, padBeats: phase === 'count', realLayout: notes, notes, grid: !!ha?.grid, syl: !!ha?.syl };
+      return { mark: notes && phase !== 'you', timeline: false, liveTaps: false, padBeats: phase === 'count' || phase === 'gap', realLayout: notes, notes, grid: !!ha?.grid, syl: !!ha?.syl };
     }
     if (mode === 'duo') return all;
     const reading = mode === 'read' || mode === 'along' || (mode === 'echo' && showNotes && !course);
@@ -7881,6 +7940,11 @@
    *  Becken und die Klatscher der Band (bandclap, leiser als das Vorklatschen). */
   function playDownbeatEvent(ev, time, bus) {
     if (bus.sampled && samples.buf && playSampledEvent(ev, time, bus)) return;
+    // Klang „Einfach“ bleibt ganz Synthese (auch Klatscher und Schlagzeug).
+    engine.synthOnly = !bus.sampled;
+    try { playDownbeatSynth(ev, time, bus); } finally { engine.synthOnly = false; }
+  }
+  function playDownbeatSynth(ev, time, bus) {
     const A = ACCOMP_GAIN;
     switch (ev.kind) {
       case 'bass': engine.drumTone(time, { freq: noteHz(ev.midi), type: 'triangle', gain: .2, decay: ev.long ? 1.2 : ev.dur ? clamp(ev.dur * .9, .12, 1.2) : .45, filter: { type: 'lowpass', freq: 900 } }, bus); break;
@@ -8686,7 +8750,7 @@
       ${!helps.length && !info.length ? '<p class="foot-note" style="text-align:left">Hier gibt es gerade nichts zu helfen – nach der Antwort steht hier die Erklärung.</p>' : ''}`;
     $('.sheet-hint').textContent = '';
   }
-  const EAR_MAIN_ICONS = { play: '<path d="M8 5v14l11-7z"/>', next: '<path d="M5 11h10l-4-4 1.4-1.4L19 12l-6.6 6.4L11 17l4-4H5z"/>', 'confirm-part': '<path d="m5 12.5 4.5 4.5L19 7.5"/>' };
+  const EAR_MAIN_ICONS = { play: '<path d="M8 5v14l11-7z"/>', next: '<path d="M5 11h10l-4-4 1.4-1.4L19 12l-6.6 6.4L11 17l4-4H5z"/>', 'confirm-part': '<path d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6 12-12-1.4-1.4z"/>' };
   function renderEarDock() {
     const d = earDock();
     const main = $('[data-ear="main"]');
@@ -8755,6 +8819,7 @@
 
   function renderEar() {
     $('[data-exview="ear"] .mode-title').textContent = modeName('ear', ear.mode);
+    $('[data-ear="songs"]').hidden = ear.mode !== 'interval';
     $('.ear-page').classList.toggle('is-downbeat', isRhythmEar(ear.mode));
     // Im Rhythmus-Bereich (Einsatz finden): Zurück führt zur Rhythmus-Übersicht.
     const home = downbeatInRhythm() ? 'rhythm' : 'ear';
@@ -9067,6 +9132,86 @@
     renderEarDock();
   }
 
+  /* ---- Merkhilfe Intervalle: bekannte Songanfänge (Noten-Knopf neben dem Zahnrad) ----
+     Mit einer Musikpädagogin für einen Popchor (20–40 Jahre) zusammengestellt:
+     nur Stellen, bei denen das Intervall sicher stimmt — lieber eine Lücke als
+     ein falsches Beispiel. [Halbtöne, Richtung, Titel, Herkunft, Stelle]. */
+  const INTERVAL_SONGS = [
+    [1, 'up', 'Der weiße Hai', 'John Williams, Filmmusik', 'die ersten zwei Töne'],
+    [1, 'up', 'Der rosarote Panther', 'Henry Mancini, Filmmusik', 'die ersten zwei Töne'],
+    [1, 'up', 'White Christmas', 'Bing Crosby', 'I’m – drea(ming)'],
+    [1, 'up', 'Ode an die Freude', 'Beethoven', '(Freu)de – schö(ner)'],
+    [1, 'down', 'Für Elise', 'Beethoven', 'die ersten zwei Töne'],
+    [1, 'down', 'Fly Me to the Moon', 'Frank Sinatra', 'Fly – me'],
+    [1, 'down', 'Joy to the World', 'Weihnachtslied', 'Joy – to'],
+    [2, 'up', 'Never Gonna Give You Up', 'Rick Astley', 'Ne – ver (Refrain)'],
+    [2, 'up', 'Happy Birthday', 'Geburtstagslied', '(Hap)py – birth(day)'],
+    [2, 'up', 'Stille Nacht', 'Weihnachtslied', 'Stil – le'],
+    [2, 'up', 'Bruder Jakob', 'Kanon', 'Bru – der'],
+    [2, 'down', 'Yesterday', 'The Beatles', 'Yes – ter(day)'],
+    [2, 'down', 'The Final Countdown', 'Europe', 'Synth-Riff, Ton 1 – 2'],
+    [2, 'down', 'Mary Had a Little Lamb', 'Kinderlied', 'Ma – ry'],
+    [3, 'up', 'Seven Nation Army', 'The White Stripes', 'Riff, Ton 2 – 3'],
+    [3, 'up', 'Smoke on the Water', 'Deep Purple', 'Riff, Ton 1 – 2'],
+    [3, 'up', 'He’s a Pirate (Fluch der Karibik)', 'Klaus Badelt / Hans Zimmer', 'Thema, Ton 1 – 2'],
+    [3, 'up', 'Game of Thrones', 'Ramin Djawadi, Serienmusik', 'Thema, Ton 2 – 3'],
+    [3, 'up', 'Guten Abend, gut’ Nacht', 'Brahms, Wiegenlied', '(Gu)ten – A(bend)'],
+    [3, 'down', 'Hey Jude', 'The Beatles', 'Hey – Jude'],
+    [3, 'down', 'Hänschen klein', 'Kinderlied', 'Hän – schen'],
+    [3, 'down', 'Kuckuck, Kuckuck', 'Kinderlied', 'Ku – ckuck'],
+    [4, 'up', 'Oh When the Saints', 'Spiritual', 'Oh – when'],
+    [4, 'up', 'An der schönen blauen Donau', 'Johann Strauss', 'Walzerthema, Ton 2 – 3'],
+    [4, 'down', 'Imperial March (Star Wars)', 'John Williams', 'Ton 3 – 4'],
+    [4, 'down', 'Swing Low, Sweet Chariot', 'Spiritual', 'Swing – low'],
+    [4, 'down', '5. Sinfonie', 'Beethoven', 'ta-ta-ta – taa'],
+    [5, 'up', 'Hedwig’s Theme (Harry Potter)', 'John Williams', 'Ton 1 – 2'],
+    [5, 'up', 'Game of Thrones', 'Ramin Djawadi, Serienmusik', 'Thema, Ton 1 – 2'],
+    [5, 'up', 'Amazing Grace', 'Gospel', 'A – ma(zing)'],
+    [5, 'up', 'Treulich geführt (Here Comes the Bride)', 'Wagner, Lohengrin', 'Treu – lich'],
+    [5, 'up', 'O Tannenbaum', 'Weihnachtslied', 'O – Tan(nenbaum)'],
+    [5, 'down', 'Tetris-Melodie', 'Videospiel (Korobeiniki)', 'Ton 1 – 2'],
+    [5, 'down', 'Eine kleine Nachtmusik', 'Mozart', 'Ton 1 – 2'],
+    [6, 'up', 'Maria', 'West Side Story', 'Ma – ri(a)'],
+    [7, 'up', 'Star Wars (Hauptthema)', 'John Williams', 'Fanfare, Ton 1 – 2'],
+    [7, 'up', 'Moon River', 'Frühstück bei Tiffany', 'Moon – Ri(ver)'],
+    [7, 'up', 'Morgen kommt der Weihnachtsmann', 'Kinderlied (Twinkle, Twinkle)', '(Mor)gen – kommt'],
+    [7, 'down', 'The Final Countdown', 'Europe', 'Synth-Riff, Ton 3 – 4'],
+    [7, 'down', 'Die Familie Feuerstein', 'Titelsong', 'Flint – stones'],
+    [9, 'up', 'My Bonnie Is Over the Ocean', 'Volkslied', 'My – Bon(nie)'],
+    [9, 'up', 'Jingle Bells (Strophe)', 'Weihnachtslied', 'Dash – ing'],
+    [10, 'up', 'Somewhere', 'West Side Story', 'There’s – a (place for us)'],
+    [10, 'up', 'Raumschiff Enterprise', 'Star Trek, Titelmusik', 'Fanfare, Ton 1 – 2'],
+    [12, 'up', 'Somewhere Over the Rainbow', 'Der Zauberer von Oz', 'Some – where'],
+    [12, 'down', 'Super Mario Bros.', 'Koji Kondo, Videospiel', 'Titelmelodie, hohes – tiefes G'],
+  ];
+  function renderIntervalSongs() {
+    const chosen = ear.settings.intervals;
+    const asked = ear.task?.kind === 'interval' && ear.revealed ? ear.task.semis : null;
+    const rows = INTERVALS.map(([n, name]) => {
+      const songs = INTERVAL_SONGS.filter(([iv]) => iv === n);
+      const dirs = [['up', '↑ aufwärts'], ['down', '↓ abwärts']].map(([dir, label]) => {
+        const list = songs.filter(([, d]) => d === dir);
+        if (!list.length) return '';
+        return `<div class="iv-dir"><div class="iv-dir-head"><span>${label}</span><button type="button" class="iv-play" data-iv-play="${n}:${dir}" aria-label="${esc(name)} ${dir === 'up' ? 'aufwärts' : 'abwärts'} anhören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div>
+          <ul>${list.map(([, , title, who, cue]) => `<li><b>${esc(title)}</b> <span class="iv-cue">${esc(cue)}</span><small>${esc(who)}</small></li>`).join('')}</ul></div>`;
+      }).join('');
+      return `<section class="iv-song${chosen.includes(n) ? '' : ' is-off'}${asked === n ? ' is-asked' : ''}" data-iv="${n}"><h3>${esc(name)}</h3>${dirs || '<p class="iv-none">Kein sicheres Beispiel – hier hilft nur Hören und Vergleichen.</p>'}</section>`;
+    }).join('');
+    $('.sheet-body').innerHTML = `<p class="foot-note" style="text-align:left;margin-top:0">Ein bekannter Liedanfang hilft, ein Intervall wiederzuerkennen: Sing den Anfang innerlich und vergleiche. ▶ spielt das Intervall vor. Blasser = gerade nicht in deiner Auswahl.</p><div class="iv-songs">${rows}</div>`;
+    if (asked) $(`.iv-song[data-iv="${asked}"]`)?.scrollIntoView({ block: 'start' });
+  }
+  /** ▶ in der Merkhilfe: Intervall vom c′ aus (abwärts vom c″). */
+  async function playIntervalDemo(semis, dir) {
+    try { await engine.start(); } catch { return; }
+    clearEarTimers();
+    engine.fadeBus(ear.bus);
+    ear.bus = engine.newBus();
+    const t = engine.ctx.currentTime + .05;
+    const a = dir === 'down' ? 72 : 60, b = dir === 'down' ? 72 - semis : 60 + semis;
+    engine.keys(a, t, .75, { velocity: .22, dest: ear.bus });
+    engine.keys(b, t + .8, 1.1, { velocity: .22, dest: ear.bus });
+  }
+
   /* ---- Einstellungen (Zahnrad) — ein Blatt für Hören und Rhythmus ---- */
 
   let sheetKind = 'ear';
@@ -9078,7 +9223,7 @@
 
   function openSettings(kind) {
     sheetKind = kind;
-    $('#sheet-title').textContent = kind === 'course' ? `Alle Lektionen · ${courseCounts().done}/${courseCounts().total} geschafft` : kind === 'rhythm' ? 'Rhythmus-Einstellungen' : kind === 'singhelp' || kind === 'earhelp' || kind === 'handshelp' || kind === 'singtaphelp' ? 'Hilfen' : kind === 'hands' ? 'Zwei Hände' : kind === 'singtap' ? 'Singen und klopfen' : 'Einstellungen';
+    $('#sheet-title').textContent = kind === 'songs' ? 'Intervalle: Songanfänge' : kind === 'course' ? `Alle Lektionen · ${courseCounts().done}/${courseCounts().total} geschafft` : kind === 'rhythm' ? 'Rhythmus-Einstellungen' : kind === 'singhelp' || kind === 'earhelp' || kind === 'handshelp' || kind === 'singtaphelp' ? 'Hilfen' : kind === 'hands' ? 'Zwei Hände' : kind === 'singtap' ? 'Singen und klopfen' : 'Einstellungen';
     lastSettingsBtn = document.activeElement;
     $('.sheet').hidden = false;
     renderSettings();
@@ -9092,6 +9237,7 @@
     if (sheetKind === 'singhelp') { renderSing(); $('[data-sing="helps"]')?.focus(); return; }
     if (sheetKind === 'singtaphelp' || sheetKind === 'singtap') { singtap.topKey = ''; renderSingTap(); $(`[data-singtap="${sheetKind === 'singtap' ? 'settings' : 'helps'}"]`)?.focus(); return; }
     if (sheetKind === 'handshelp' || sheetKind === 'hands') { hands.topKey = ''; renderHands(); $(`[data-hands="${sheetKind === 'hands' ? 'settings' : 'helps'}"]`)?.focus(); return; }
+    if (sheetKind === 'songs') { $('[data-ear="songs"]')?.focus(); return; }
     if (sheetKind === 'earhelp') { renderEar(); $(downbeatInRhythm() ? '[data-ear="db-helps"]' : '[data-ear="helps"]')?.focus(); return; }
     if (sheetKind === 'sing') {
       renderSing();
@@ -9121,7 +9267,7 @@
   }
 
   function settingsProblem() {
-    if (sheetKind === 'rhythm' || sheetKind === 'sing' || sheetKind === 'singhelp' || sheetKind === 'earhelp' || sheetKind === 'course') return '';
+    if (sheetKind === 'rhythm' || sheetKind === 'sing' || sheetKind === 'singhelp' || sheetKind === 'earhelp' || sheetKind === 'songs' || sheetKind === 'course') return '';
     const s = ear.settings;
     if (ear.mode === 'interval') {
       if (s.intervals.length < 2) return 'Bitte mindestens zwei Intervalle auswählen.';
@@ -9246,6 +9392,7 @@
     if (sheetKind === 'singtap') { renderSingTapSettings(); return; }
     if (sheetKind === 'hands') { renderHandsSettings(); return; }
     if (sheetKind === 'earhelp') { renderEarHelps(); return; }
+    if (sheetKind === 'songs') { renderIntervalSongs(); return; }
     if (sheetKind === 'sing') {
       // Einstellungen der Übung (früher über der Bühne): nur, was für sie gilt.
       const ex = views.voice === 'list' ? '' : `${SOLFA_MODES.includes(sing.mode) ? '<span class="sub-label">Silben</span><div class="chip-row" data-chips="solfa"></div>' : ''}
@@ -12051,6 +12198,9 @@
     fill.setAttribute('height', h.toFixed(2));
   }
 
+  /** Nach der Auflösung: zwei Knöpfe in der Bühnenmitte zum Nochmal-Hören. */
+  const singReplayHtml = (btns) => `<div class="replay-row">${btns.map(([act, label]) => `<button type="button" class="k-btn k-btn--hear" data-sing="${act}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>${label}</button>`).join('')}</div>`;
+
   function renderSing() {
     $('[data-exview="voice"] .mode-title').textContent = modeName('voice', sing.mode);
     const tuner = sing.mode === 'tuner';
@@ -12105,11 +12255,13 @@
       const ivPhase = sing.phase === 'sing' ? 'Jetzt singen und gut eine Sekunde ruhig halten' : phaseText[sing.phase] || '';
       sub.textContent = `${sing.showSolfa ? `${intervalSolfa(task.semis, task.dir)} · ` : ''}Grundton ${noteLabel(task.base)}${ivPhase ? ` · ${ivPhase}` : ''}`;
       if (sing.phase === 'inner') view.innerHTML = innerDotsHtml(task);
+      if (sing.phase === 'result') view.innerHTML = singReplayHtml([['replay', 'Grundton'], ['resolve', 'Auflösung']]);
     } else if (task.mode === 'findTone') {
       prompt.textContent = task.cue === 'a4' ? `Singe ${task.text}` : task.text;
       const findPhase = sing.phase === 'sing' ? 'Jetzt singen und gut eine Sekunde ruhig halten' : phaseText[sing.phase] || '';
       const cueText = { cadence: ' · nach der Kadenz', popIntro: ' · nach dem Intro', satb: ' · der Akkord erklingt, dann fehlt deine Stimme' }[task.cue] || '';
       sub.textContent = `${task.cue === 'a4' ? 'nur das a′ als Bezug' : `${keyName(task.key, task.kmode)}${cueText}`}${findPhase ? ` · ${findPhase}` : ''}`;
+      if (sing.phase === 'result') view.innerHTML = singReplayHtml([['replay', task.cue === 'a4' ? 'Das a′' : 'Bezug'], ['target', 'Zielton']]);
     } else if (task.mode === 'inTime') {
       const running = ['cue', 'sing'].includes(sing.phase);
       prompt.textContent = sing.phase === 'sing' ? 'Jetzt du – auf „da“' : running ? (task.variant === 'echo' ? 'Hör zu' : 'Lies mit – gleich bist du dran') : 'Im Takt';
@@ -13121,7 +13273,7 @@
     const dock = `<div class="pad-wrap g-dock"><button class="tap-pad grooves-pad" type="button" data-phase="${res ? 'done' : 'idle'}" aria-label="${running ? 'Klatschfläche' : 'Übung starten'}"><span class="pad-beats"></span><span class="pad-label">${res ? 'Nochmal: tippen' : 'Tippen zum Starten'}</span></button>
       ${tempoDragHtml('grooves', groovesBpm(), running)}<span class="tempo-hint" aria-hidden="true">hoch = schneller · runter = langsamer</span>
       <button class="pad-corner pad-stop" type="button" data-grooves-act="stop" aria-label="Stoppen"${running ? '' : ' hidden'}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button></div>`;
-    const gear = `<div class="head-tools"><button class="icon-btn" type="button" data-grooves-act="settings" aria-expanded="${!!gv.settings}" aria-label="Einstellungen: Eingabe" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></button></div>`;
+    const gear = `<div class="head-tools"><button class="icon-btn" type="button" data-grooves-act="settings" aria-expanded="${!!gv.settings}" aria-label="Einstellungen: Eingabe" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div>`;
     host.innerHTML = `<div class="ex-head"><button class="back-btn" type="button" data-grooves-back aria-label="Zurück zur Liste" title="Zurück zur Liste"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
       <div class="ex-title"><span class="ex-area" aria-hidden="true">Klatsch-Grooves${rv ? ` · Wiederholen ${rv.i + 1}/${rv.queue.length}` : ''}</span><h2 class="mode-title">${esc(l.name)}</h2></div>${gear}</div>
       <section class="panel g-page">${gv.settings ? `<div class="g-settings">${inputRow}</div>` : ''}${mixer}<div class="k-stage g-card">${notes}${card}${rate}</div>${tools}${delayCard}</section>${dock}`;
@@ -13305,7 +13457,10 @@
      ------------------------------------------------------------------------ */
   const freshFigProg = () => ({ sub: 'a', good: 0, again: 0, fpm: {}, gridOffered: {} });
   const hands = {
-    level: 1, bars: 2, bpm: 76, click: true, read: false, oneHand: '', // oneHand: '' | 'L' | 'R' (Hand, die die App beim Mitklopfen voll spielt)
+    level: 1, bars: 2, bpm: 60, click: true, read: false, oneHand: '', // oneHand: '' | 'L' | 'R' (Hand, die die App beim Mitklopfen voll spielt)
+    // Stufe 1–4: build = Hände einzeln aufbauen (Schritt 0 Stütze-Hand, 1 Rhythmus-Hand, 2 beide),
+    // gaps = ein Takt nur Klick zwischen Hören, Mitklopfen und Allein. step: Schritt der aktuellen Aufgabe.
+    build: true, gaps: true, step: 0, nextPhase: '',
     aids: { notes: false, grid: false, syl: false }, // Hilfen, standardmäßig aus (gespeichert)
     st: { starterNext: {}, count: {}, poolUsed: {}, recent: [] },
     fig: { 5: freshFigProg(), 6: freshFigProg() },
@@ -13318,23 +13473,28 @@
   const handsBpm = (task) => (task?.kind === 'figure' ? figBpm(task.fig, figFpm(hands.fig[task.level], task.fig)) : hands.bpm);
 
   /** Zeitplan einer Runde (rein, in Ticks): Einzähler (ein Takt), dann je
-   *  Teil die ganze Aufgabe. events: Klicks (Einzähler immer, sonst nur mit
-   *  `click`) und Schläge der App { tick, hand ('R' | 'L' | 'S' = ein Klang),
-   *  gain, phase }. */
-  function handsTimeline(task, { read = false, click = true, oneHand = '' } = {}) {
+   *  Teil die ganze Aufgabe; mit `gaps` vor jedem weiteren Teil ein Takt
+   *  Pause (nur Klick, zum Ankommen). events: Klicks (Einzähler und Pausen
+   *  immer, sonst nur mit `click`) und Schläge der App { tick, hand ('R' |
+   *  'L' | 'S' = ein Klang), gain, phase }. task.only (Aufbau-Schritt): nur
+   *  diese Hand klingt und wird geklopft. */
+  function handsTimeline(task, { read = false, click = true, oneHand = '', gaps = false } = {}) {
     const m = METERS[task.meter];
     const T = m.ticks, len = task.R.total;
     const phases = [{ phase: 'count', from: 0, to: T }];
     let t = T;
-    for (const phase of read ? ['you'] : ['listen', 'along', 'you']) { phases.push({ phase, from: t, to: t + len }); t += len; }
+    (read ? ['you'] : ['listen', 'along', 'you']).forEach((phase, i) => {
+      if (gaps && i) { phases.push({ phase: 'gap', from: t, to: t + T }); t += T; }
+      phases.push({ phase, from: t, to: t + len }); t += len;
+    });
     const events = [];
     for (const ph of phases) {
-      if (ph.phase === 'count' || click) for (let k = ph.from; k < ph.to; k += m.beat) events.push({ tick: k, type: 'click', level: beatLevel(m, mod(k - ph.from, T)), phase: ph.phase });
-      const voices = task.single ? [['S', task.single]] : [['R', task.R], ['L', task.L]];
+      if (ph.phase === 'count' || ph.phase === 'gap' || click) for (let k = ph.from; k < ph.to; k += m.beat) events.push({ tick: k, type: 'click', level: beatLevel(m, mod(k - ph.from, T)), phase: ph.phase });
+      const voices = task.single ? [['S', task.single]] : task.only ? [[task.only, task[task.only]]] : [['R', task.R], ['L', task.L]];
       for (const [hand, p] of voices) {
         let gain = 0;
         if (ph.phase === 'listen') gain = 1;
-        else if (ph.phase === 'along') gain = task.app ? (hand === task.app ? 1 : 0) : oneHand && !task.single ? (hand === oneHand ? 1 : 0) : .5;
+        else if (ph.phase === 'along') gain = task.app ? (hand === task.app ? 1 : 0) : task.only ? .8 : oneHand && !task.single ? (hand === oneHand ? 1 : 0) : .5;
         else if (ph.phase === 'you') gain = task.app && hand === task.app ? 1 : 0;
         if (gain) for (const o of p.onsets) events.push({ tick: ph.from + o, type: 'hit', hand, gain, phase: ph.phase });
       }
@@ -13342,6 +13502,36 @@
     events.sort((a, b) => a.tick - b.tick);
     const you = phases[phases.length - 1];
     return { phases, events, youFrom: you.from, end: you.to };
+  }
+
+  /* ---- Aufbau Schritt für Schritt (Stufe 1–4): erst die Stütze-Hand allein
+     (der Anker), dann die Rhythmus-Hand allein, dann beide. Jeder Schritt ist
+     eine eigene Runde mit Hören → Mitklopfen → Allein und eigener Auswertung;
+     nur Schritt 3 (beide) zählt für Serie und Fortschritt. ---- */
+  const HANDS_STEP_COUNT = 3;
+  const handsBuildOn = () => hands.build && hands.level <= 4 && !hands.read;
+  /** Hand eines Einzelschritts (0: Stütze, 1: Rhythmus), Schritt 2: null. */
+  const handsStepHand = (task, step) => (step === 0 ? task.support : step === 1 ? otherHand(task.support) : null);
+  /** Aufgabe für einen Schritt: Einzelschritt = nur diese Hand hören, klopfen, auswerten. */
+  function handsStepTask(task, step) {
+    const h = handsStepHand(task, step);
+    return h ? { ...task, only: h, you: h, step } : task;
+  }
+  /** Was eine Hand klopft, in Worten (für die Anleitung je Schritt). */
+  function handsVoiceWord(task, h) {
+    if (h !== task.support) return task.kind === 'pool' ? 'den Rhythmus aus dem Kurs' : 'den Rhythmus';
+    const p = task[h], m = METERS[task.meter];
+    const every = (step) => p.onsets.length === p.total / step && p.onsets.every((t) => t % step === 0);
+    if (every(m.unit)) return 'den Puls, auf jeden Schlag';
+    if (m.unit === 12 && every(24)) return 'Halbe, auf jeden zweiten Schlag';
+    return task.level === 3 ? 'die ruhigere Stimme' : 'die Begleitung';
+  }
+  /** Anleitung zum aktuellen Schritt (vor dem Start und nach der Runde). */
+  function handsStepText(task, step) {
+    const sup = task ? task.support : HANDS_SUPPORT[hands.level];
+    const h = step === 0 ? sup : step === 1 ? otherHand(sup) : null;
+    if (h) return `Schritt ${step + 1}: nur die ${HAND_WORD[h]} Hand${task ? ` – sie klopft ${handsVoiceWord(task, h)}` : ''}. Die andere Hand ruht.`;
+    return `Schritt 3: beide Hände zusammen. Die ${HAND_WORD[sup]} Hand trägt, die ${HAND_WORD[otherHand(sup)]} spielt darüber.`;
   }
 
   /** Klang einer Hand: Samples der Song-Engine (R Tom hoch, L Tom tief, ein
@@ -13371,19 +13561,22 @@
     if (!samples.drums) await Promise.race([loadSampleGroup('drums').catch(() => {}), new Promise((ok) => setTimeout(ok, 3000))]);
     if (!again || !hands.task) {
       const lv = hands.level;
+      // Neue Aufgabe nach einer fertigen beginnt wieder bei Schritt 1; die erste
+      // Aufgabe übernimmt einen vorher angetippten Schritt.
+      if (hands.task) hands.step = 0;
       hands.task = lv <= 4 ? nextHandsTask(lv, hands.st, { bars: hands.bars })
         : nextFigTask(lv, hands.fig[lv], hands.st, { bars: hands.bars, prev: hands.task?.kind === 'figure' ? hands.task : null });
       hands.notesFor = null;
     }
-    const task = hands.task;
+    const task = handsBuildOn() ? handsStepTask(hands.task, hands.step) : hands.task;
     const bpm = handsBpm(task);
     const m = METERS[task.meter];
-    const tl = handsTimeline(task, { read: hands.read, click: hands.click, oneHand: hands.level <= 4 ? hands.oneHand : '' });
+    const tl = handsTimeline(task, { read: hands.read, click: hands.click, oneHand: hands.level <= 4 && !task.only ? hands.oneHand : '', gaps: hands.gaps && !hands.read });
     const ctx = engine.ctx;
     const r = { tl, task, bpm, tickSec: 60 / bpm / m.ref, t0: ctx.currentTime + .15, idx: 0, flashIdx: 0, taps: [], bus: engine.newBus({ reverb: false }), playing: true, judged: false };
     r.youStart = r.t0 + tl.youFrom * r.tickSec;
     r.endAt = r.t0 + tl.end * r.tickSec;
-    hands.run = r; hands.phase = 'count'; hands.msg = ''; hands.offerGrid = false; hands.last = null;
+    hands.run = r; hands.phase = 'count'; hands.nextPhase = tl.phases[1]?.phase || ''; hands.msg = ''; hands.offerGrid = false; hands.last = null;
     const click = engine.ctx.createGain();
     click.gain.value = .8;
     click.connect(r.bus);
@@ -13464,6 +13657,13 @@
     const msgs = [];
     if (res.swapped) { hands.msg = 'Hände vertauscht? Links ist L (tief), rechts ist R (hoch). Die Runde zählt nicht.'; return; }
     for (const h of ['R', 'L']) if (res.pull[h]) msgs.push(pullText(h));
+    if (task.only) { // Aufbau: eine Hand allein — Rückmeldung, aber keine Serie und kein Fortschritt
+      const ok = res.key === 'gut' || res.key === 'okay';
+      const next = task.step === 0 ? `die ${HAND_WORD[otherHand(task.only)]} Hand allein` : 'beide Hände zusammen';
+      msgs.unshift(ok ? `Sitzt. Als Nächstes: ${next}.` : `Die ${HAND_WORD[task.only]} Hand ruhig noch einmal – oder etwas langsamer.`);
+      hands.msg = msgs.join(' ');
+      return;
+    }
     if (res.smear) msgs.push(HANDS_SMEAR_TEXT[res.smear]);
     hands.goodRun = res.key === 'gut' ? hands.goodRun + 1 : 0;
     if (task.kind === 'figure') {
@@ -13498,12 +13698,16 @@
     hands.frame = requestAnimationFrame(handsFrame);
     const { tick, ph } = handsNow(r);
     const phase = ph ? ph.phase : tick < 0 ? 'count' : 'wait';
-    if (phase !== hands.phase) { hands.phase = phase; renderHands(); }
-    // Vorzähler: Punkte je Zählzeit
+    if (phase !== hands.phase) {
+      hands.phase = phase;
+      hands.nextPhase = ph ? r.tl.phases[r.tl.phases.indexOf(ph) + 1]?.phase || '' : '';
+      renderHands();
+    }
+    // Vorzähler und Pausentakte: Punkte je Zählzeit
     const m = METERS[r.task.meter];
     const dots = $('.th-count');
     if (dots) {
-      const beat = phase === 'count' ? Math.floor(Math.max(0, tick) / m.beat) : -1;
+      const beat = phase === 'count' || phase === 'gap' ? Math.floor(Math.max(0, tick - (ph?.from || 0)) / m.beat) : -1;
       if (dots.dataset.beat !== String(beat)) {
         dots.dataset.beat = String(beat);
         [...dots.children].forEach((d, i) => d.classList.toggle('is-on', i <= beat));
@@ -13543,7 +13747,7 @@
    *  übereinander (gemeinsames proportionales Layout), in der Farbe ihrer
    *  Fläche; Stufe 5/6 dazu die Zeile „Zusammen“ (auch bei Silben allein). */
   function handsNotesSvg(task, { heads = true, syl = false, together = false } = {}) {
-    const voices = task.single ? [['S', task.single]] : [['R', task.R], ['L', task.L]];
+    const voices = task.single ? [['S', task.single]] : task.only ? [[task.only, task[task.only]]] : [['R', task.R], ['L', task.L]];
     const merged = { ...task.R, notes: [...task.R.notes, ...task.L.notes, ...(task.single ? task.single.notes : [])].sort((a, b) => a.t - b.t) };
     const lines = phraseLines(merged);
     handsStageLines = lines;
@@ -13605,7 +13809,7 @@
       const cells = [];
       for (let t = b * m.ticks; t < (b + 1) * m.ticks; t += step) {
         const has = (p) => p.onsets.some((x) => x >= t && x < t + step);
-        const cls = task.single ? (has(task.single) ? 'has-S' : '') : [has(task.R) ? 'has-R' : '', has(task.L) ? 'has-L' : ''].filter(Boolean).join(' ');
+        const cls = task.single ? (has(task.single) ? 'has-S' : '') : task.only ? (has(task[task.only]) ? `has-${task.only}` : '') : [has(task.R) ? 'has-R' : '', has(task.L) ? 'has-L' : ''].filter(Boolean).join(' ');
         const beat = (t - b * m.ticks) % m.unit === 0 ? ' is-beat' : '';
         cells.push(`<i data-t="${t}" data-d="${step}" class="${cls}${beat}"></i>`);
       }
@@ -13623,7 +13827,7 @@
     const m = METERS[task.meter];
     const T = m.ticks, nBars = task.bars;
     const beats = task.meter === '6/8' ? 6 : T / m.beat;
-    const rows = task.single ? ['single'] : ['R', 'L'];
+    const rows = task.single ? ['single'] : task.only ? [task.only] : ['R', 'L'];
     const W = ST.W, XL = 34, X1 = W - 8, RH = 22, TOP = 14, GAP = 8;
     const X = (t) => XL + clamp(t / T, -.02, 1.04) * (X1 - XL);
     const barH = rows.length * RH + GAP;
@@ -13658,7 +13862,28 @@
     return `<svg class="db-bars th-bars" viewBox="0 0 ${W} ${H}" role="img" aria-label="Auflösung: ${label}">${out.join('')}</svg>`;
   }
 
-  const HANDS_PHASE_LABEL = { idle: '', count: 'Einzähler', listen: 'Hör zu', along: 'Klopf mit', you: 'Jetzt du – allein', wait: 'Gleich …', result: '' };
+  const HANDS_PHASE_LABEL = { idle: '', count: 'Einzähler', listen: 'Hör zu', along: 'Klopf mit', you: 'Jetzt du – allein', gap: 'Pause', wait: 'Gleich …', result: '' };
+  const HANDS_NEXT_LABEL = { listen: 'Hör zu', along: 'Klopf mit', you: 'allein' };
+  /** Beschriftung der laufenden Phase; im Aufbau mit der Hand, vor jedem Teil mit dem, was kommt. */
+  function handsPhaseLabel(phase, task) {
+    const who = task?.only ? `nur ${task.only === 'L' ? 'links' : 'rechts'}` : task && handsBuildOn() ? 'beide Hände' : '';
+    if (phase === 'count' || phase === 'gap') {
+      const next = HANDS_NEXT_LABEL[hands.nextPhase];
+      return `${HANDS_PHASE_LABEL[phase]}${next ? ` – gleich: ${next}` : ''}`;
+    }
+    const base = HANDS_PHASE_LABEL[phase] || '';
+    return base && who && ['listen', 'along', 'you'].includes(phase) ? `${base} (${who})` : base;
+  }
+  /** Schritte des Aufbaus: 1 eine Hand, 2 die andere, 3 beide; antippbar, solange nichts läuft. */
+  function handsStepsHtml(running) {
+    if (!handsBuildOn()) return '';
+    const sup = hands.task ? hands.task.support : HANDS_SUPPORT[hands.level];
+    const side = { L: 'Links', R: 'Rechts' };
+    const names = [side[sup], side[otherHand(sup)], 'Beide'];
+    const items = names.map((n, i) => `<li class="${i < hands.step ? 'is-done' : i === hands.step ? 'is-now' : ''}"><button type="button" data-hands-step="${i}"${running ? ' disabled' : ''}${i === hands.step ? ' aria-current="step"' : ''}><span>${i + 1}</span>${n}</button></li>`).join('');
+    const text = running ? '' : `<p class="th-step-text">${esc(handsStepText(hands.task, hands.step))}</p>`;
+    return `<ol class="th-steps" aria-label="Schritte">${items}</ol>${text}`;
+  }
   /** Stand-Zeile: Stufe 5/6 Unterstufe und Tempo, Pool-Figur, Taktart. */
   function handsInfoHtml() {
     const lv = hands.level, task = hands.task;
@@ -13676,11 +13901,12 @@
   /** Steuerung: Nochmal · Start/Stopp/Weiter · Hilfen. */
   function handsCtlHtml() {
     const running = !!hands.run;
-    const main = running ? ['stop', 'Stopp'] : hands.task && hands.phase === 'result' ? ['next', 'Weiter'] : ['start', 'Start'];
-    const icon = { stop: SING_MAIN_ICONS.stop, next: SING_MAIN_ICONS.start, start: SING_MAIN_ICONS.begin }[main[0]];
+    const stepNext = hands.task && hands.phase === 'result' && handsBuildOn() && hands.last?.task.only && hands.step < HANDS_STEP_COUNT - 1;
+    const main = running ? ['stop', 'Stopp'] : stepNext ? ['step-next', 'Weiter', `Weiter mit Schritt ${hands.step + 2}`] : hands.task && hands.phase === 'result' ? ['next', 'Weiter', 'Weiter, neue Aufgabe'] : ['start', 'Start'];
+    const icon = { stop: SING_MAIN_ICONS.stop, next: SING_MAIN_ICONS.start, 'step-next': SING_MAIN_ICONS.start, start: SING_MAIN_ICONS.begin }[main[0]];
     return `<div class="th-ctl">
-      <button type="button" class="dock-slot" data-hands="again" aria-label="Nochmal, dieselbe Aufgabe"${!running && hands.task ? '' : ' disabled'}><span class="dock-c"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7"/><path d="M4 4v4.7h4.7"/></svg></span><span>Nochmal</span></button>
-      <button type="button" class="dock-main" data-hands="${main[0]}" aria-label="${main[1]}"><span class="dock-core"><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></span><span class="dock-cap">${main[1]}</span></button>
+      <button type="button" class="dock-slot" data-hands="again" aria-label="Nochmal, derselbe Schritt"${!running && hands.task ? '' : ' disabled'}><span class="dock-c"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7"/><path d="M4 4v4.7h4.7"/></svg></span><span>Nochmal</span></button>
+      <button type="button" class="dock-main" data-hands="${main[0]}" aria-label="${main[2] || main[1]}"><span class="dock-core"><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></span><span class="dock-cap">${main[1]}</span></button>
       <button type="button" class="dock-slot" data-hands="helps" aria-label="Hilfen: Noten, Raster, Silben" aria-haspopup="dialog"><span class="dock-c"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></span><span>Hilfen</span></button>
     </div>`;
   }
@@ -13692,7 +13918,10 @@
     const word = res.swapped ? 'Vertauscht?' : VERDICT_WORD[res.key];
     const per = res.swapped ? '' : Object.entries(res.hands).map(([h, x]) => `<span class="th-hv th-row-${h}">${h === 'single' ? 'Zusammen' : h}: ${VERDICT_WORD[x.verdict.key].replace('!', '')} · ${esc(x.verdict.line)}</span>`).join('');
     const worst = res.swapped ? null : Object.values(res.hands).map((x) => x.verdict).sort((a, b) => VERDICT_ORDER.indexOf(b.key) - VERDICT_ORDER.indexOf(a.key))[0];
-    const tip = !worst ? '' : worst.key === 'nochmal' ? 'Erst nur zuhören, dann beim Mitklopfen eine Hand nach der anderen dazunehmen.' : worst.tip.replace(/Klatscher/g, 'Schlag').replace(/klatsch/g, 'klopf');
+    const build = handsBuildOn();
+    const tip = !worst ? '' : worst.key === 'nochmal' ? (build && !last.task.only ? 'Geh einen Schritt zurück: tipp oben eine Hand an, übe sie allein und nimm dann die andere wieder dazu.' : build ? 'Hör beim Vorspielen nur auf diese eine Hand und zähl leise mit.' : 'Erst nur zuhören, dann beim Mitklopfen eine Hand nach der anderen dazunehmen.') : worst.tip.replace(/Klatscher/g, 'Schlag').replace(/klatsch/g, 'klopf');
+    const slower = worst && ['fast', 'nochmal'].includes(worst.key) && last.task.level <= 4 && hands.bpm > HANDS_TEMPO[0]
+      ? `<button type="button" class="k-btn k-btn--ghost" data-hands="slower">Langsamer: ${tempoSymbol(last.task.meter)} = ${Math.max(HANDS_TEMPO[0], hands.bpm - 8)}</button>` : '';
     const notesBtn = hands.notesFor === last.task.key || hands.aids.notes || hands.read ? '' : '<button type="button" class="k-btn k-btn--ghost" data-hands="notes">Noten zeigen</button>';
     const grid = hands.offerGrid ? '<button type="button" class="k-btn k-btn--ghost" data-hands="grid-on">Raster einblenden?</button>' : '';
     return `<div class="th-result" data-verdict="${res.swapped ? 'nochmal' : res.key}">
@@ -13700,7 +13929,7 @@
       ${hands.msg ? `<p class="th-msg" role="status">${esc(hands.msg)}</p>` : ''}
       ${handsBarsSvg(last)}${DUO_LEGEND}
       ${tip && !hands.msg ? `<p class="round-tip">${esc(tip)}</p>` : ''}
-      <div class="th-after">${notesBtn}${grid}</div>
+      <div class="th-after">${slower}${notesBtn}${grid}</div>
     </div>`;
   }
   /** Oberer Streifen neu zeichnen (die Flächen bleiben stehen). */
@@ -13723,25 +13952,32 @@
     const m = METERS[task?.meter || '4/4'];
     const fs = document.fullscreenEnabled && !/iPhone|iPad|iPod/.test(navigator.userAgent)
       ? `<button class="icon-btn" type="button" data-hands="fullscreen" aria-pressed="${!!document.fullscreenElement}" aria-label="${document.fullscreenElement ? 'Vollbild beenden' : 'Vollbild'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>` : '';
-    const head = `<div class="ex-head"><button class="back-btn" type="button" data-hands="back" data-own-back-btn aria-label="Zurück zu Rhythmus" title="Zurück zu Rhythmus"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Rhythmus</span><h2 class="mode-title">Zwei Hände</h2></div><div class="head-tools">${fs}<button class="icon-btn" type="button" data-hands="settings" aria-label="Einstellungen: Takte, Tempo, Klick, Vom Blatt" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></button></div></div>`;
+    const head = `<div class="ex-head"><button class="back-btn" type="button" data-hands="back" data-own-back-btn aria-label="Zurück zu Rhythmus" title="Zurück zu Rhythmus"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Rhythmus</span><h2 class="mode-title">Zwei Hände</h2></div><div class="head-tools">${fs}<button class="icon-btn" type="button" data-hands="settings" aria-label="Einstellungen: Takte, Tempo, Klick, Vom Blatt" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>`;
     const level = running ? '' : levelControlHtml('hands', HANDS_LEVELS, hands.level, hands.goodRun >= 3 && hands.level < 5 ? { level: hands.level, hint: 'up' } : null);
-    const count = running ? `<div class="th-phase"><span class="th-count" aria-hidden="true">${Array.from({ length: Math.round(m.ticks / m.beat) }, (_, i) => `<i${beatLevel(m, i * m.beat) >= 1 ? ' class="is-strong"' : ''}></i>`).join('')}</span><b>${HANDS_PHASE_LABEL[phase] || ''}</b></div>` : '';
+    // Was gerade gespielt wird bzw. als Nächstes: im Aufbau die Aufgabe des Schritts.
+    const cur = hands.run?.task || (phase === 'result' ? hands.last?.task : null) || (task && handsBuildOn() ? handsStepTask(task, hands.step) : task);
+    const count = running ? `<div class="th-phase"><span class="th-count" aria-hidden="true">${Array.from({ length: Math.round(m.ticks / m.beat) }, (_, i) => `<i${beatLevel(m, i * m.beat) >= 1 ? ' class="is-strong"' : ''}></i>`).join('')}</span><b>${esc(handsPhaseLabel(phase, cur))}</b></div>` : '';
     // Hilfen in der Runde (nur eingeschaltet), danach die Auflösung.
     let aidHtml = '';
-    if (task && (running || phase === 'result')) {
-      const showNotes = aids.notes || (phase === 'result' && hands.notesFor === task.key);
-      const together = task.kind === 'figure' && (aids.notes || aids.syl || showNotes);
-      if (showNotes || aids.syl) aidHtml += `<div class="th-notes">${handsNotesSvg(task, { heads: showNotes, syl: aids.syl, together })}</div>`;
-      if (aids.grid) aidHtml += handsGridHtml(task);
+    if (cur && (running || phase === 'result')) {
+      const showNotes = aids.notes || (phase === 'result' && hands.notesFor === cur.key);
+      const together = cur.kind === 'figure' && (aids.notes || aids.syl || showNotes);
+      if (showNotes || aids.syl) aidHtml += `<div class="th-notes">${handsNotesSvg(cur, { heads: showNotes, syl: aids.syl, together })}</div>`;
+      if (aids.grid) aidHtml += handsGridHtml(cur);
     }
-    const intro = !task && !running ? `<p class="th-intro">Links klopft die linke Hand (tiefer Klang), rechts die rechte (hoher Klang). Erst hören, dann mitklopfen, dann allein. Noten, Raster und Silben gibt es unter „Hilfen“.</p>` : '';
-    const key = [phase, running, task?.key, hands.level, hands.msg, hands.notesFor, hands.offerGrid, JSON.stringify(hands.aids), hands.read, hands.bpm, hands.goodRun, !!document.fullscreenElement, hands.last ? 1 : 0].join('|');
+    const intro = task || running ? '' : handsBuildOn()
+      ? `<p class="th-intro">Linke Fläche = linke Hand (tief), rechte Fläche = rechte Hand (hoch). Jede Aufgabe in drei Schritten: erst eine Hand, dann die andere, dann beide. Jeder Schritt: hören, mitklopfen, allein${hands.gaps ? ' – dazwischen ein Takt Pause' : ''}. Schon sicher? Tipp oben direkt „Beide“ an.</p>`
+      : `<p class="th-intro">Links klopft die linke Hand (tiefer Klang), rechts die rechte (hoher Klang). Erst hören, dann mitklopfen, dann allein. Noten, Raster und Silben gibt es unter „Hilfen“.</p>`;
+    const key = [phase, hands.nextPhase, running, task?.key, hands.level, hands.step, hands.build, hands.gaps, hands.msg, hands.notesFor, hands.offerGrid, JSON.stringify(hands.aids), hands.read, hands.bpm, hands.goodRun, !!document.fullscreenElement, hands.last ? 1 : 0].join('|');
     if (key === hands.topKey && host.querySelector('.th-top').childElementCount) return;
     hands.topKey = key;
-    host.querySelector('.th-top').innerHTML = `${head}${level}${handsInfoHtml()}${intro}${count}${aidHtml}${phase === 'result' ? handsResultHtml() : ''}${handsCtlHtml()}<p class="th-rotate">Quer drehen geht leichter.</p>`;
+    host.querySelector('.th-top').innerHTML = `${head}${level}${handsInfoHtml()}${handsStepsHtml(running)}${intro}${count}${aidHtml}${phase === 'result' ? handsResultHtml() : ''}${handsCtlHtml()}<p class="th-rotate">Quer drehen geht leichter.</p>`;
     host.dataset.phase = phase;
     if (phase === 'result') host.querySelector('.th-result')?.scrollIntoView({ block: 'nearest' });
-    $$('.th-pad').forEach((p) => p.classList.toggle('is-you', running && phase === 'you' && (!task.you || p.dataset.hand === task.you)));
+    $$('.th-pad').forEach((p) => {
+      p.classList.toggle('is-you', running && phase === 'you' && (!cur?.you || p.dataset.hand === cur.you));
+      p.classList.toggle('is-rest', !!cur?.only && p.dataset.hand !== cur.only); // im Einzelschritt ruht die andere Hand
+    });
   }
 
   function openHands() {
@@ -13782,6 +14018,10 @@
       : '<p class="foot-note" style="text-align:left">Tempo in Stufe 5/6: je Figur, es passt sich an (3× Gut in Folge in der letzten Unterstufe schneller, 2× Nochmal in Folge langsamer).</p>';
     $('.sheet-body').innerHTML = `<span class="sub-label" style="margin-top:0">Takte</span><div class="chip-row">${[2, 4].map((n) => `<button class="chip" type="button" data-hands-bars="${n}" aria-pressed="${hands.bars === n}">${n}</button>`).join('')}</div>
       ${tempo}
+      ${lv <= 4 ? `<label class="switch" style="margin-top:10px"><input type="checkbox" role="switch" data-hands-opt="build"${hands.build ? ' checked' : ''}><span class="switch-track"></span>Hände einzeln aufbauen</label>
+      <p class="foot-note" style="text-align:left;margin-top:0">Erst eine Hand allein, dann die andere, dann beide zusammen.</p>` : ''}
+      <label class="switch"><input type="checkbox" role="switch" data-hands-opt="gaps"${hands.gaps ? ' checked' : ''}><span class="switch-track"></span>Pause zwischen den Teilen</label>
+      <p class="foot-note" style="text-align:left;margin-top:0">Ein Takt nur Klick zwischen Hören, Mitklopfen und Allein – Zeit, um anzukommen.</p>
       <label class="switch"><input type="checkbox" role="switch" data-hands-opt="click"${hands.click ? ' checked' : ''}><span class="switch-track"></span>Puls-Klick</label>
       <label class="switch"><input type="checkbox" role="switch" data-hands-opt="read"${hands.read ? ' checked' : ''}><span class="switch-track"></span>Vom Blatt</label>
       <p class="foot-note" style="text-align:left">Vom Blatt: Noten an, ohne Vorspielen und Mitklopfen. Am Computer: F = links, J = rechts. Tipp-Verzögerung wie in den anderen Rhythmus-Übungen (Rhythmus → Zahnrad → Einmessen).</p>`;
@@ -13793,7 +14033,7 @@
     const pad = e.target.closest?.('.th-pad');
     if (!pad || views.rhythm !== 'hands') return;
     e.preventDefault();
-    if (!hands.run) { if (hands.phase !== 'result' || !hands.task) handsStart(); return; }
+    if (!hands.run) { if (hands.phase !== 'result' || !hands.task) handsStart(!!hands.task); return; }
     handsTap(pad.dataset.hand);
   });
   document.addEventListener('keydown', (e) => {
@@ -13807,8 +14047,18 @@
     const b = e.target.closest('[data-hands]');
     const act = b?.dataset.hands;
     if (act === 'back') { leaveHands(); views.rhythm = 'list'; renderAll(); renderArea(); return; }
-    if (act === 'start' || act === 'next') { handsStart(false); return; }
+    if (act === 'start') { handsStart(!!hands.task); return; } // nach Stopp oder Schrittwahl: dieselbe Aufgabe
+    if (act === 'next') { handsStart(false); return; }
+    if (act === 'step-next') { hands.step = Math.min(HANDS_STEP_COUNT - 1, hands.step + 1); handsStart(true); return; }
     if (act === 'again') { handsStart(true); return; }
+    if (act === 'slower') { hands.bpm = Math.max(HANDS_TEMPO[0], hands.bpm - 8); persist(); renderHands(); return; }
+    const stepBtn = e.target.closest('[data-hands-step]');
+    if (stepBtn && !hands.run) {
+      hands.step = clamp(Number(stepBtn.dataset.handsStep), 0, HANDS_STEP_COUNT - 1);
+      hands.phase = 'idle'; hands.last = null; hands.msg = ''; hands.offerGrid = false;
+      renderHands();
+      return;
+    }
     if (act === 'stop') { handsStop(); return; }
     if (act === 'helps') { openSettings('handshelp'); return; }
     if (act === 'settings') { openSettings('hands'); return; }
@@ -13819,7 +14069,7 @@
     if (lvl) {
       handsStop(false);
       hands.level = Number(lvl.dataset.levelN);
-      hands.task = null; hands.last = null; hands.phase = 'idle'; hands.goodRun = 0; hands.msg = '';
+      hands.task = null; hands.last = null; hands.phase = 'idle'; hands.goodRun = 0; hands.msg = ''; hands.step = 0;
       persist(); renderHands();
       return;
     }
@@ -13834,7 +14084,11 @@
     const aid = e.target.closest?.('[data-hands-aid]');
     if (aid) { hands.aids[aid.dataset.handsAid] = aid.checked; hands.offerGrid = false; persist(); renderHands(); return; }
     const opt = e.target.closest?.('[data-hands-opt]');
-    if (opt) { hands[opt.dataset.handsOpt] = opt.checked; persist(); renderHands(); }
+    if (opt) {
+      hands[opt.dataset.handsOpt] = opt.checked;
+      if (opt.dataset.handsOpt === 'build' && !hands.run) { hands.step = 0; if (hands.phase === 'result') { hands.phase = 'idle'; hands.last = null; hands.msg = ''; } }
+      persist(); renderHands();
+    }
   });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && hands.run) handsStop(); });
 
@@ -13846,6 +14100,8 @@
     if (Number.isFinite(h.bpm)) hands.bpm = clamp(Math.round(h.bpm), HANDS_TEMPO[0], HANDS_TEMPO[1]);
     if (typeof h.click === 'boolean') hands.click = h.click;
     if (typeof h.read === 'boolean') hands.read = h.read;
+    if (typeof h.build === 'boolean') hands.build = h.build;
+    if (typeof h.gaps === 'boolean') hands.gaps = h.gaps;
     if (['', 'L', 'R'].includes(h.oneHand)) hands.oneHand = h.oneHand;
     if (h.aids && typeof h.aids === 'object') for (const k of Object.keys(hands.aids)) if (typeof h.aids[k] === 'boolean') hands.aids[k] = h.aids[k];
     const st = h.st && typeof h.st === 'object' ? h.st : {};
@@ -13867,7 +14123,7 @@
       };
     }
   }
-  const handsSnapshot = () => ({ level: hands.level, bars: hands.bars, bpm: hands.bpm, click: hands.click, read: hands.read, oneHand: hands.oneHand, aids: hands.aids, st: hands.st, fig: hands.fig });
+  const handsSnapshot = () => ({ level: hands.level, bars: hands.bars, bpm: hands.bpm, click: hands.click, read: hands.read, build: hands.build, gaps: hands.gaps, oneHand: hands.oneHand, aids: hands.aids, st: hands.st, fig: hands.fig });
 
 
   /* ------------------------------------------------------------------------
@@ -14152,7 +14408,7 @@
     const fs = document.fullscreenEnabled && !/iPhone|iPad|iPod/.test(navigator.userAgent)
       ? `<button class="icon-btn" type="button" data-singtap="fullscreen" aria-pressed="${!!document.fullscreenElement}" aria-label="${document.fullscreenElement ? 'Vollbild beenden' : 'Vollbild'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>` : '';
     const mic = `<span class="sing-mic st-mic" role="img" aria-label="Mikrofon"><svg viewBox="0 0 24 24" aria-hidden="true"><defs><clipPath id="st-mic-clip"><rect x="8.5" y="2.5" width="7" height="12" rx="3.5"/></clipPath></defs><rect class="mic-fill" clip-path="url(#st-mic-clip)" x="8.5" y="14.5" width="7" height="0"/><rect class="mic-cap" x="8.5" y="2.5" width="7" height="12" rx="3.5"/><path class="mic-stand" d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5M9 21.5h6"/><path class="mic-slash" d="M4 3l16 18"/></svg></span>`;
-    const head = `<div class="ex-head"><button class="back-btn" type="button" data-singtap="back" data-own-back-btn aria-label="Zurück zu Singen" title="Zurück zu Singen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Singen</span><h2 class="mode-title">Singen und klopfen</h2></div><div class="head-tools">${mic}${fs}<button class="icon-btn" type="button" data-singtap="settings" aria-label="Einstellungen: Kopfhörer, Klick, Tempo" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></button></div></div>`;
+    const head = `<div class="ex-head"><button class="back-btn" type="button" data-singtap="back" data-own-back-btn aria-label="Zurück zu Singen" title="Zurück zu Singen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Singen</span><h2 class="mode-title">Singen und klopfen</h2></div><div class="head-tools">${mic}${fs}<button class="icon-btn" type="button" data-singtap="settings" aria-label="Einstellungen: Kopfhörer, Klick, Tempo" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>`;
     const level = running ? '' : levelControlHtml('singtap', SINGTAP_LEVELS, singtap.level);
     const what = SINGTAP_LEVELS[singtap.level - 1].label;
     const count = running ? `<div class="th-phase"><span class="th-count st-count" aria-hidden="true">${Array.from({ length: Math.round(m.ticks / m.beat) }, (_, i) => `<i${beatLevel(m, i * m.beat) >= 1 ? ' class="is-strong"' : ''}></i>`).join('')}</span><b>${SINGTAP_PHASE[phase] || ''}</b></div><div class="progress st-progress"><i></i></div>` : '';
@@ -14648,6 +14904,12 @@
         else echoHelp(action === 'replay' ? 'listen' : action);
       } else if (action === 'start' || action === 'begin') startSingTask();
       else if (action === 'target' && sing.task?.target != null && engine.ctx) engine.keys(sing.task.target, engine.ctx.currentTime + .05, 1.4, { velocity: .22, dest: singBus() });
+      else if (action === 'resolve' && sing.task?.mode === 'singInterval' && engine.ctx) {
+        // Auflösung: Grundton, dann der gesuchte Ton.
+        const t = engine.ctx.currentTime + .05;
+        engine.keys(sing.task.base, t, .8, { velocity: .22, dest: singBus() });
+        engine.keys(sing.task.target, t + .85, 1.3, { velocity: .22, dest: singBus() });
+      }
       else if (action === 'replay' && sing.task) {
         if (sing.phase !== 'result') sing.judge = null;
         // Ton halten: während die Vorgabe erneut klingt, nicht zuhören — sonst startet sie selbst den Balken.
@@ -14712,6 +14974,8 @@
     }
 
     // --- Hören
+    const ivPlay = e.target.closest('[data-iv-play]');
+    if (ivPlay) { const [n, dir] = ivPlay.dataset.ivPlay.split(':'); playIntervalDemo(Number(n), dir); return; }
     const earBtn = e.target.closest('[data-ear]');
     if (earBtn) {
       let action = earBtn.dataset.ear;
@@ -14723,6 +14987,7 @@
       if (action === 'db-skip') { skipDownbeat(); return; }
       if (!$('.sheet').hidden && sheetKind === 'earhelp') closeSettings();
       if (action === 'settings') openSettings('ear');
+      else if (action === 'songs') openSettings('songs');
       else if (action === 'close-settings') closeSettings();
       else if (action === 'play') { if (!ear.task) { nextEar(); } else playEar(); }
       else if (action === 'confirm-part') confirmPart();
@@ -15549,6 +15814,31 @@
       const one = handsTimeline(t, { oneHand: 'L' });
       if (one.events.some((e) => e.phase === 'along' && e.type === 'hit' && (e.hand !== 'L' || e.gain !== 1))) errors.push('Zwei Hände: „Eine Hand“');
       if (handsTimeline(t, { read: true }).phases.map((p) => p.phase).join() !== 'count,you') errors.push('Zwei Hände: Vom Blatt');
+      // Pausentakte: je ein Takt zwischen den Teilen, Klick auch bei „Klick aus“, keine Schläge der App.
+      const gp = handsTimeline(t, { click: false, gaps: true });
+      if (gp.phases.map((p) => p.phase).join() !== 'count,listen,gap,along,gap,you' || gp.youFrom !== 24 + 2 * 48 + 2 * 24) errors.push('Zwei Hände: Ablauf mit Pausen');
+      if (!gp.events.some((e) => e.type === 'click' && e.phase === 'gap') || gp.events.some((e) => e.type === 'hit' && e.phase === 'gap')) errors.push('Zwei Hände: Pausentakt');
+      if (handsTimeline(t, { read: true, gaps: true }).phases.map((p) => p.phase).join() !== 'count,you') errors.push('Zwei Hände: Vom Blatt mit Pausen');
+      // Aufbau: Schritt 1 Stütze-Hand, Schritt 2 Rhythmus-Hand, Schritt 3 beide; im Einzelschritt klingt nur diese Hand.
+      const s0 = handsStepTask(t, 0), s1 = handsStepTask(t, 1), s2 = handsStepTask(t, 2);
+      if (s0.only !== t.support || s0.you !== t.support || s1.only !== otherHand(t.support) || s2 !== t) errors.push('Zwei Hände: Schritte des Aufbaus');
+      for (const st of [s0, s1]) {
+        const tl0 = handsTimeline(st, { oneHand: otherHand(st.only), gaps: true });
+        const hits = tl0.events.filter((e) => e.type === 'hit');
+        if (hits.some((e) => e.hand !== st.only) || !hits.some((e) => e.phase === 'along') || hits.some((e) => e.phase === 'you')) errors.push(`Zwei Hände: Einzelschritt ${st.only}`);
+      }
+      if (!/Puls/.test(handsVoiceWord(t, t.support)) || handsVoiceWord(t, otherHand(t.support)) !== 'den Rhythmus') errors.push('Zwei Hände: Anleitung je Hand');
+      if (!/Halbe/.test(handsVoiceWord(starterTask(2, 1), 'R'))) errors.push('Zwei Hände: Anleitung Halbe');
+    }
+    // Einzelschritt auswerten: nur die geklopfte Hand, Urteil aus ihr allein.
+    {
+      const tick = .02;
+      const t = starterTask(1, 1);
+      const s1 = handsStepTask(t, 1), h = s1.only;
+      const r1 = judgeHands(s1, t[h].onsets.map((x) => ({ hand: h, at: x * tick })), tick, { you: s1.you });
+      if (r1.key !== 'gut' || Object.keys(r1.hands).join() !== h || r1.swapped) errors.push('Zwei Hände: Einzelschritt auswerten');
+      const r0 = judgeHands(s1, [], tick, { you: s1.you });
+      if (r0.key !== 'nochmal') errors.push('Zwei Hände: Einzelschritt ohne Anschläge');
     }
     // Auswertung mit konstruierten Anschlägen.
     {
@@ -15599,18 +15889,18 @@
     {
       const before = JSON.stringify(handsSnapshot());
       const keep = JSON.parse(before);
-      const probe = { ...keep, level: 5, bars: 4, bpm: 88, aids: { notes: true, grid: false, syl: true }, oneHand: 'R', st: { starterNext: { 1: 3 }, count: { 3: 7 }, poolUsed: { 3: ['walzer'] }, recent: ['a', 'b'] }, fig: { 5: { sub: 'e', good: 1, again: 0, fpm: { F23b: 44 }, gridOffered: { F23a: true } } } };
+      const probe = { ...keep, level: 5, bars: 4, bpm: 88, build: false, gaps: false, aids: { notes: true, grid: false, syl: true }, oneHand: 'R', st: { starterNext: { 1: 3 }, count: { 3: 7 }, poolUsed: { 3: ['walzer'] }, recent: ['a', 'b'] }, fig: { 5: { sub: 'e', good: 1, again: 0, fpm: { F23b: 44 }, gridOffered: { F23a: true } } } };
       restoreHands(JSON.parse(JSON.stringify(probe)));
       const got = handsSnapshot();
-      if (got.level !== 5 || got.bars !== 4 || got.bpm !== 88 || !got.aids.notes || got.aids.grid || got.oneHand !== 'R' || got.st.count[3] !== 7 || got.st.poolUsed[3][0] !== 'walzer' || got.fig[5].sub !== 'e' || got.fig[5].fpm.F23b !== 44) errors.push('Zwei Hände: Speichern/Laden');
-      restoreHands({ level: 9, bars: 3, bpm: 'x', aids: { notes: 'ja' }, oneHand: 'X', st: { poolUsed: { 3: ['nope'] }, recent: [1, 'ok'] }, fig: { 5: { sub: 'z', fpm: { F23b: 999, F34a: 30 } } } });
+      if (got.level !== 5 || got.bars !== 4 || got.bpm !== 88 || got.build !== false || got.gaps !== false || !got.aids.notes || got.aids.grid || got.oneHand !== 'R' || got.st.count[3] !== 7 || got.st.poolUsed[3][0] !== 'walzer' || got.fig[5].sub !== 'e' || got.fig[5].fpm.F23b !== 44) errors.push('Zwei Hände: Speichern/Laden');
+      restoreHands({ level: 9, bars: 3, bpm: 'x', build: 'ja', gaps: 1, aids: { notes: 'ja' }, oneHand: 'X', st: { poolUsed: { 3: ['nope'] }, recent: [1, 'ok'] }, fig: { 5: { sub: 'z', fpm: { F23b: 999, F34a: 30 } } } });
       const bad = handsSnapshot();
-      if (bad.level !== 5 || bad.bars !== 4 || bad.oneHand !== 'R' || bad.st.poolUsed[3].length || bad.st.recent.join() !== 'ok' || bad.fig[5].sub !== 'a' || bad.fig[5].fpm.F23b !== fpmRange('F23b')[1] || 'F34a' in bad.fig[5].fpm) errors.push('Zwei Hände: kaputter Stand nicht bereinigt');
+      if (bad.level !== 5 || bad.bars !== 4 || bad.build !== false || bad.gaps !== false || bad.oneHand !== 'R' || bad.st.poolUsed[3].length || bad.st.recent.join() !== 'ok' || bad.fig[5].sub !== 'a' || bad.fig[5].fpm.F23b !== fpmRange('F23b')[1] || 'F34a' in bad.fig[5].fpm) errors.push('Zwei Hände: kaputter Stand nicht bereinigt');
       restoreHands(keep);
       if (JSON.stringify(handsSnapshot()) !== before) errors.push('Zwei Hände: Stand nach dem Test nicht wiederhergestellt');
     }
     // Hören zuerst: ohne Hilfen zeigt keine Phase vor der Auflösung Noten, Raster oder Silben.
-    for (const phase of ['count', 'listen', 'along', 'you']) {
+    for (const phase of ['count', 'listen', 'gap', 'along', 'you']) {
       const v = visibleAids({ mode: 'hands', phase, hands: { notes: false, grid: false, syl: false } });
       if (v.notes || v.grid || v.syl || v.realLayout || v.mark || v.timeline) errors.push(`Zwei Hände: Hilfe sichtbar ohne Einschalten (${phase})`);
       const on = visibleAids({ mode: 'hands', phase, hands: { notes: true, grid: true, syl: true } });
@@ -19502,6 +19792,32 @@
     } finally { pianoKeys.set = bank; playSampleHook = null; }
     return errors;
   }
+  /** Pegel (Effektivwert nach Hochpass 300 Hz, ×1000) von Klatscher und
+   *  Begleitung, Synthese gegen Samples — zum Einstellen von CLAP_SAMPLE_GAIN
+   *  und DRUM_SAMPLE (Konsole: `await uebeLab.drumLevels()`). */
+  async function drumLevels() {
+    await loadSampleGroup('drums');
+    const sr = 48000, out = {};
+    const hp = (x) => { const rc = 1 / (2 * Math.PI * 300), a = rc / (rc + 1 / sr); let y = 0, e = 0; for (let i = 1; i < x.length; i++) { y = a * (y + x[i] - x[i - 1]); e += y * y; } return Math.sqrt(e / x.length) * 1000; };
+    const level = async (fn) => {
+      const ctx = new OfflineAudioContext(1, sr * 2, sr);
+      const save = { ctx: engine.ctx, master: engine.master, noise: engine.noise };
+      engine.ctx = ctx; engine.master = ctx.destination;
+      engine.noise = ctx.createBuffer(1, Math.round(sr * .3), sr);
+      const d = engine.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      try { fn(); } finally { Object.assign(engine, save); }
+      return hp((await ctx.startRendering()).getChannelData(0));
+    };
+    for (const synth of [true, false]) {
+      engine.synthOnly = synth;
+      const k = synth ? 'synth' : 'sample';
+      out[`clap:${k}`] = await level(() => engine.clap(.1, null, 1));
+      for (const kind of ['kick', 'snare', 'rim', 'hat', 'open']) out[`${kind}:${k}`] = await level(() => engine.drum(kind, .1, 1, null));
+    }
+    engine.synthOnly = false;
+    return out;
+  }
+
   async function selfCheckAudio() {
     const errors = [];
     const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
@@ -19548,13 +19864,22 @@
       const d = engine.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       try { fn(); } finally { Object.assign(engine, save); }
     });
-    const clapLevel = hpRms(await withEngine(() => engine.clap(.1, null, CLAP_WITH_ACCOMP)));
-    for (const kind of ['kick', 'snare', 'rim', 'hat']) {
-      const x = await withEngine(() => engine.drum(kind, .1, 1, null));
-      const level = hpRms(x);
-      if (!(x.reduce((a, b) => Math.max(a, Math.abs(b)), 0) > .01)) errors.push(`Begleitung ${kind}: kein Ton`);
-      // Bassdrum: nur „nicht lauter“; Snare, Rim, Hi-Hat: deutlich leiser als der Klatscher.
-      if (!(clapLevel > (kind === 'kick' ? 1 : 1.5) * level)) errors.push(`Begleitung ${kind}: Pegel ${(level * 1000).toFixed(2)} gegen Klatscher ${(clapLevel * 1000).toFixed(2)}`);
+    // Beide Wege prüfen: Synthese und (falls geladen) Samples.
+    try { await loadSampleGroup('drums'); } catch { errors.push('Schlagzeug-Samples nicht geladen'); }
+    for (const synth of [true, false]) {
+      if (!synth && !samples.drums) continue;
+      const way = synth ? 'Synthese' : 'Samples';
+      engine.synthOnly = synth;
+      try {
+        const clapLevel = hpRms(await withEngine(() => engine.clap(.1, null, CLAP_WITH_ACCOMP)));
+        for (const kind of ['kick', 'snare', 'rim', 'hat']) {
+          const x = await withEngine(() => engine.drum(kind, .1, 1, null));
+          const level = hpRms(x);
+          if (!(x.reduce((a, b) => Math.max(a, Math.abs(b)), 0) > .01)) errors.push(`Begleitung ${kind} (${way}): kein Ton`);
+          // Bassdrum: nur „nicht lauter“; Snare, Rim, Hi-Hat: deutlich leiser als der Klatscher.
+          if (!(clapLevel > (kind === 'kick' ? 1 : 1.5) * level)) errors.push(`Begleitung ${kind} (${way}): Pegel ${(level * 1000).toFixed(2)} gegen Klatscher ${(clapLevel * 1000).toFixed(2)}`);
+        }
+      } finally { engine.synthOnly = false; }
     }
     return errors;
   }
@@ -19564,7 +19889,7 @@
     EAR_PROGRESSIONS, CHORD_SYMBOLS, VOICE_RANGES,
     chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
-    selfCheck, selfCheckAudio, roundVerdict, roundDots, rhythmSylCollisions, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml, accompCheck, accompFor, freeAccomp, accompHits, ACCOMP, ACCOMP_LEVELS,
+    selfCheck, selfCheckAudio, drumLevels, roundVerdict, roundDots, rhythmSylCollisions, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml, accompCheck, accompFor, freeAccomp, accompHits, ACCOMP, ACCOMP_LEVELS,
     // Klatsch-Grooves (Licks & Grooves)
     courseResult, game, renderStrip,
     sing, renderSing, // Prüfhilfen (Screenshots der Sing-Phasen)

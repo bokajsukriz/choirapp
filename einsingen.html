@@ -695,11 +695,11 @@
       notes: [[0, 2, .7], [2, 2, .7], [4, 2, .7], [2, 2, .7], [0, 2, .7]], syllables: rep('ha', 5),
       help: ['Kurze, lockere „ha“: Der Impuls kommt aus der Körpermitte, nicht aus dem Hals. Eine Hand auf den Bauch legen — er federt bei jedem Ton nach innen.',
         'Zwischen den Tönen lässt der Bauch los, die Luft strömt von selbst wieder ein. Nicht hauchen, nicht drücken.'] },
-    { id: 'strohhalm', group: 'lockern', name: 'Strohhalm', how: 'Durch den Halm auf „u“ auf und ab gleiten', icon: 'strohhalm', hint: 'u durch den Halm', bpm: 72, lowStart: 2, top: 17, breath: 6, glide: true,
+    { id: 'strohhalm', group: 'lockern', name: 'Strohhalm', prop: true, how: 'Durch den Halm auf „u“ auf und ab gleiten', icon: 'strohhalm', hint: 'u durch den Halm', bpm: 72, lowStart: 2, top: 17, breath: 6, glide: true,
       notes: [[0, 4], [4, 8], [0, 8]], syllables: ['u', 'u', 'u'],
       help: ['Einen normalen Trinkhalm locker zwischen die Lippen nehmen (nicht zwischen die Zähne) und hindurch auf „u“ summen — eine Quinte hinauf und wieder zurück gleiten.',
         'Der Halm staut die Luft ein wenig zurück. Das entlastet die Stimmlippen, hoch und tief gehen ohne Druck ineinander über. Ohne Halm: die Lippen fast schließen und auf „w“ summen.'] },
-    { id: 'strohhalm5', group: 'lockern', name: 'Strohhalm-Fünfton', how: 'Mit dem Halm fünf Töne hinauf und zurück', icon: 'strohhalm5', hint: 'Tonleiter im Halm', bpm: 84, lowStart: 3, top: 17, breath: 6,
+    { id: 'strohhalm5', group: 'lockern', name: 'Strohhalm-Fünfton', prop: true, how: 'Mit dem Halm fünf Töne hinauf und zurück', icon: 'strohhalm5', hint: 'Tonleiter im Halm', bpm: 84, lowStart: 3, top: 17, breath: 6,
       notes: legato5, syllables: rep('u', 9),
       help: ['Mit dem Halm fünf Töne hinauf und wieder hinunter, alles gebunden.',
         'Die Luft strömt gleichmäßig, die Wangen blähen sich nicht auf. Danach einmal ohne Halm auf „u“ singen und hören, ob die Leichtigkeit bleibt.'] },
@@ -963,8 +963,10 @@
       items: [['haltung'], ['@atem'], ['@lockern', 3], ['summen', 2, 'down'], ['@vorn', 3], ['@aussprache', 2], ['geraderTon', 2], ['@vokale', 2]] },
   ];
   const poolOf = (slotId) => (typeof slotId === 'string' && slotId.startsWith('@') ? slotId.slice(1) : null);
-  /** Darf die Übung bei dieser Belastung aus einem Pool gewählt werden? */
-  const poolAllowed = (id, load) => !(load === 'leicht' && exById(id)?.avoidLight);
+  /** Darf die Übung bei dieser Belastung aus einem Pool gewählt werden?
+   *  Übungen mit Hilfsmittel (prop: Strohhalm) nie — den hat man selten dabei;
+   *  sie bleiben einzeln in der Übungsliste. */
+  const poolAllowed = (id, load) => !exById(id)?.prop && !(load === 'leicht' && exById(id)?.avoidLight);
 
   /** Programm mit aufgelösten Pools (reine Funktion):
    *  resolveProgram(p, rotation, load[, picks]) → { ...p, items: [[id, limit, dir, pool|null, slot], …] }.

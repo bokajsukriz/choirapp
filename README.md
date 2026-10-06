@@ -121,7 +121,10 @@ ein Dialog mit echter Wahl).
   4. Aufgabe in Stufe 3/4 eine Figur aus dem Kurs per ID, `HANDS_POOL`), Stufe
   5/6 Polyrhythmen 2:3 und 3:4 (`HANDS_FIGURES`, Unterstufen a–g, Tempo in
   Figuren pro Minute je Figur, `handsFigAdvance`). Ablauf Einzähler →
-  Vorspielen → Mitklopfen → allein; Auswertung je Hand (`judgeHands`) mit
+  Vorspielen → Mitklopfen → allein, auf Wunsch mit je einem Pausentakt
+  dazwischen (`gaps`); Stufe 1–4 standardmäßig Hände einzeln aufgebaut
+  (`build`, `handsStepTask`: Stütze-Hand, Rhythmus-Hand, beide; nur
+  „beide“ zählt für Serie und Fortschritt); Auswertung je Hand (`judgeHands`) mit
   Mitziehen, Vertauscht und Verschliffen, Auflösung `handsBarsSvg`. Noten,
   Raster und Silben sind Hilfen zum Einschalten (`visibleAids` mit
   `mode: 'hands'`), Ablage `rhythm.hands`;
@@ -135,7 +138,8 @@ ein Dialog mit echter Wahl).
   Ablage `sing.singTap`;
   Rhythmus-Training mit Stufen, Phrasen,
   Auftakt, Rhythmussprache, Eingabe per Tippen oder Mikrofon;
-  Hören: Intervalle, Klänge, Schlüsse, Töne in der Tonart, Akkorde in der
+  Hören: Intervalle (Noten-Knopf neben dem Zahnrad: Merkhilfe mit bekannten
+  Songanfängen je Intervall, `INTERVAL_SONGS`), Klänge, Schlüsse, Töne in der Tonart, Akkorde in der
   Tonart, Akkordfolgen, Stimmen heraushören, Intonation; Singen: Ton halten, Intervalle singen, Ton im Akkord finden (intern `findTone`; eigene Auswahl „Nur das a′“ oder „a′, dann Akkord“),
   Nachsingen, Im Takt, Blattsingen, Diktat; der Tuner – Zielton per Klaviatur,
   Kammerton, dauerhaft gemerkter Tonumfang – ist eine eigene Tools-Kachel,
@@ -235,11 +239,14 @@ ein Dialog mit echter Wahl).
   selbst, nicht auf der Tools-Seite). Ablage
   `licks` (`window.parent.chorToolStorage`), Fortschrittsbereich `licks`.
   Prüfung: `licks.selfCheck()` in der Konsole des iframes.
-- `metronom.html` — Metronom (Taktarten, Unterteilung, Betonung je Schlag,
-  Klänge und Drumloops, Tempo-Trainer, Stummtakte, Übungs-Timer). Läuft beim
-  Schließen weiter, solange es spielt (das iframe wird nur ausgeblendet);
-  ein schwebender Knopf oben links (`#metronome-fab`, abschaltbar unter
-  Extras) öffnet es wieder oder stoppt es. Nachrichten laufen per
+- `metronom.html` — Metronom (Betonung je Schlag; Taktart, Unterteilung und
+  Klang als Dropdowns in einer Zeile — der Klang umfasst die Drumloops der
+  Taktart, `LOOPS`, mit echten Schlagzeug-Samples aus `samples/drums/`, Fill
+  jeden 4. Takt; Tools: Tempo-Trainer, Stummtakte, Sleeptimer mit
+  Ausblenden). Läuft beim Schließen weiter, solange es spielt (das iframe
+  wird nur ausgeblendet); ein schwebender Knopf oben links
+  (`#metronome-fab`, abschaltbar im Zahnrad oben rechts, dort auch
+  Bildschirm anlassen und Vibration) öffnet es wieder oder stoppt es. Nachrichten laufen per
   postMessage (`chor-metronome` / `chor-metronome-cmd`).
 - Die Tool-Seiten sind eigenständig, werden in der App über den
   Tools-Reiter als Vollbild-iframe geöffnet (`TOOL_PAGES` in `sw.js`, im Shell-Cache
@@ -332,8 +339,9 @@ Drei Punkte dazu:
 ## Übe-Programme
 
 An drei Stellen (aktuelle Setliste, übrige Setlisten, Loops und REC im
-Player) öffnet ein Knopf (in der Loop-Leiste beschriftet „Üben", sonst ein
-Hantel-Symbol) einen Dialog zum Zusammenstellen eines
+Player) öffnet ein Knopf (in der Loop-Leiste beschriftet „Üben", sonst
+dasselbe Symbol ohne Text; bei Setlisten auch im Menü als „Übeprogramm")
+einen Dialog zum Zusammenstellen eines
 Übe-Programms (Choirgym; Vorlagen-Chips „Kennenlernen", „Festigen",
 „Durchsingen" belegen die Schritte vor): eine Folge aus „N mal auf Tempo X als Stimme Y, dann …",
 danach automatisch der nächste Song/Loop/REC. Je Setliste bzw. Song wird

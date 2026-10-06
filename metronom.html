@@ -27,7 +27,7 @@
   bpm, showFab, beat?, level?}; siehe notifyParent) und nimmt Befehle an
   ({type:'chor-metronome-cmd', action:'stop'|'status'}). Ein ausgeblendetes
   iframe bekommt kein requestAnimationFrame — deshalb übernimmt dann der
-  Scheduler-Takt (pump) Anzeige, Trainer-Stand und Übungs-Timer.
+  Scheduler-Takt (pump) Anzeige, Trainer-Stand und Sleeptimer.
 
   Einstellungen merkt sich das Tool über window.parent.chorToolStorage
   (von app.js bereitgestellt, IndexedDB-meta-Store) — nicht localStorage,
@@ -111,19 +111,31 @@
   .chip[aria-pressed="true"] { background: rgba(var(--accent-rgb), .16); border-color: var(--accent-foreground); color: var(--accent-foreground); }
   .chip:disabled { opacity: .35; cursor: default; }
 
-  .sound-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-  .sound {
-    border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: 7px 8px;
-    display: flex; align-items: center; justify-content: center; gap: 5px; font-size: .72rem; font-weight: 700; color: var(--muted);
-    white-space: nowrap; min-width: 0;
+  /* Taktart · Unterteilung · Klang als Dropdowns in einer Zeile. */
+  .sel-row { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.1fr) minmax(0, 1.3fr); gap: 8px; }
+  .sel { display: block; min-width: 0; }
+  .sel .sub-label { margin: 0 0 5px 2px; }
+  .sel select {
+    width: 100%; min-width: 0; height: 44px; padding: 0 26px 0 12px; border-radius: 14px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-size: .82rem; font-weight: 700;
+    appearance: none; -webkit-appearance: none; text-overflow: ellipsis;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 15px) 19px, calc(100% - 10px) 19px; background-size: 5px 5px; background-repeat: no-repeat;
   }
-  .sound svg { width: 15px; height: 15px; flex: 0 0 auto; }
-  .sound[aria-pressed="true"] { border-color: var(--accent-foreground); background: rgba(var(--accent-rgb), .14); color: var(--accent-foreground); }
-  .loop-box { margin-top: 12px; padding: 12px; border-radius: 14px; background: var(--surface); border: 1px dashed rgba(var(--accent-rgb), .5); }
-  .loop-box .chip { background: var(--surface-2); }
+  .sel select:disabled { opacity: .45; }
+  .sel select:focus-visible { outline: 3px solid var(--accent-foreground); outline-offset: 2px; }
+  .grouping-box .sub-label { margin-top: 14px; }
+  .loop-extra { margin-top: 14px; }
+  .sheet { position: fixed; inset: 0; background: rgba(36,27,61,.35); display: flex; align-items: flex-end; justify-content: center; z-index: 5; }
+  .sheet-card { width: 100%; max-width: 520px; max-height: 88%; overflow-y: auto; background: var(--bg); border-radius: 22px 22px 0 0; padding: 18px 16px max(18px, env(safe-area-inset-bottom)); }
+  .sheet-title { margin: 0 0 14px; font-size: 1.05rem; font-weight: 800; }
+  .sheet-card .extra { border-top: 1px solid var(--line); padding: 12px 0; }
+  .sheet-card .sheet-close { display: flex; margin: 14px auto 0; min-width: 160px; justify-content: center; }
+  .k-head .k-round[data-open-settings] { margin-left: auto; }
 
   .extra { border-top: 1px solid var(--line); padding: 12px 0 2px; }
   .extra:first-of-type { border-top: 0; padding-top: 0; }
+  .card-head + .extra { border-top: 0; padding-top: 0; }
   .extra-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .extra-title { font-size: .82rem; font-weight: 800; }
   .extra-sub { display: block; font-size: .68rem; font-weight: 600; color: var(--muted); margin-top: 2px; }
@@ -165,6 +177,7 @@
   <!-- Zurück: eingebettet schließt es das Tool (die App blendet ihr ✕ per data-own-back aus), eigenständig versteckt. -->
   <button class="k-round" type="button" data-own-back-btn aria-label="Zurück" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
   <div class="k-titles"><h1 class="k-title">Metronom</h1></div>
+  <button class="k-round" type="button" data-open-settings aria-label="Einstellungen" aria-expanded="false" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
 </header>
 
 <main>
@@ -182,47 +195,33 @@
     <p class="silent-msg" role="status"></p>
   </section>
 
+  <!-- Taktart, Unterteilung und Klang (Klicks und Drumloops der Taktart) in einer Zeile. -->
   <section class="card">
-    <div class="card-head">
-      <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M6 19V9M10 19V5M14 19v-8M18 19v-5"/></svg></span>
-      <h2>Takt</h2>
+    <div class="sel-row">
+      <label class="sel"><span class="sub-label">Taktart</span><select data-select="meter" aria-label="Taktart"></select></label>
+      <label class="sel"><span class="sub-label">Unterteilung</span><select data-select="subdivision" aria-label="Unterteilung"></select></label>
+      <label class="sel"><span class="sub-label">Klang</span><select data-select="sound" aria-label="Klang oder Drumloop"></select></label>
     </div>
-    <span class="sub-label">Taktart</span>
-    <div class="chip-row" data-chips="meter"></div>
     <div class="grouping-box" hidden>
       <span class="sub-label">Gruppierung</span>
       <div class="chip-row" data-chips="grouping"></div>
     </div>
-    <span class="sub-label">Unterteilung</span>
-    <div class="chip-row" data-chips="subdivision"></div>
-  </section>
-
-  <section class="card">
-    <div class="card-head">
-      <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg></span>
-      <h2>Klang</h2>
-    </div>
-    <div class="sound-grid" data-chips="sound"></div>
-    <div class="loop-box" hidden>
-      <span class="sub-label">Drumloop</span>
-      <div class="chip-row" data-chips="loop"></div>
-      <div class="extra-line" style="margin-top:12px">
-        <span>Klick zusätzlich</span>
-        <label class="switch"><input type="checkbox" role="switch" data-switch="clickWithLoop" aria-label="Klick zusätzlich zum Drumloop"><span class="switch-track"></span></label>
-      </div>
+    <div class="extra-line loop-extra" hidden>
+      <span>Klick zusätzlich zum Drumloop</span>
+      <label class="switch"><input type="checkbox" role="switch" data-switch="clickWithLoop" aria-label="Klick zusätzlich zum Drumloop"><span class="switch-track"></span></label>
     </div>
   </section>
 
   <section class="card">
     <div class="card-head">
-      <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.5 5.6 6.1.6-4.6 4.1 1.3 6-5.3-3.2-5.3 3.2 1.3-6-4.6-4.1 6.1-.6Z"/></svg></span>
-      <h2>Extras</h2>
+      <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4Z"/></svg></span>
+      <h2>Tools</h2>
     </div>
 
     <div class="extra">
       <div class="extra-head">
-        <span><span class="extra-title">Tempo-Trainer</span><span class="extra-sub">Wird Takt für Takt schneller bis zum Zieltempo</span></span>
-        <label class="switch"><input type="checkbox" role="switch" data-switch="trainer" aria-label="Tempo-Trainer"><span class="switch-track"></span></label>
+        <span class="extra-title">Tempo-Trainer</span>
+        <label class="switch"><input type="checkbox" role="switch" data-switch="trainer" aria-label="Tempo-Trainer: wird Takt für Takt schneller bis zum Zieltempo"><span class="switch-track"></span></label>
       </div>
       <div class="extra-body" data-body="trainer">
         <div class="extra-line"><span>Zieltempo</span><span class="stepper" data-stepper="trainerTarget"></span></div>
@@ -234,8 +233,8 @@
 
     <div class="extra">
       <div class="extra-head">
-        <span><span class="extra-title">Stummtakte</span><span class="extra-sub">Zwischendurch still — hältst du das Tempo allein?</span></span>
-        <label class="switch"><input type="checkbox" role="switch" data-switch="gap" aria-label="Stummtakte"><span class="switch-track"></span></label>
+        <span class="extra-title">Stummtakte</span>
+        <label class="switch"><input type="checkbox" role="switch" data-switch="gap" aria-label="Stummtakte: zwischendurch still"><span class="switch-track"></span></label>
       </div>
       <div class="extra-body" data-body="gap">
         <div class="extra-line"><span>Hörbar</span><span class="stepper" data-stepper="gapPlay"></span></div>
@@ -245,38 +244,42 @@
 
     <div class="extra">
       <div class="extra-head">
-        <span><span class="extra-title">Übungs-Timer</span><span class="extra-sub">Stoppt nach der gewählten Zeit</span></span>
-        <label class="switch"><input type="checkbox" role="switch" data-switch="timer" aria-label="Übungs-Timer"><span class="switch-track"></span></label>
+        <span class="extra-title">Sleeptimer</span>
+        <label class="switch"><input type="checkbox" role="switch" data-switch="timer" aria-label="Sleeptimer: stoppt nach der gewählten Zeit"><span class="switch-track"></span></label>
       </div>
       <div class="extra-body" data-body="timer">
         <div class="chip-row" data-chips="timerMinutes"></div>
       </div>
     </div>
+  </section>
+</main>
 
+<!-- Einstellungen (Zahnrad oben rechts): selten gebraucht, deshalb nicht auf der Hauptseite. -->
+<div class="sheet settings-sheet" hidden>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <h2 class="sheet-title" id="settings-title">Einstellungen</h2>
     <div class="extra">
       <div class="extra-head">
         <span><span class="extra-title">Bildschirm anlassen</span><span class="extra-sub">Solange das Metronom läuft, geht das Display nicht aus</span></span>
         <label class="switch"><input type="checkbox" role="switch" data-switch="keepAwake" aria-label="Bildschirm anlassen"><span class="switch-track"></span></label>
       </div>
     </div>
-
     <div class="extra">
       <div class="extra-head">
         <span><span class="extra-title">Schnellzugriff-Knopf</span><span class="extra-sub">Beim Schließen läuft das Metronom weiter — ein kleiner Knopf oben links holt es zurück oder stoppt es</span></span>
         <label class="switch"><input type="checkbox" role="switch" data-switch="showFab" aria-label="Schnellzugriff-Knopf zeigen, solange das Metronom im Hintergrund läuft"><span class="switch-track"></span></label>
       </div>
     </div>
-
     <div class="extra" data-extra="vibrate">
       <div class="extra-head">
         <span><span class="extra-title">Vibration</span><span class="extra-sub">Jeder Schlag auch spürbar (nur Android)</span></span>
         <label class="switch"><input type="checkbox" role="switch" data-switch="vibrate" aria-label="Vibration"><span class="switch-track"></span></label>
       </div>
     </div>
-
     <p class="foot-note">Tastatur: Leertaste startet/stoppt, Pfeil hoch/runter ändert das Tempo, T tippt das Tempo ein.</p>
-  </section>
-</main>
+    <button class="sheet-close k-btn" type="button" data-close-settings>Fertig</button>
+  </div>
+</div>
 
 <footer class="k-foot">
   <div class="transport">
@@ -364,29 +367,141 @@
     { id: 'drums', label: 'Drumloop', icon: '<ellipse cx="12" cy="8" rx="8" ry="3"/><path d="M4 8v8c0 1.7 3.6 3 8 3s8-1.3 8-3V8"/><path d="M15 3l5 3M9 3 4 6"/>' },
   ];
 
-  // Drumloops: Positionen in Ticks innerhalb EINES Takts (12 je Viertel).
-  // q = Viertel, e = Achtel, s = Sechzehntel, t = Triolen-Achtel.
-  const q = (n) => n * 12, e = (n) => n * 6, s = (n) => n * 3, t = (n) => n * 4;
-  const range = (count, fn) => Array.from({ length: count }, (_, i) => fn(i));
+  // Drumloops: Positionen in Ticks innerhalb EINES Takts (12 je Viertel,
+  // Achtel = 6, Sechzehntel = 3, Triolen-Achtel = 4). Ein Eintrag ist ein
+  // Tick (Stärke 1) oder [Tick, Stärke 0,2–1]. variation spielt jeden 4. Takt
+  // (kleiner Fill), variationFirst nur im allerersten Takt (Crash zum Einstieg).
+  // Grooves von einer Drummerin/Musikpädagogin für den Popchor entworfen:
+  // Puls klar, nicht überladen, Hi-Hat mit Betonung auf den Zählzeiten.
+  // Instrumente: echte Samples (samples/drums/, VCSL) — ride und shaker synthetisch.
   const LOOPS = [
-    { id: 'pop', label: 'Pop', meter: '4/4', kick: [q(0), s(6), q(2)], snare: [q(1), q(3)], hat: range(8, e) },
-    { id: 'rock', label: 'Rock', meter: '4/4', kick: [q(0), q(2), s(10)], snare: [q(1), q(3)], hat: range(8, e), open: [e(7)] },
-    { id: 'ballad', label: 'Ballade', meter: '4/4', kick: [q(0), s(10)], rim: [q(1), q(3)], hat: range(4, q) },
-    { id: 'swing', label: 'Swing', meter: '4/4', ride: [q(0), q(1), q(1) + t(2), q(2), q(3), q(3) + t(2)], hat: [q(1), q(3)], kick: [q(0), q(2)], kickVel: .45 },
-    { id: 'shuffle', label: 'Shuffle', meter: '4/4', kick: [q(0), q(2), q(2) + t(2)], snare: [q(1), q(3)], hat: range(4, (i) => [q(i), q(i) + t(2)]).flat() },
-    { id: 'bossa', label: 'Bossa Nova', meter: '4/4', kick: [q(0), s(3), q(2), s(11)], rim: [s(0), s(3), s(6), s(10), s(12)], hat: range(8, e) },
-    { id: 'disco', label: 'Disco', meter: '4/4', kick: range(4, q), snare: [q(1), q(3)], open: range(4, (i) => q(i) + e(1)), hat: range(4, q) },
-    { id: 'funk', label: 'Funk', meter: '4/4', kick: [q(0), s(3), s(10)], snare: [q(1), q(3)], ghost: [s(7), s(15)], hat: range(16, s) },
-    { id: 'waltz', label: 'Walzer', meter: '3/4', kick: [q(0)], rim: [q(1), q(2)], hat: range(3, q) },
-    { id: 'jazzwaltz', label: 'Jazz-Walzer', meter: '3/4', ride: [q(0), q(1), q(1) + t(2), q(2)], hat: [q(1), q(2)], kick: [q(0)], kickVel: .5 },
-    { id: 'march', label: 'Marsch', meter: '2/4', kick: [q(0), q(1)], snare: [e(1), e(3)], ghost: [s(3), s(7)] },
-    { id: 'polka', label: 'Polka', meter: '2/4', kick: [q(0), q(1)], rim: [e(1), e(3)], hat: range(4, e) },
-    { id: 'five', label: '5/4-Groove', meter: '5/4', kick: [q(0), q(3)], snare: [q(2), q(4)], hat: range(10, e) },
-    { id: 'ballad68', label: '6/8-Ballade', meter: '6/8', kick: [e(0)], rim: [e(3)], hat: range(6, e) },
-    { id: 'folk68', label: '6/8-Folk', meter: '6/8', kick: [e(0), e(2), e(3)], snare: [e(3)], hat: range(6, e) },
-    { id: 'odd78', label: '7/8 (2+2+3)', meter: '7/8', kick: [e(0), e(4)], snare: [e(2)], rim: [e(6)], hat: range(7, e) },
-    { id: 'blues128', label: '12/8-Blues', meter: '12/8', kick: [e(0), e(6), e(8)], snare: [e(3), e(9)], ride: range(12, e) },
+    // Pop: gerade Achtel, Kick auf 1, 3 und 3+, Backbeat auf 2 und 4
+    { id: 'pop', label: 'Pop', meter: '4/4',
+      kick: [0, [24, .9], [30, .7]], snare: [12, 36],
+      hat: [[0, .85], [6, .5], [12, .75], [18, .5], [24, .8], [30, .5], [36, .75], [42, .5]],
+      variation: { kick: [0, [24, .9], [30, .7]], snare: [12, 36, [45, .6]], hat: [[0, .85], [6, .5], [12, .75], [18, .5], [24, .8], [30, .5], [36, .75]], open: [[42, .6]] },
+      variationFirst: { kick: [0, [24, .9], [30, .7]], snare: [12, 36], crash: [[0, .7]], hat: [[6, .5], [12, .75], [18, .5], [24, .8], [30, .5], [36, .75], [42, .5]] } },
+    // Pop-Ballade: ruhig, Sidestick auf 2 und 4, leise Achtel-Hi-Hat, weiche Kick mit Vorschlag zur 3
+    { id: 'ballade', label: 'Pop-Ballade', meter: '4/4',
+      kick: [[0, .85], [22, .45], [24, .7]], rim: [[12, .8], [36, .8]],
+      hatSoft: [[0, .7], [6, .4], [12, .6], [18, .4], [24, .65], [30, .4], [36, .6], [42, .4]],
+      variation: { kick: [[0, .85], [22, .45], [24, .7]], rim: [[12, .8], [36, .8]], hatSoft: [[0, .7], [6, .4], [12, .6], [18, .4], [24, .65], [30, .4], [36, .6]], tomHi: [[42, .4]], tomLo: [[45, .45]] } },
+    // Rock: kräftige Achtel-Hi-Hat, Kick auf 1, 1+, 3, 3+, satter Backbeat
+    { id: 'rock', label: 'Rock', meter: '4/4',
+      kick: [0, [6, .7], [24, .95], [30, .75]], snare: [12, 36],
+      hat: [[0, 1], [6, .65], [12, .9], [18, .65], [24, .95], [30, .65], [36, .9], [42, .65]],
+      variation: { kick: [0, [6, .7], [24, .95], [30, .75]], snare: [12, 36, [39, .7]], hat: [[0, 1], [6, .65], [12, .9], [18, .65], [24, .95], [30, .65], [36, .9]], tomHi: [[42, .8]], tomLo: [[45, .85]] },
+      variationFirst: { kick: [0, [6, .7], [24, .95], [30, .75]], snare: [12, 36], crash: [[0, .8]], hat: [[6, .65], [12, .9], [18, .65], [24, .95], [30, .65], [36, .9], [42, .65]] } },
+    // Four-on-the-floor / Dance: Kick auf allen Vierteln, Clap auf 2 und 4, offene Hi-Hat auf den Offbeats
+    { id: 'dance', label: 'Dance', meter: '4/4',
+      kick: [0, 12, 24, 36], clap: [[12, .85], [36, .85]], open: [[6, .55], [18, .55], [30, .55], [42, .55]],
+      shaker: [[3, .3], [9, .3], [15, .3], [21, .3], [27, .3], [33, .3], [39, .3], [45, .3]],
+      variation: { kick: [0, 12, 24, 36], clap: [[12, .85], [36, .85], [45, .6]], open: [[6, .55], [18, .55], [30, .55], [42, .55]], shaker: [[3, .3], [9, .3], [15, .3], [21, .3], [27, .3], [33, .3], [39, .3]] } },
+    // Funk/Soul: Sechzehntel-Gefühl, synkopierte Kick, leise Ghostnotes zwischen den Backbeats
+    { id: 'funk', label: 'Funk/Soul', meter: '4/4',
+      kick: [0, [9, .75], [30, .85], [39, .65]], snare: [12, 36], snareSoft: [[21, .35], [27, .3], [45, .35]],
+      hat: [[0, .85], [6, .55], [12, .8], [18, .55], [24, .8], [30, .55], [36, .8]], hatSoft: [[3, .35], [15, .35], [27, .35], [33, .35]], open: [[42, .5]],
+      variation: { kick: [0, [9, .75], [30, .85], [39, .65]], snare: [12, 36, [42, .6]], snareSoft: [[21, .35], [27, .3], [33, .3], [45, .45]], hat: [[0, .85], [6, .55], [12, .8], [18, .55], [24, .8], [30, .55], [36, .8], [42, .55]], hatSoft: [[3, .35], [15, .35], [27, .35]] } },
+    // Motown: Kick treibt auf allen Vierteln, harter Backbeat mit Tamburin-Shaker auf 2 und 4
+    { id: 'motown', label: 'Motown', meter: '4/4',
+      kick: [[0, .9], [12, .55], [24, .85], [36, .55]], snare: [12, 36], shaker: [[12, .8], [36, .8]],
+      hat: [[0, .7], [6, .45], [12, .6], [18, .45], [24, .65], [30, .45], [36, .6], [42, .45]],
+      variation: { kick: [[0, .9], [12, .55], [24, .85], [36, .55]], snare: [12, 36, [42, .55], [45, .75]], shaker: [[12, .8], [36, .8]], hat: [[0, .7], [6, .45], [12, .6], [18, .45], [24, .65], [30, .45], [36, .6]] } },
+    // Shuffle: triolische Achtel (lang-kurz), Kick mit Shuffle-Vorschlag, Backbeat auf 2 und 4
+    { id: 'shuffle', label: 'Shuffle', meter: '4/4',
+      kick: [0, [20, .55], [24, .9], [44, .5]], snare: [12, 36], snareSoft: [[32, .3]],
+      hat: [[0, .85], [8, .5], [12, .75], [20, .5], [24, .8], [32, .5], [36, .75], [44, .5]],
+      variation: { kick: [0, [20, .55], [24, .9]], snare: [12, 36, [40, .55], [44, .75]], snareSoft: [[32, .3]], hat: [[0, .85], [8, .5], [12, .75], [20, .5], [24, .8], [32, .5], [36, .75]] } },
+    // Swing: Ride „ding, ding-a-ding“, Fuß-Hi-Hat auf 2 und 4, gefederte Kick, leise Comping-Snare
+    { id: 'swing', label: 'Swing', meter: '4/4',
+      ride: [[0, .75], [12, .85], [20, .5], [24, .75], [36, .85], [44, .5]], hatSoft: [[12, .6], [36, .6]],
+      kick: [[0, .3], [12, .25], [24, .3], [36, .25]], snareSoft: [[32, .3]],
+      variation: { ride: [[0, .75], [12, .85], [20, .5], [24, .75], [36, .85], [44, .5]], hatSoft: [[12, .6], [36, .6]], kick: [[0, .3], [12, .25], [24, .3], [36, .25]], snareSoft: [[20, .3], [32, .4], [44, .5]] } },
+    // Bossa Nova: Sidestick-Clave, Kick „1 – a2“, leise gerade Achtel
+    { id: 'bossa', label: 'Bossa Nova', meter: '4/4',
+      kick: [[0, .75], [9, .45], [12, .7], [21, .45], [24, .75], [33, .45], [36, .7], [45, .45]],
+      rim: [[0, .75], [9, .7], [18, .7], [30, .75], [39, .7]],
+      hatSoft: [[0, .55], [6, .35], [12, .5], [18, .35], [24, .55], [30, .35], [36, .5], [42, .35]] },
+    // Reggae One-Drop: Kick und Sidestick nur auf der 3, Hi-Hat betont die Offbeats
+    { id: 'reggae', label: 'Reggae', meter: '4/4',
+      kick: [24], rim: [[24, .9]], hat: [[0, .45], [6, .75], [12, .45], [18, .75], [24, .45], [30, .75], [36, .45], [42, .75]],
+      variation: { kick: [24], rim: [[24, .9]], hat: [[0, .45], [6, .75], [12, .45], [18, .75], [24, .45], [30, .75]], tomHi: [[36, .6], [40, .55]], tomLo: [[44, .65]] } },
+    // Gospel: geswingte Achtel, Klatschen plus Snare auf 2 und 4 — zum Mitklatschen im Chor
+    { id: 'gospel', label: 'Gospel/Clap', meter: '4/4',
+      kick: [0, [20, .55], [24, .9]], clap: [12, 36], snare: [[12, .6], [36, .6]],
+      hat: [[0, .75], [8, .4], [12, .6], [20, .4], [24, .7], [32, .4], [36, .6], [44, .4]],
+      variation: { kick: [0, [20, .55], [24, .9]], clap: [12, 36, [44, .7]], snare: [[12, .6], [36, .6], [44, .5]], hat: [[0, .75], [8, .4], [12, .6], [20, .4], [24, .7], [32, .4], [36, .6]] } },
+    // Latin-Pop: zurückhaltender Dembow-Rhythmus mit Sidestick, Kick auf allen Vierteln, Shaker-Achtel
+    { id: 'latin', label: 'Latin-Pop', meter: '4/4',
+      kick: [[0, .9], [12, .7], [24, .9], [36, .7]], rim: [[9, .75], [18, .8], [33, .75], [42, .8]],
+      shaker: [[0, .45], [6, .3], [12, .45], [18, .3], [24, .45], [30, .3], [36, .45], [42, .3]], hatSoft: [[6, .4], [30, .4]] },
+    // Halftime: Snare nur auf der 3, viel Raum, Kick mit Synkope, leise Ghostnote vor der Eins
+    { id: 'halftime', label: 'Halftime', meter: '4/4',
+      kick: [0, [9, .6], [33, .7]], snare: [24], snareSoft: [[45, .3]],
+      hat: [[0, .8], [6, .45], [12, .65], [18, .45], [24, .75], [30, .45], [36, .65], [42, .45]],
+      variation: { kick: [0, [9, .6], [33, .7]], snare: [24, [42, .5]], snareSoft: [[39, .3], [45, .45]], hat: [[0, .8], [6, .45], [12, .65], [18, .45], [24, .75], [30, .45], [36, .65]], open: [[42, .5]] } },
+    // Walzer: schwere Eins mit Kick, leichte Zwei und Drei („Um-pa-pa“)
+    { id: 'walzer', label: 'Walzer', meter: '3/4',
+      kick: [0], snareSoft: [[12, .6], [24, .55]], hat: [[0, .7], [12, .5], [24, .45]],
+      variation: { kick: [0], snareSoft: [[12, .6], [24, .55], [30, .4]], hat: [[0, .7], [12, .5], [24, .45]] } },
+    // Jazz-Walzer / Ballade in 3: Ride mit geswingten Achteln, Fuß-Hi-Hat auf 2, weiche Kick auf der Eins
+    { id: 'jazzwalzer', label: 'Jazz-Walzer', meter: '3/4',
+      ride: [[0, .8], [12, .6], [20, .45], [24, .65], [32, .45]], hatSoft: [[12, .55]], kick: [[0, .5]], rim: [[24, .45]],
+      variation: { ride: [[0, .8], [12, .6], [20, .45], [24, .65], [32, .45]], hatSoft: [[12, .55]], kick: [[0, .5]], snareSoft: [[20, .3], [32, .4]] } },
+    // Marsch/Polka: Kick auf beiden Vierteln, Snare auf den Offbeats, kleiner Wirbel jeden 4. Takt
+    { id: 'marsch', label: 'Marsch/Polka', meter: '2/4',
+      kick: [0, [12, .8]], snare: [[6, .7], [18, .7]], hatSoft: [[0, .5], [12, .45]],
+      variation: { kick: [0, [12, .8]], snare: [[6, .7], [18, .8]], snareSoft: [[15, .4], [21, .5]], hatSoft: [[0, .5], [12, .45]] } },
+    // 5/4 (3+2): Kick auf den Gruppenanfängen 1 und 4, Snare auf 3 und 5
+    { id: 'fuenfvier', label: '5/4 (3+2)', meter: '5/4',
+      kick: [0, [18, .55], 36], snare: [24, 48],
+      hat: [[0, .9], [6, .45], [12, .6], [18, .45], [24, .7], [30, .45], [36, .85], [42, .45], [48, .7], [54, .45]],
+      variation: { kick: [0, [18, .55], 36], snare: [24, 48, [54, .55], [57, .7]], hat: [[0, .9], [6, .45], [12, .6], [18, .45], [24, .7], [30, .45], [36, .85], [42, .45]] } },
+    // 6/8-Ballade: ruhig wiegend, Kick auf der 1, Sidestick auf der 4, leise Achtel-Hi-Hat
+    { id: 'ballade68', label: '6/8-Ballade', meter: '6/8',
+      kick: [0, [30, .45]], rim: [[18, .8]], hatSoft: [[0, .7], [6, .4], [12, .45], [18, .65], [24, .4], [30, .45]],
+      variation: { kick: [0], rim: [[18, .8]], hatSoft: [[0, .7], [6, .4], [12, .45], [18, .65]], tomHi: [[24, .45]], tomLo: [[30, .55]] } },
+    // Afro-6/8: bewegt, Ride mit Lücke, Toms als Antwort, durchlaufender Shaker
+    { id: 'afro68', label: 'Afro 6/8', meter: '6/8',
+      kick: [0, [18, .75]], ride: [[0, .8], [12, .6], [18, .75], [24, .6], [30, .6]], rim: [[12, .55]], tomLo: [[30, .55]],
+      shaker: [[0, .4], [6, .3], [12, .35], [18, .4], [24, .3], [30, .35]],
+      variation: { kick: [0, [18, .75]], ride: [[0, .8], [12, .6], [18, .75], [24, .6], [30, .6]], rim: [[12, .55]], tomHi: [[24, .55], [27, .5]], tomLo: [[30, .6], [33, .55]], shaker: [[0, .4], [6, .3], [12, .35], [18, .4], [24, .3], [30, .35]] } },
+    // 7/8 (2+2+3): Kick markiert die Gruppenanfänge 1 und 3, Snare auf 2 und in der 3er-Gruppe
+    { id: 'siebenacht', label: '7/8 (2+2+3)', meter: '7/8',
+      kick: [0, 24], snare: [12, 36], hat: [[0, .9], [6, .45], [12, .75], [18, .45], [24, .85], [30, .45], [36, .6]],
+      variation: { kick: [0, 24], snare: [12, [33, .55], 36, [39, .65]], hat: [[0, .9], [6, .45], [12, .75], [18, .45], [24, .85], [30, .45]] } },
+    // 12/8 Blues/Slow-Rock: Triolen-Hi-Hat mit Betonung auf den Zählzeiten, Backbeat auf 2 und 4
+    { id: 'blues128', label: '12/8 Blues', meter: '12/8',
+      kick: [0, [30, .55], 36], snare: [18, 54],
+      hat: [[0, .85], [6, .4], [12, .45], [18, .75], [24, .4], [30, .45], [36, .8], [42, .4], [48, .45], [54, .75], [60, .4], [66, .45]],
+      variation: { kick: [0, [30, .55], 36], snare: [18, 54, [60, .6], [66, .75]], hat: [[0, .85], [6, .4], [12, .45], [18, .75], [24, .4], [30, .45], [36, .8], [42, .4], [48, .45], [54, .75]], tomLo: [[69, .6]] } },
   ];
+  // Alte Loop-IDs gespeicherter Stände → nächster neuer Loop.
+  const LOOP_ALIASES = { ballad: 'ballade', disco: 'dance', waltz: 'walzer', jazzwaltz: 'jazzwalzer', march: 'marsch', polka: 'marsch', five: 'fuenfvier', folk68: 'afro68', odd78: 'siebenacht' };
+  const DRUM_KINDS = ['kick', 'snare', 'snareSoft', 'rim', 'hat', 'hatSoft', 'open', 'tomHi', 'tomLo', 'crash', 'clap', 'ride', 'shaker'];
+  /** Ein Muster ({kick: [...], …}) → Map Tick → [[Instrument, Stärke], …]. */
+  function compilePattern(pattern) {
+    const map = new Map();
+    for (const kind of DRUM_KINDS) {
+      for (const hit of pattern[kind] || []) {
+        const [tick, vel] = Array.isArray(hit) ? hit : [hit, 1];
+        if (!map.has(tick)) map.set(tick, []);
+        map.get(tick).push([kind, vel]);
+      }
+    }
+    return map;
+  }
+  for (const loop of LOOPS) {
+    loop.hits = compilePattern(loop);
+    if (loop.variation) loop.variationHits = compilePattern(loop.variation);
+    if (loop.variationFirst) loop.firstHits = compilePattern(loop.variationFirst);
+  }
+  /** Muster für Takt `bar`: erster Takt ggf. mit Crash, jeder 4. mit Fill. */
+  function loopHits(loop, bar) {
+    if (bar === 0 && loop.firstHits) return loop.firstHits;
+    if (bar % 4 === 3 && loop.variationHits) return loop.variationHits;
+    return loop.hits;
+  }
 
   const TEMPO_NAMES = [[40, 'Grave'], [60, 'Largo'], [66, 'Larghetto'], [76, 'Adagio'], [108, 'Andante'], [120, 'Moderato'], [156, 'Allegro'], [176, 'Vivace'], [200, 'Presto'], [Infinity, 'Prestissimo']];
   const tempoName = (bpm) => TEMPO_NAMES.find(([limit]) => bpm < limit)[1];
@@ -398,7 +513,7 @@
     gapPlay: { min: 1, max: 16, step: 1, fmt: (v) => `${v} ${v === 1 ? 'Takt' : 'Takte'}` },
     gapMute: { min: 1, max: 16, step: 1, fmt: (v) => `${v} ${v === 1 ? 'Takt' : 'Takte'}` },
   };
-  const TIMER_CHOICES = [2, 5, 10, 15, 20, 30];
+  const TIMER_CHOICES = [5, 10, 15, 20, 30, 45, 60];
 
   /* ------------------------------------------------------------------------
      ZUSTAND (wird gespeichert)
@@ -414,7 +529,7 @@
     sound: 'click', loop: 'pop', clickWithLoop: false,
     trainer: false, trainerTarget: 130, trainerStep: 2, trainerEvery: 4,
     gap: false, gapPlay: 2, gapMute: 2,
-    timer: false, timerMinutes: 10,
+    timer: false, timerMinutes: 20, // timer = Sleeptimer
     vibrate: false, keepAwake: true, showFab: true,
   };
 
@@ -429,7 +544,8 @@
     set('bpm', num(inRef(raw.bpm), 30, 250));
     set('subdivision', SUBDIVISIONS.some((x) => x.id === raw.subdivision) ? raw.subdivision : null);
     set('sound', SOUNDS.some((x) => x.id === raw.sound) ? raw.sound : null);
-    set('loop', LOOPS.some((x) => x.id === raw.loop) ? raw.loop : null);
+    const loopId = LOOP_ALIASES[raw.loop] || raw.loop;
+    set('loop', LOOPS.some((x) => x.id === loopId) ? loopId : null);
     for (const key of ['clickWithLoop', 'trainer', 'gap', 'timer', 'vibrate', 'keepAwake', 'showFab']) if (typeof raw[key] === 'boolean') state[key] = raw[key];
     for (const [key, cfg] of Object.entries(STEPPERS)) set(key, num(key === 'trainerTarget' ? inRef(raw[key]) : raw[key], cfg.min, cfg.max));
     set('timerMinutes', TIMER_CHOICES.includes(raw.timerMinutes) ? raw.timerMinutes : null);
@@ -485,8 +601,36 @@
      ENGINE
      ------------------------------------------------------------------------ */
 
+  // Echte Schlagzeug-Samples (VCSL, CC0; Herkunft samples/LIZENZ.md) — wie
+  // „Einsatz finden“ in uebe-lab.html. Bis sie geladen sind (oder ohne
+  // Netz/Cache) springt die Synthese unten ein.
+  const DRUM_FILES = { kick: 'kick', snare: 'snare', snareSoft: 'snare-soft', rim: 'rim', hat: 'hat', hatSoft: 'hat-soft', open: 'open', tomHi: 'tom-hi', tomLo: 'tom-lo', crash: 'crash', clap: 'clap' };
+  const DRUM_GAIN = { kick: 1, snare: .75, snareSoft: .7, rim: .7, hat: .45, hatSoft: .45, open: .4, tomHi: .7, tomLo: .75, crash: .45, clap: .7 };
+
   const engine = {
-    ctx: null, out: null, noise: null,
+    ctx: null, out: null, noise: null, samples: {}, samplesLoading: null,
+
+    /** Samples einmal laden; das Versprechen erfüllt sich auch bei Fehlern. */
+    loadSamples() {
+      if (this.samplesLoading || !this.ctx) return this.samplesLoading || Promise.resolve();
+      const ctx = this.ctx;
+      this.samplesLoading = Promise.all(Object.entries(DRUM_FILES).map(([kind, file]) =>
+        fetch(`./samples/drums/${file}.mp3`).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))))
+          .then((buf) => ctx.decodeAudioData(buf)).then((b) => { this.samples[kind] = b; }).catch(() => {}))).then(() => {});
+      return this.samplesLoading;
+    },
+
+    sample(kind, time, vel) {
+      const buf = this.samples[kind];
+      if (!buf) return false;
+      const src = this.ctx.createBufferSource();
+      const g = this.ctx.createGain();
+      src.buffer = buf;
+      g.gain.value = DRUM_GAIN[kind] * vel;
+      src.connect(g).connect(this.out);
+      src.start(time);
+      return true;
+    },
 
     async start() {
       if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); return; }
@@ -564,6 +708,7 @@
     },
 
     drum(kind, time, vel = 1) {
+      if (this.sample(kind, time, vel)) return;
       switch (kind) {
         case 'kick': {
           const ctx = this.ctx;
@@ -578,8 +723,9 @@
           break;
         }
         case 'snare':
-        case 'ghost': {
-          const v = kind === 'ghost' ? .35 * vel : vel;
+        case 'snareSoft':
+        case 'clap': {
+          const v = kind === 'snareSoft' ? .5 * vel : vel;
           this.tone(time, { freq: 185, type: 'triangle', gain: .28 * v, decay: .09 });
           this.noiseHit(time, { type: 'bandpass', freq: 1800, q: 1.1, gain: .3 * v, decay: .16 });
           break;
@@ -588,7 +734,28 @@
           this.tone(time, { freq: 1700, type: 'square', gain: .12 * vel, decay: .025, filter: { type: 'bandpass', freq: 2000, q: 3 } });
           break;
         case 'hat':
-          this.noiseHit(time, { freq: 7000, gain: .07 * vel, decay: .045 });
+        case 'hatSoft':
+          this.noiseHit(time, { freq: 7000, gain: (kind === 'hatSoft' ? .045 : .07) * vel, decay: .045 });
+          break;
+        case 'shaker':
+          this.noiseHit(time, { freq: 9000, q: .8, gain: .05 * vel, decay: .06 });
+          break;
+        case 'tomHi':
+        case 'tomLo': {
+          const ctx = this.ctx;
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          const f = kind === 'tomHi' ? 190 : 120;
+          osc.frequency.setValueAtTime(f, time);
+          osc.frequency.exponentialRampToValueAtTime(f * .6, time + .2);
+          g.gain.setValueAtTime(.5 * vel, time);
+          g.gain.exponentialRampToValueAtTime(.0001, time + .3);
+          osc.connect(g).connect(this.out);
+          osc.start(time); osc.stop(time + .32);
+          break;
+        }
+        case 'crash':
+          this.noiseHit(time, { freq: 5000, q: .6, gain: .07 * vel, decay: 1.2 });
           break;
         case 'open':
           this.noiseHit(time, { freq: 7200, q: .9, gain: .06 * vel, decay: .3 });
@@ -663,11 +830,7 @@
     const drums = state.sound === 'drums';
     if (drums) {
       const loop = LOOPS.find((l) => l.id === state.loop);
-      if (loop) {
-        for (const kind of ['kick', 'snare', 'ghost', 'rim', 'hat', 'open', 'ride']) {
-          if (loop[kind]?.includes(pos)) engine.drum(kind, time, kind === 'kick' ? (loop.kickVel ?? 1) : 1);
-        }
-      }
+      if (loop) for (const [kind, vel] of loopHits(loop, bar).get(pos) || []) engine.drum(kind, time, vel);
     }
     if (drums && !state.clickWithLoop) return;
     const sound = drums ? 'click' : state.sound;
@@ -703,7 +866,13 @@
     if (run.bpmChanged) { run.bpmChanged = false; renderTempo(); persist(); notifyParent(); }
     if (state.timer) {
       const left = state.timerMinutes * 60 - (performance.now() - run.startedAt) / 1000;
-      if (left <= 0) { stop('Übungszeit vorbei — gut gemacht!'); return false; }
+      if (left <= 0) { stop('Sleeptimer abgelaufen — gute Nacht!'); return false; }
+      // Die letzten 10 Sekunden sanft ausblenden.
+      if (left < 10 && !run.fading) {
+        run.fading = true;
+        const g = engine.out.gain, t = engine.ctx.currentTime;
+        g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(.0001, t + left);
+      }
       renderStatus(left);
     }
     return true;
@@ -732,6 +901,11 @@
 
   async function start() {
     try { await engine.start(); } catch { renderStatus(null, 'Web Audio ist auf diesem Gerät nicht verfügbar.'); return; }
+    // Beim Drumloop kurz auf die Samples warten (sonst klingt der erste Takt synthetisch).
+    const loading = engine.loadSamples();
+    if (state.sound === 'drums') await Promise.race([loading, new Promise((r) => setTimeout(r, 1500))]);
+    if (run.playing) return;
+    run.fading = false;
     run.playing = true;
     run.tick = 0;
     run.queue = [];
@@ -749,6 +923,12 @@
 
   function stop(message) {
     run.playing = false;
+    if (run.fading && engine.ctx) {
+      // Ausblenden des Sleeptimers zurücknehmen — nach dem letzten Ton.
+      const g = engine.out.gain, t = engine.ctx.currentTime + .15;
+      g.cancelScheduledValues(t); g.setValueAtTime(.8, t);
+    }
+    run.fading = false;
     clearTimeout(run.timer);
     cancelAnimationFrame(run.frame);
     run.queue = [];
@@ -814,7 +994,7 @@
   function renderTransport() {
     const btn = $('.play');
     btn.innerHTML = run.playing
-      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>'
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/></svg>'
       : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/></svg>';
     btn.setAttribute('aria-label', run.playing ? 'Stoppen' : 'Starten');
   }
@@ -832,22 +1012,36 @@
     }));
   }
 
-  function renderSounds() {
-    $('[data-chips="sound"]').replaceChildren(...SOUNDS.map((snd) => {
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'sound';
-      b.dataset.chip = 'sound'; b.dataset.value = snd.id;
-      b.setAttribute('aria-pressed', String(snd.id === state.sound));
-      b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${snd.icon}</svg><span></span>`;
-      b.querySelector('span').textContent = snd.label;
-      return b;
+  /** Dropdown füllen: entries = [[Wert, Text, deaktiviert?]] bzw. Gruppen [[Gruppenname, entries]]. */
+  function fillSelect(name, groups, value) {
+    const sel = $(`[data-select="${name}"]`);
+    const opt = ([v, label, disabled]) => {
+      const o = document.createElement('option');
+      o.value = String(v); o.textContent = label; o.disabled = !!disabled;
+      return o;
+    };
+    sel.replaceChildren(...groups.map((g) => {
+      if (!Array.isArray(g[1])) return opt(g);
+      const og = document.createElement('optgroup');
+      og.label = g[0];
+      og.append(...g[1].map(opt));
+      return og;
     }));
+    sel.value = String(value);
+  }
+
+  function renderSelects() {
+    const m = meter();
+    fillSelect('meter', METERS.map((x) => [x.id, x.id]), state.meter);
+    fillSelect('subdivision', SUBDIVISIONS.map((x) => [x.id, x.label, x.quarterOnly && m.unit !== 12]), state.subdivision);
     const drums = state.sound === 'drums';
-    $('.loop-box').hidden = !drums;
-    if (drums) {
-      const loops = loopsForMeter();
-      chips('loop', loops.map((l) => [l.id, l.label]), state.loop);
-    }
+    fillSelect('sound', [
+      ['Klick', SOUNDS.filter((x) => x.id !== 'drums').map((x) => [x.id, x.label])],
+      [`Drumloops ${state.meter}`, loopsForMeter().map((l) => [`loop:${l.id}`, l.label])],
+    ], drums ? `loop:${state.loop}` : state.sound);
+    // Unterteilung klingt beim Drumloop nur mit „Klick zusätzlich“.
+    $('[data-select="subdivision"]').disabled = drums && !state.clickWithLoop;
+    $('.loop-extra').hidden = !drums;
   }
 
   function renderSteppers() {
@@ -864,12 +1058,10 @@
     renderBeats();
     renderTempo();
     const m = meter();
-    chips('meter', METERS.map((x) => [x.id, x.id]), state.meter);
-    chips('subdivision', SUBDIVISIONS.map((x) => [x.id, x.label, x.quarterOnly && m.unit !== 12]), state.subdivision);
     const groupings = GROUPINGS[state.meter];
     $('.grouping-box').hidden = !groupings;
     if (groupings) chips('grouping', groupings.map(([label]) => [label, label]), groupings.find(([, list]) => list.join() === accents().join())?.[0] ?? '');
-    renderSounds();
+    renderSelects();
     $$('[data-switch]').forEach((input) => { input.checked = !!state[input.dataset.switch]; });
     $$('[data-body]').forEach((body) => { body.hidden = !state[body.dataset.body]; });
     chips('timerMinutes', TIMER_CHOICES.map((n) => [n, `${n} min`]), state.timerMinutes);
@@ -960,11 +1152,28 @@
       persist();
       return;
     }
+    if (e.target.closest('[data-open-settings]')) { openSettings(true); return; }
+    if (e.target.closest('[data-close-settings]') || e.target.classList.contains('settings-sheet')) { openSettings(false); return; }
     if (e.target.closest('.play')) { if (run.playing) stop(); else start(); return; }
     if (e.target.closest('.tap-btn')) tapTempo();
   });
 
   document.addEventListener('change', (e) => {
+    const sel = e.target.dataset?.select;
+    if (sel) {
+      const value = e.target.value;
+      if (sel === 'meter') { changeMeter(value); return; }
+      if (sel === 'subdivision') state.subdivision = value;
+      if (sel === 'sound') {
+        if (value.startsWith('loop:')) { state.sound = 'drums'; state.loop = value.slice(5); } else state.sound = value;
+        ensureLoopFitsMeter();
+      }
+      renderAll();
+      persist();
+      // Klang/Loop wählen spielt ihn kurz vor, wenn gerade nichts läuft.
+      if (sel === 'sound' && !run.playing) preview();
+      return;
+    }
     const key = e.target.dataset?.switch;
     if (!key) return;
     state[key] = e.target.checked;
@@ -982,7 +1191,15 @@
     if (e.target.classList.contains('tempo-slider')) setBpm(Number(e.target.value));
   });
 
+  function openSettings(open) {
+    $('.settings-sheet').hidden = !open;
+    const btn = $('[data-open-settings]');
+    btn.setAttribute('aria-expanded', String(open));
+    if (open) $('[data-close-settings]').focus(); else btn.focus();
+  }
+
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('.settings-sheet').hidden) { openSettings(false); return; }
     // Esc schließt das Tool auch dann, wenn der Fokus hier im iframe liegt
     // (die App hört auf diese Nachricht, siehe initTools in app.js).
     if (e.key === 'Escape' && window.parent !== window) { window.parent.postMessage({ type: 'chor-tool-close' }, location.origin); return; }
@@ -997,6 +1214,8 @@
   /** Ein Takt zum Vorhören des gewählten Klangs bzw. Loops. */
   async function preview() {
     try { await engine.start(); } catch { return; }
+    if (state.sound === 'drums') await Promise.race([engine.loadSamples(), new Promise((r) => setTimeout(r, 1500))]);
+    if (run.playing) return;
     const t0 = engine.ctx.currentTime + .05;
     const bt = barTicks();
     const saved = run.queue;
@@ -1055,6 +1274,20 @@
       if (state.bpm !== 120) errors.push('alter Stand 4/4 verändert');
       sanitize({ meter: '6/8', bpm: 80, tempoRef: 'beat' });
       if (state.bpm !== 80) errors.push('neuer Stand doppelt umgerechnet');
+      // Drumloops: jeder Schlag liegt ganzzahlig im Takt, bekannte Instrumente.
+      for (const loop of LOOPS) {
+        const m = METERS.find((x) => x.id === loop.meter);
+        if (!m) { errors.push(`Loop ${loop.id}: Taktart ${loop.meter}`); continue; }
+        for (const hits of [loop.hits, loop.variationHits, loop.firstHits].filter(Boolean)) {
+          for (const [tick, list] of hits) {
+            if (!Number.isInteger(tick) || tick < 0 || tick >= m.beats * m.unit) errors.push(`Loop ${loop.id}: Tick ${tick} außerhalb`);
+            for (const [kind, vel] of list) if (!DRUM_KINDS.includes(kind) || !(vel > 0 && vel <= 1)) errors.push(`Loop ${loop.id}: ${kind}/${vel}`);
+          }
+        }
+      }
+      if (new Set(LOOPS.map((l) => l.id)).size !== LOOPS.length) errors.push('Loop-IDs doppelt');
+      sanitize({ meter: '3/4', sound: 'drums', loop: 'waltz', tempoRef: 'beat', bpm: 90 });
+      if (state.loop !== 'walzer') errors.push(`alte Loop-ID waltz → ${state.loop}`);
       // Gruppierungen passen zur Taktart.
       if (document.documentElement.hasAttribute('data-own-back') !== EMBEDDED) errors.push('data-own-back passt nicht zu ?embedded');
       if (!backBtn || !backBtn.hasAttribute('data-own-back-btn') || backBtn.hidden === (EMBEDDED && window.parent !== window)) errors.push('Zurück-Knopf fehlt oder falsch sichtbar');
