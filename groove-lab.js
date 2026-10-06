@@ -149,6 +149,7 @@
     // Chor-Grooves (Didaktik Paket 8) — nur angehängt, nie umsortieren.
     // `vocal`: Silben fürs Mundschlagzeug (nur Anzeige, Chor-Ansicht).
     { name: 'Gospel Shuffle', icon: 'users', meter: '4/4', cat: 'calm', kick: [0, 6, 8], clap: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], ghost: [14],
+      perc: [4, 12], percSound: 'tamb',
       swingUnit: 8, swing: .67,
       bass: [0, 6, 8, 14], bassNotes: [0, 2, 4, 5],
       roll: [[1.33, 1], [1.33, .6], [1.34, .85]] },
@@ -160,6 +161,23 @@
       vocal: { kick: 'bm', snare: 'ka', hat: 'ts', open: 'tsch' },
       bass: [0, 8], bassNotes: [0, 0],
       roll: [[1, 1], [1, .6], [2, .85]] },
+    // Popchor-Grooves (Paket 7b) — mit Percussion-Spur (`perc`, Klang `percSound`).
+    { name: 'Pop Ballad', icon: 'heart', meter: '4/4', cat: 'calm',
+      kick: [0, 10], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14],
+      perc: [2, 6, 10, 14], percSound: 'shaker',
+      bass: [0, 10], bassNotes: [0, 0], roll: [[2, 1], [1.5, .6], [.5, .8]] },
+    { name: 'Pop Stomp', icon: 'boot', meter: '4/4', cat: 'dance',
+      kick: [0, 4, 8, 12], snare: [4, 12], clap: [4, 12], hat: [2, 6, 10, 14],
+      perc: [2, 6, 10, 14], percSound: 'tamb',
+      bass: [0, 6, 8, 14], bassNotes: [0, 0, 0, 4], roll: [[1, 1], [.5, .6], [.5, .8], [2, .9]] },
+    { name: 'Motown Stomp', icon: 'tambourine', meter: '4/4', cat: 'funky',
+      kick: [0, 8, 14], snare: [0, 4, 8, 12], hat: [2, 6, 10, 14],
+      perc: [4, 12], percSound: 'tamb',
+      bass: [0, 4, 8, 12], bassNotes: [0, 4, 7, 4], roll: [[1, 1], [1, .7], [1, .85], [1, .7]] },
+    { name: 'Halftime Pop', icon: 'hourglass', meter: '4/4', cat: 'calm',
+      kick: [0, 3, 10], snare: [8], hat: [0, 2, 4, 6, 8, 10, 12, 14],
+      perc: [4, 12], percSound: 'snap',
+      bass: [0, 3, 10], bassNotes: [0, 0, 4], roll: [[2, 1], [1, .6], [1, .8]] },
   ];
 
   const TRACK_IDS = ['kick', 'snare', 'clap', 'hat', 'open', 'perc', 'bass'];
@@ -213,7 +231,15 @@
   /** Chor-Aufgaben, Workshop und de:construct klingen wie vor dem Sample-Kit. */
   function pinLegacySound(s) {
     s.drumKit = 'synth'; s.feel = false; s.fills = 0; s.trackOn.perc = false; s.bassSoundId = 'pluck';
+    s.chordVoicing = 'satb'; s.chordAdd9 = false; s.chordSound = 'synth'; s.mix.chords = .55;
     return s;
+  }
+  /** Workshop und de:construct beginnen mit dem früheren Standard-Stand der Studio-Ansicht:
+   *  erster Loop, erste Melodie, Velvet Choir, Pad aus. */
+  function pinLegacyStudio(s) {
+    s.patternIndex = 0; s.beat = beatFromPattern(DRUM_PATTERNS[0]); s.percSound = percOf(DRUM_PATTERNS[0]);
+    s.melodyIndex = 0; s.chordsOn = false;
+    return pinLegacyVoice(s);
   }
 
   function beatFromPattern(pattern) {
@@ -408,7 +434,32 @@
       lfoSync: 2, lfoDepth: 2000, drive: .35, subLevel: .3, mono: true, glide: .04 },
     { name: 'Hollow Band', icon: 'bulb', cat: 'keys', wave: 'square', attack: .01, decay: .25, sustain: .5, release: .5, cutoff: 1500, resonance: 5, filterEnvAmount: 800, filterType: 'bandpass', reverbWet: .3, echoWet: .18,
       detune: 6, width: .5 },
+    // Sample-Instrumente (Paket 7c): `sample` nennt den Ordner/das Instrument; Wellenform, Detune,
+    // Sub, Pitch-Drop, LFO, Vibrato und Breite gelten dort nicht. Ohne geladene Samples klingt
+    // der Ersatzklang (SAMPLE_FALLBACK).
+    { name: 'Klavier', icon: 'piano', cat: 'keys', sample: 'piano', attack: .003, decay: .3, sustain: 1, release: .35, cutoff: 12000, resonance: 0, reverbWet: .18, echoWet: .05 },
+    { name: 'E-Gitarre', icon: 'guitar', cat: 'keys', sample: 'guitar', attack: .003, decay: .3, sustain: 1, release: .25, cutoff: 9000, resonance: 0, reverbWet: .15, echoWet: .18 },
+    { name: 'Chor Ooh', icon: 'mic', cat: 'pad', sample: 'choir', attack: .12, decay: .3, sustain: 1, release: .6, cutoff: 8000, resonance: 0, reverbWet: .35, echoWet: .05 },
+    { name: 'Streicher', icon: 'harp', cat: 'pad', sample: 'strings', attack: .25, decay: .3, sustain: 1, release: .7, cutoff: 7000, resonance: 0, reverbWet: .3, echoWet: 0 },
+    { name: 'Brass Stab', icon: 'trumpet', cat: 'lead', sample: 'brass', attack: .005, decay: .2, sustain: 1, release: .15, cutoff: 9000, resonance: 0, reverbWet: .15, echoWet: .08 },
   ];
+
+  /** Sample-Instrumente der Klang-Presets. */
+  const SAMPLE_INSTRUMENTS = ['piano', 'guitar', 'choir', 'strings', 'brass'];
+  /** Ersatzklang je Instrument, solange die Samples fehlen (offline, Ladefehler, noch beim Laden). */
+  const SAMPLE_FALLBACK = { piano: 'Tape Keys', guitar: 'Tape Keys', choir: 'Airy Choir', strings: 'Moon Pad', brass: 'Soft Brass' };
+  // Dateien und Töne je Instrument (samples/<Ordner>, MIDI-Nummer als Name, ein Ton alle drei Halbtöne —
+  // dieselben Listen wie SAMPLE_INST in uebe-lab.html); `long`: Überblend-Loop für lange Töne
+  // (Vorbild SAMPLE_LONG/sampleNote dort); `level`: Pegel gegenüber den Synth-Klängen.
+  const noteRange = (lo, hi) => Array.from({ length: (hi - lo) / 3 + 1 }, (_, i) => lo + i * 3);
+  const SAMPLE_LONG = { loopFrom: .9, tail: .2, xfade: .4 };
+  const LAB_INST = {
+    guitar: { folder: 'guitar', notes: noteRange(54, 87), level: 1.15 },
+    choir: { folder: 'choir', notes: noteRange(45, 81), long: SAMPLE_LONG, level: .7 },
+    strings: { folder: 'strings', notes: noteRange(39, 81), long: SAMPLE_LONG, level: .55 },
+    brass: { folder: 'brass', notes: noteRange(51, 75), level: 1.4 },
+    piano: { level: 4.8, notes: noteRange(48, 84) },
+  };
 
   // Wertebereiche für Regler UND fürs Einlesen gespeicherter/geteilter
   // Stände (sanitizeSound) — ein geteilter Code darf keine Werte setzen, die
@@ -442,6 +493,8 @@
   // Die SATB-Akkorde sind eine Hörhilfe wie der Liegeton — sie klingen fest
   // nach Chor, unabhängig vom gerade eingestellten Synth-Klang.
   const CHORD_SOUND = soundFromPreset(presetIndexByName('Airy Choir'));
+  // Echter Chor für die Akkorde (chordSound 'choir'): Sample-Preset 'Chor Ooh', die Engine fällt ohne Samples auf Airy Choir zurück.
+  const CHOIR_CHORD_SOUND = soundFromPreset(presetIndexByName('Chor Ooh'));
 
   // Liegeton: bewusst schlicht und fest (gefilterte Säge, langsamer Einsatz)
   // — eine Stimmreferenz soll nicht vom gerade gewählten Klang abhängen.
@@ -508,7 +561,7 @@
   const {
     MAJOR, degreeSemis, spell, noteLabel, SPELL_CASES, spellCheck,
     chordQuality, chordPitchClasses, chordSteps, SATB, VOICE_RANGES: SATB_RANGES,
-    VOICING_STATS, voicePairs, voiceChord, leadingToneOf, voiceProgressionSatb,
+    VOICING_STATS, voicePairs, voiceChord, leadingToneOf, voiceProgressionSatb, voiceProgressionPop,
   } = H;
   const MODE_NAME_KEYS = { major: 'lab.modeMajor', minor: 'lab.modeMinor', dorian: 'lab.modeDorian', mixolydian: 'lab.modeMixolydian' };
   const MODES = H.MODES.map((m) => ({ ...m, nameKey: MODE_NAME_KEYS[m.id] }));
@@ -837,6 +890,40 @@
   const CHOIR_PARTS = ['S', 'A', 'T', 'B'];
   const patternIndexByName = (name) => DRUM_PATTERNS.findIndex((p) => p.name === name);
   const melodyIndexByName = (name) => MELODIES.findIndex((m) => m.name === name);
+
+  /* Kuratierte Auswahl (Paket 7e): in den Auswahllisten stehen zuerst die Vorlagen mit
+     klarer Rolle für einen Popchor, in dieser Reihenfolge; alles andere liegt eingeklappt
+     unter „Weitere“. Nichts wird gelöscht oder umsortiert — gespeichert wird weiter der
+     Index, Workshop, Chor-Aufgaben und de:construct finden ihre Vorlagen per Name. Die
+     Listen nennen Namen (lesbar) und werden mit *IndexByName aufgelöst. */
+  const MELODY_ORDER = [
+    'Pop Hook', 'Offbeat Chant', 'Anthem Oh', 'Ballad Line', 'Gospel Call',
+    'Synco Verse', 'Call & Response', 'Question & Answer', 'Guide Tones',
+    // andere Taktarten (der Picker zeigt ohnehin nur die passende)
+    'Waltz Line', 'Turning Waltz', 'Lullaby', 'Jig Hop',
+  ];
+  const BEAT_ORDER = [
+    'Pop Stomp', 'Pop Ballad', 'Backbeat Open', 'Gospel Shuffle', 'Motown Stomp',
+    'Halftime Pop', 'Disco Clap', 'Boom Bap', 'Swing Soul', 'Swing Ride',
+    'Vocal Perc Basic', 'Minimal Click',
+    // andere Taktarten
+    'Waltz Step', 'Jazz Waltz', '6/8 Ballad', 'Folk Jig',
+  ];
+  const PRESET_ORDER = [
+    // keys
+    'Klavier', 'Tape Keys', 'Vintage Organ', 'E-Gitarre', 'Neon Pluck', 'Crystal Drops',
+    // pad
+    'Chor Ooh', 'Streicher', 'Moon Pad', 'Breath Glass',
+    // lead
+    'Brass Stab', 'Analog Lead', 'Bright Saw',
+  ];
+  /** Indizes einer Namensliste (unbekannte Namen fallen weg; der Selbsttest meldet sie). */
+  const orderIndexes = (order, byName) => order.map(byName).filter((i) => i >= 0);
+  /** Erster Eintrag einer Taktart in der sichtbaren Reihenfolge (sonst der erste überhaupt). */
+  const firstPatternOfMeter = (meter) => orderIndexes(BEAT_ORDER, patternIndexByName).find((i) => DRUM_PATTERNS[i].meter === meter)
+    ?? DRUM_PATTERNS.findIndex((p) => p.meter === meter);
+  const firstMelodyOfMeter = (meter) => orderIndexes(MELODY_ORDER, melodyIndexByName).find((i) => MELODIES[i].meter === meter)
+    ?? Math.max(0, MELODIES.findIndex((m) => m.meter === meter));
 
   /** Zustandsfelder einer Aufgabe/Einheit übernehmen. progId setzt eine
    *  bearbeitete Folge zurück und nimmt ggf. den passenden Modus mit
@@ -1286,10 +1373,9 @@
    *  Einheit gleich beginnt. Behält nur Ansicht, Tastenlayout, Oktave und
    *  Master-Pegel des aktuellen Stands. */
   function lessonState(current, lesson) {
-    const s = pinLegacyVoice(defaultState());
+    const s = pinLegacyStudio(pinLegacySound(defaultState()));
     s.view = current.view; s.keysLayout = current.keysLayout; s.octave = current.octave;
     s.mix.master = current.mix.master;
-    pinLegacySound(s);
     s.chordsOn = false; s.melodyOn = false; s.arpOn = false;
     if (lesson.groove === null) { s.mute.drums = true; s.mute.bass = true; }
     else if (lesson.groove) {
@@ -1676,7 +1762,7 @@
     if (!song) return null;
     const level = dcLevel(song.level);
     const has = (el) => level.elements.includes(el);
-    const o = pinLegacyVoice(pinLegacySound(defaultState()));
+    const o = pinLegacyStudio(pinLegacySound(defaultState()));
     o.patternIndex = DRUM_PATTERNS.findIndex((p) => p.meter === song.meter);
     o.beat = dcBeat(song);
     o.beatEdited = true;
@@ -1934,26 +2020,31 @@
      ------------------------------------------------------------------------ */
 
   function defaultState() {
+    // Neue Stände der Studio-Ansicht (Paket 7d): Pop Stomp, Pop Hook, Klavier, Pop-Satz,
+    // Chor-Pad an. Workshop und de:construct beginnen über pinLegacy… wie früher.
+    const pattern = DRUM_PATTERNS[patternIndexByName('Pop Stomp')];
     return {
       // bpm im Tempo-Bezug der Taktart (tempoRef 'beat' seit v305, vorher
       // immer Viertel); eighths: genaues Tempo in Achteln pro Minute — bleibt
       // beim Taktartwechsel gleich, damit nichts durch Runden wandert.
       bpm: 106, tempoRef: 'beat', eighths: 212, swing: 0, pump: 0,
-      patternIndex: 0, beat: beatFromPattern(DRUM_PATTERNS[0]), beatEdited: false,
+      patternIndex: patternIndexByName('Pop Stomp'), beat: beatFromPattern(pattern), beatEdited: false,
       trackOn: { kick: true, snare: true, clap: true, hat: true, open: true, perc: true, bass: true },
       // Schlagzeug-Klang: 'auto' (je Loop-Kategorie) | 'synth' | 'acoustic' | 'hybrid';
       // feel: Akzente/Mikro-Timing nur bei der Wiedergabe; percSound: Klang der
       // Percussion-Spur (übernimmt beim Loop-Wählen den Wert des Loops).
-      drumKit: 'auto', feel: true, percSound: 'tamb',
+      drumKit: 'auto', feel: true, percSound: percOf(pattern),
       // Fill im letzten Takt jedes Blocks: 0 (aus) | 4 | 8 Takte.
       fills: 8,
       bassSoundId: 'finger',
       keyRoot: 0, modeId: 'major', progId: 'pop', chordBars: 1,
       // Bearbeitete oder eigene Akkordfolge (null = Vorlage progId).
       progDegrees: null, progSevenths: false, progDominant: false, progDom7: false, progName: null, progOwnId: null,
-      chordsOn: false, satb: { S: 'on', A: 'on', T: 'on', B: 'on' },
+      chordsOn: true, satb: { S: 'on', A: 'on', T: 'on', B: 'on' },
+      // Satz der Akkorde ('satb' Chor | 'pop' enge Lage), Farbe add9, Klang ('synth' | 'choir').
+      chordVoicing: 'pop', chordAdd9: false, chordSound: 'choir',
       droneOn: false, droneFifth: true,
-      melodyIndex: 0, melodyOn: true, melodyOctave: 4,
+      melodyIndex: melodyIndexByName('Pop Hook'), melodyOn: true, melodyOctave: 4,
       // Bearbeitete oder eigene Melodie: die Takte selbst (null = Vorlage
       // melodyIndex unverändert), dazu Taktart, Name und ggf. Bibliotheks-Id.
       melodyBars: null, melodyMeter: null, melodyName: null, melodyOwnId: null,
@@ -1964,8 +2055,8 @@
       arpDivision: 2, arpRhythm: 'straight', arpOctaves: 1, arpRef: 'key',
       keysLayout: 'piano',
       octave: 4,
-      sound: soundFromPreset(presetIndexByName('Tape Keys')),
-      mix: { drums: .8, bass: .8, melody: .75, arp: .6, chords: .55, keys: .8, drone: .5, master: .8 },
+      sound: soundFromPreset(presetIndexByName('Klavier')),
+      mix: { drums: .8, bass: .8, melody: .75, arp: .6, chords: .45, keys: .8, drone: .5, master: .8 },
       mute: { drums: false, bass: false, melody: false, arp: false, chords: false, keys: false, drone: false },
       fx: { reverbLength: 1.8, echoDiv: 3, echoFeedback: .35, chorus: .2, reverbOn: true, echoOn: true, chorusOn: true },
       // Aufgenommene Reglerbewegungen: je Klang-Parameter ein Wert pro
@@ -2174,6 +2265,10 @@
     }
     s.chordBars = oneOf(raw.chordBars, [1, 2], 1);
     s.chordsOn = bool(raw.chordsOn, false);
+    // Stände ohne diese Felder klingen wie vor Paket 7: SATB-Satz, Synth-Chor.
+    s.chordVoicing = oneOf(raw.chordVoicing, ['satb', 'pop'], 'satb');
+    s.chordAdd9 = bool(raw.chordAdd9, false);
+    s.chordSound = oneOf(raw.chordSound, ['synth', 'choir'], 'synth');
     for (const v of SATB) s.satb[v] = oneOf(obj(raw.satb)[v], ['on', 'focus', 'mute'], 'on');
     s.droneFifth = bool(raw.droneFifth, true);
     s.melodyIndex = int(raw.melodyIndex, 0, MELODIES.length - 1, 0);
@@ -2262,6 +2357,8 @@
     if (WAVE_SHAPES.includes(raw.wave)) sound.wave = raw.wave;
     if (FILTER_TYPES.some((f) => f.id === raw.filterType)) sound.filterType = raw.filterType;
     if (typeof raw.mono === 'boolean') sound.mono = raw.mono;
+    // `sample` nur aus der Liste, sonst entfernen (geteilte Codes dürfen keinen Ordner erfinden).
+    if (SAMPLE_INSTRUMENTS.includes(raw.sample)) sound.sample = raw.sample; else delete sound.sample;
     sound.custom = raw.custom === true;
     return sound;
   }
@@ -2355,6 +2452,15 @@
     cloud: '<path d="M7 18a4.5 4.5 0 0 1-.5-9 5.5 5.5 0 0 1 10.6-1.6A4 4 0 0 1 17 18H7Z" fill="none"/>',
     anchor: '<circle cx="12" cy="5" r="2" fill="none"/><path d="M12 7v14M7 13H2a10 10 0 0 0 10 8 10 10 0 0 0 10-8h-5" fill="none"/><path d="M8 9h8"/>',
     key: '<circle cx="7" cy="7" r="4" fill="none"/><path d="M10 10l10 10M17 15l3-3M14 18l2-2" fill="none"/>',
+    heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z" fill="none"/>',
+    boot: '<path d="M7 3h7v8l5 3v6H5V12l2-2Z" fill="none"/><path d="M5 17h14"/>',
+    tambourine: '<circle cx="12" cy="12" r="8" fill="none"/><circle cx="12" cy="4.2" r=".9" fill="currentColor" stroke="none"/><circle cx="19.8" cy="12" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="19.8" r=".9" fill="currentColor" stroke="none"/><circle cx="4.2" cy="12" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="2.4" fill="none"/>',
+    hourglass: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9" fill="none"/><path d="M16 3c0 5-8 5-8 9s8 4 8 9" fill="none"/>',
+    piano: '<rect x="3" y="5" width="18" height="14" rx="1.5" fill="none"/><path d="M8 19v-6M12 19v-6M16 19v-6M7 5v8h2V5M11 5v8h2V5M15 5v8h2V5" fill="none"/>',
+    guitar: '<circle cx="9" cy="15" r="4.6" fill="none"/><circle cx="9" cy="15" r="1.2" fill="none"/><path d="M12.4 11.6 19.5 4.5M17.5 3l3.5 3.5" fill="none"/>',
+    mic: '<rect x="9" y="3" width="6" height="11" rx="3" fill="none"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" fill="none"/>',
+    harp: '<path d="M6 21V8c0-3 3-5 6-5 3 0 6 2 6 5v13" fill="none"/><path d="M9 8v10M12 8v10M15 8v10"/>',
+    trumpet: '<path d="M3 12h10M13 8l7-3v14l-7-3Z" fill="none"/><path d="M5 12v4h3v-4" fill="none"/>',
     sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2" fill="none"/><circle cx="10" cy="12" r="2" fill="none"/><circle cx="18" cy="18" r="2" fill="none"/>',
   };
 
@@ -2415,7 +2521,7 @@
      der Eintrag null und die Engine nimmt die Synthese. Gehört einem
      AudioContext (decodeAudioData) und wird mit ihm verworfen.
      ------------------------------------------------------------------------ */
-  const LAB_DRUM_FILES = ['kick', 'snare', 'snare-soft', 'rim', 'hat', 'hat-soft', 'open', 'clap', 'tom-hi', 'tom-lo', 'crash', 'ride', 'tamb', 'shaker', 'snap'];
+  const LAB_DRUM_FILES = ['kick', 'snare', 'snare-soft', 'rim', 'hat', 'hat-soft', 'open', 'clap', 'tom-hi', 'tom-lo', 'crash', 'ride', 'tamb', 'shaker']; // snap: keine Quelle mit geklärter Lizenz (samples/LIZENZ.md) — Synthese
   // Pegel je Sample: die Dateien sind auf −1 dBFS normalisiert, die Synthese
   // klingt je Instrument deutlich leiser — so passen beide zusammen.
   const LAB_DRUM_LEVEL = { kick: .6, snare: .33, 'snare-soft': .33, rim: .3, hat: .13, 'hat-soft': .13, open: .13, clap: .3,
@@ -2472,6 +2578,7 @@
       this.layers = null;
       this.noiseBuffer = null;
       this.voices = new Set();
+      this.inst = {};        // Sample-Instrumente (ensureInstrument): name → { ready, promise, samples | set }
       this.maxVoices = 32;   // Obergrenze gleichzeitiger Synth-Stimmen (Handy-CPU)
       this.lastMidi = {};    // je Ebene: letzte Note (für Glide)
       this.monoVoice = {};   // je Ebene: aktuelle Stimme im Mono-Modus
@@ -2580,6 +2687,8 @@
       this.labSamples = null;
       this.bassSamples?.dispose();
       this.bassSamples = null;
+      for (const entry of Object.values(this.inst)) entry.samples?.dispose();
+      this.inst = {};
       const ctx = this.ctx;
       this.ctx = null;
       this.buses = null;
@@ -2859,6 +2968,120 @@
       source.start(time); source.stop(stop);
     }
 
+    /* ---- Sample-Instrumente (Klavier, Gitarre, Chor, Streicher, Brass) ---- */
+
+    /** Instrument im Hintergrund laden (einmal je Kontext). Liefert ein Promise
+     *  auf true/false; bis es fertig ist, klingt der Ersatzklang (SAMPLE_FALLBACK). */
+    ensureInstrument(name) {
+      if (!this.ctx || !LAB_INST[name]) return Promise.resolve(false);
+      if (this.inst[name]) return this.inst[name].promise;
+      const cfg = LAB_INST[name];
+      const entry = { ready: false, promise: null, samples: null, set: null };
+      this.inst[name] = entry;
+      const fail = () => { if (this.inst[name] === entry) delete this.inst[name]; return false; }; // später erneut versuchen
+      if (name === 'piano') {
+        // Das Klavier lädt piano-samples.js (Salamander, mit Stimmungskorrektur), falls die App es geladen hat.
+        if (!global.ChorPiano) entry.promise = Promise.resolve(fail());
+        else {
+          entry.promise = global.ChorPiano.load({ notes: cfg.notes, keepSec: () => 4 })
+            .then((set) => { entry.set = set; entry.ready = true; return true; }, fail);
+        }
+      } else {
+        const samples = new LabSamples(this.ctx);
+        entry.samples = samples;
+        entry.promise = samples.load(cfg.notes.map(String), cfg.folder)
+          .then(() => { entry.ready = cfg.notes.some((n) => samples.get(String(n))); return entry.ready || fail(); }, fail);
+      }
+      return entry.promise;
+    }
+
+    instrumentReady(name) { return !!this.inst[name]?.ready; }
+
+    /** Eine Sample-Note als Stimme (gleiche Form wie eine Synth-Stimme, damit Freigabe,
+     *  Stimmenlimit und Automation sie gleich behandeln). Hüllkurve: Attack/Release aus
+     *  dem Klang, Filter und Drive (Ebene) bleiben wirksam. Chor und Streicher halten
+     *  lange Töne mit überblendetem Loop, die übrigen klingen natürlich aus. */
+    _playSampleTone(sound, midi, time, velocity, duration, layer) {
+      const ctx = this.ctx;
+      const L = this.layers[layer];
+      const cfg = LAB_INST[sound.sample];
+      const entry = this.inst[sound.sample];
+      let buffer;
+      let rate;
+      let level = cfg.level;
+      if (sound.sample === 'piano') {
+        const base = global.ChorPiano.nearest(entry.set, midi);
+        buffer = entry.set.bufs[base];
+        rate = global.ChorPiano.rateFor(midi, base);
+        level *= entry.set.gain[base] || 1;
+      } else {
+        const loaded = cfg.notes.filter((n) => entry.samples.get(String(n)));
+        const base = loaded.reduce((best, n) => (Math.abs(n - midi) < Math.abs(best - midi) ? n : best), loaded[0]);
+        buffer = entry.samples.get(String(base));
+        rate = Math.pow(2, (midi - base) / 12);
+      }
+      if (this.voices.size >= this.maxVoices) {
+        for (const oldest of this.voices) { if (oldest.layer !== 'drone') { this._releaseVoice(oldest, true); break; } }
+      }
+      const filter = ctx.createBiquadFilter();
+      filter.type = sound.filterType || 'lowpass';
+      filter.Q.value = sound.resonance;
+      filter.frequency.value = Math.min(sound.cutoff, ctx.sampleRate * .45);
+      const gain = ctx.createGain();
+      const attack = Math.max(.003, sound.attack);
+      const peak = velocity * level;
+      gain.gain.setValueAtTime(.0001, time);
+      if (duration && duration < attack) gain.gain.linearRampToValueAtTime(Math.max(.0001, peak * duration / attack), time + duration);
+      else gain.gain.linearRampToValueAtTime(peak, time + attack);
+      let stopAt = null;
+      if (duration) {
+        gain.gain.setTargetAtTime(0, time + duration, Math.max(.01, sound.release / 4));
+        stopAt = time + duration + sound.release * 1.3 + .05;
+      }
+      filter.connect(gain).connect(L.input);
+
+      const sources = [];
+      const piece = (t, offset, length, fadeIn, fadeOut) => {
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        src.playbackRate.value = rate;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(fadeIn ? .0001 : 1, t);
+        if (fadeIn) g.gain.linearRampToValueAtTime(1, t + fadeIn);
+        let end = null;
+        if (length !== null) {
+          g.gain.setValueAtTime(1, t + length);
+          g.gain.linearRampToValueAtTime(.0001, t + length + fadeOut);
+          end = t + length + fadeOut + .02;
+        }
+        src.connect(g).connect(filter);
+        src.start(t, offset);
+        if (end !== null) src.stop(end);
+        sources.push(src);
+      };
+      const long = cfg.long;
+      if (!long) piece(time, 0, null, 0, 0);
+      else {
+        // Wie sampleNote in uebe-lab.html: Stücke ab loopFrom, am Übergang überblendet.
+        let t = time;
+        let left = duration ?? 10;
+        let offset = 0;
+        let fadeIn = 0;
+        for (let k = 0; k < 64; k++) {
+          const avail = (buffer.duration - offset) / rate - long.tail;
+          if (left + sound.release <= avail || k === 63) { piece(t, offset, null, fadeIn, 0); break; }
+          const length = avail - long.xfade;
+          piece(t, offset, length, fadeIn, long.xfade);
+          t += length; left -= length; offset = long.loopFrom; fadeIn = long.xfade;
+        }
+      }
+      if (stopAt !== null) sources.forEach((src) => { try { src.stop(Math.min(stopAt, ctx.currentTime + 60)); } catch { /* schon gestoppt */ } });
+      const voice = { oscillators: sources, lfos: [], gain, filter, envEnd: time + attack, release: sound.release, done: false, layer };
+      this.voices.add(voice);
+      sources[sources.length - 1].addEventListener('ended', () => { voice.done = true; this.voices.delete(voice); }, { once: true });
+      return voice;
+    }
+
     /* ---- Synth-Stimmen ---- */
 
     /**
@@ -2870,6 +3093,12 @@
      * glide (überschreibt sound.glide; 0 = aus).
      */
     playTone(sound, midi, time, velocity, duration, { layer = 'melody', stepSeconds = .14, glide } = {}) {
+      if (sound.sample) {
+        if (this.instrumentReady(sound.sample)) return this._playSampleTone(sound, midi, time, velocity, duration, layer);
+        // Samples fehlen noch (oder offline): Ersatzklang, nebenbei weiter laden.
+        this.ensureInstrument(sound.sample);
+        sound = soundFromPreset(presetIndexByName(SAMPLE_FALLBACK[sound.sample]));
+      }
       const ctx = this.ctx;
       const L = this.layers[layer];
 
@@ -4802,6 +5031,20 @@
       s.melodyBars = null; s.melodyMeter = null; s.melodyName = null; s.melodyOwnId = null; s.melodyRef = 'chord';
       this.ui.melUndo = []; this.ui.melRedo = []; this.ui.melBar = 0;
     }
+    /** Klang der Akkorde: Synth-Chor (fest, 'Airy Choir') oder echter Chor ('Chor Ooh';
+     *  ohne geladene Samples übernimmt die Engine den Ersatzklang 'Airy Choir'). */
+    _chordSound() { return this.state.chordSound === 'choir' ? CHOIR_CHORD_SOUND : CHORD_SOUND; }
+    /** Sample-Instrumente laden, die gerade gebraucht werden (Melodieklang, Akkorde). */
+    _loadInstruments() {
+      if (!this.engine.ready) return;
+      const s = this.state;
+      if (s.sound.sample) this.engine.ensureInstrument(s.sound.sample).then(() => this._renderSampleNote());
+      if (s.chordSound === 'choir') this.engine.ensureInstrument('choir');
+    }
+    _renderSampleNote() {
+      const note = this.$('.sample-note');
+      if (note) note.hidden = !(this.state.sound.sample && !this.engine.instrumentReady(this.state.sound.sample));
+    }
     _bassSound() { return BASS_SOUNDS.find((b) => b.id === this.state.bassSoundId) || BASS_SOUNDS[0]; }
 
     /** Harmonie an einem Schritt: Tonart, Modus, Akkordstufe. */
@@ -4829,9 +5072,14 @@
     _voicings() {
       const s = this.state;
       const prog = this._progression();
-      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}`;
+      // Pop-Satz: bei laufender Melodie liegt die Oberstimme höchstens auf 64 (statt 69).
+      const pop = s.chordVoicing === 'pop';
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}`
+        + (pop ? `|pop|${s.chordAdd9}|${s.melodyOn}` : '');
       if (this._voicingCache?.key === key) return this._voicingCache.list;
-      const list = voiceProgressionSatb(s.keyRoot, this._mode(), prog);
+      const list = pop
+        ? voiceProgressionPop(s.keyRoot, this._mode(), prog, { add9: s.chordAdd9, topMax: s.melodyOn ? 64 : 69 })
+        : voiceProgressionSatb(s.keyRoot, this._mode(), prog);
       this._voicingCache = { key, list };
       return list;
     }
@@ -4884,7 +5132,8 @@
       this.engine.setMaster((this._dcMine || s).mix.master);
       for (const bus of BUSES) this.engine.setBusLevel(bus, s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) ? 0 : s.mix[bus]);
       for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, this._heardSound());
-      this.engine.setLayerSound('chords', CHORD_SOUND);
+      this.engine.setLayerSound('chords', this._chordSound());
+      this._loadInstruments();
       this.engine.setLayerSound('drone', DRONE_SOUND);
       this.engine.setFx(s.fx, this._stepSeconds());
     }
@@ -4935,7 +5184,7 @@
       const s = this.state;
       const locks = s.locks;
       if (!locks.beat) {
-        s.patternIndex = Math.floor(Math.random() * DRUM_PATTERNS.length);
+        s.patternIndex = pick(orderIndexes(BEAT_ORDER, patternIndexByName));
         s.beat = beatFromPattern(this._pattern());
         s.percSound = percOf(this._pattern());
         s.beatEdited = false;
@@ -4950,14 +5199,15 @@
         this._clearProgEdit();
       }
       if (!locks.melody) {
-        const candidates = MELODIES.map((m, i) => [m, i]).filter(([m]) => m.meter === this._meter());
+        const candidates = orderIndexes(MELODY_ORDER, melodyIndexByName).map((i) => [MELODIES[i], i]).filter(([m]) => m.meter === this._meter());
         s.melodyIndex = pick(candidates)[1];
         this._clearMelodyEdit();
       }
       this._ensureMelodyMeter();
       if (!locks.sound) {
-        const byCat = (cat) => SYNTH_PRESETS.map((p, i) => [p, i]).filter(([p]) => p.cat === cat).map(([, i]) => i);
-        s.sound = soundFromPreset(pick([...byCat('lead'), ...byCat('keys'), ...byCat('pad')]));
+        // Nur aus der kuratierten Liste; Sample-Klänge erst, wenn ihre Samples geladen sind.
+        s.sound = soundFromPreset(pick(orderIndexes(PRESET_ORDER, presetIndexByName)
+          .filter((i) => !SYNTH_PRESETS[i].sample || this.engine.instrumentReady(SYNTH_PRESETS[i].sample))));
       }
       this._afterStateChange();
     }
@@ -4968,7 +5218,7 @@
       const s = this.state;
       if (s.melodyBars && s.melodyMeter !== this._meter()) this._clearMelodyEdit();
       if (MELODIES[s.melodyIndex].meter === this._meter()) return;
-      s.melodyIndex = Math.max(0, MELODIES.findIndex((m) => m.meter === this._meter()));
+      s.melodyIndex = firstMelodyOfMeter(this._meter());
     }
 
     _tapTempo() {
@@ -5246,7 +5496,7 @@
         const mode = s.satb[voice];
         if (mode === 'mute') continue;
         const velocity = mode === 'focus' ? .22 : anyFocus ? .05 : .11;
-        this.engine.playTone(CHORD_SOUND, voicing[voice], time, velocity, duration * .97,
+        this.engine.playTone(this._chordSound(), voicing[voice], time, velocity, duration * .97,
           { layer: 'chords', glide: 0, stepSeconds: this._stepSeconds() });
       }
     }
@@ -5620,6 +5870,10 @@
       this._renderLock('harmony');
 
       this._setSwitch('chordsOn', s.chordsOn);
+      this._setSwitch('chordAdd9', s.chordAdd9);
+      this.$('.add9-row').hidden = s.chordVoicing !== 'pop';
+      this._chips(this.$('.voicing-chips'), [['satb', 'lab.voicingSatb'], ['pop', 'lab.voicingPop']].map(([value, key]) => ({ value, label: t(key) })), s.chordVoicing, 'chord-voicing');
+      this._chips(this.$('.chordsound-chips'), [['synth', 'lab.chordSoundSynth'], ['choir', 'lab.chordSoundChoir']].map(([value, key]) => ({ value, label: t(key) })), s.chordSound, 'chord-sound');
       this._setSwitch('droneOn', s.droneOn);
       this._setSwitch('droneFifth', s.droneFifth);
       this._renderChordStrip();
@@ -6070,8 +6324,8 @@
       const macros = [
         { label: t('lab.macroBright'), value: Math.log(clamp(sound.cutoff, 200, 10000) / 200) / Math.log(50),
           apply: (v) => { sound.cutoff = 200 * Math.pow(50, v); } },
-        { label: t('lab.macroWidth'), value: Math.max(sound.detune / 20, sound.width),
-          apply: (v) => { sound.detune = v * 20; sound.width = v; } },
+        ...(sound.sample ? [] : [{ label: t('lab.macroWidth'), value: Math.max(sound.detune / 20, sound.width),
+          apply: (v) => { sound.detune = v * 20; sound.width = v; } }]),
         { label: t('lab.macroSpace'), value: sound.reverbWet / .7,
           apply: (v) => { sound.reverbWet = v * .7; sound.echoWet = v * .35; } },
         { label: t('lab.macroSoft'), value: Math.log(clamp(sound.attack, .004, .6) / .004) / Math.log(150),
@@ -6103,6 +6357,20 @@
     /** Der eine Synth-Klang gilt für Melodie, Arp und Tasten. */
     _applySound() {
       for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, this._heardSound());
+      this._loadInstruments();
+      this._renderSampleNote();
+    }
+
+    /** Sample-Klänge: nur die wirksamen Regler zeigen (Attack, Release, Cutoff, Resonanz,
+     *  Drive, Hall, Echo) — Wellenform, Decay/Sustain, Filter-Hüllkurve, LFO, Charakter,
+     *  Vibrato und Gleiten gelten dort nicht (ausgeblendet, nicht nur ausgegraut). */
+    _applySampleControls() {
+      const sampled = !!this.state.sound.sample;
+      for (const m of ['osc', 'lfo', 'char', 'vib', 'glide']) this.$(`[data-mod="${m}"]`).hidden = sampled;
+      this.$all('[data-sound="decay"], [data-sound="sustain"]').forEach((input) => { input.closest('.slider-field').hidden = sampled; });
+      this.$('.filter-type-chips').hidden = sampled;
+      if (this._soundKnobs.filterEnvAmount) this._soundKnobs.filterEnvAmount.el.hidden = sampled;
+      this._renderSampleNote();
     }
 
     _refreshSoundControls() {
@@ -6198,6 +6466,7 @@
       const glideHost = this.$('.glide-knobs'); glideHost.replaceChildren();
       knob(glideHost, 'glide', t('lab.knobGlide'), 0, 1, (v) => `${Math.round(v * 1000)} ms`);
       this._setSwitch('mono', sound.mono);
+      this._applySampleControls();
 
       // Hall- und Echo-Anteil gehören zum Klang, stehen aber bei den
       // Effekten (siehe _renderFx) — ein Ort für alles, was Raum macht.
@@ -6435,7 +6704,7 @@
         { leading: leadingToneOf(s.keyRoot, s.modeId, prog, deg), bassIndex: chordQuality(steps, deg) === 'dim' ? 1 : 0 });
       const now = this.engine.ctx.currentTime + .01;
       for (const voice of SATB) {
-        this.engine.playTone(CHORD_SOUND, voicing[voice], now, .1, .9, { layer: 'keys', glide: 0, stepSeconds: this._stepSeconds() });
+        this.engine.playTone(this._chordSound(), voicing[voice], now, .1, .9, { layer: 'keys', glide: 0, stepSeconds: this._stepSeconds() });
       }
     }
 
@@ -6480,13 +6749,20 @@
     _pickerDef(which) {
       const s = this.state;
       const meter = this._meter();
+      // Kuratiert: zuerst die Einträge der *_ORDER-Liste in ihrer Reihenfolge, die übrigen
+      // (more: true) folgen in Indexreihenfolge und erscheinen eingeklappt unter „Weitere“.
+      const curated = (items, order, byName) => {
+        const rank = new Map(orderIndexes(order, byName).map((i, r) => [i, r]));
+        const shown = items.filter((it) => rank.has(it.i)).sort((a, b) => rank.get(a.i) - rank.get(b.i));
+        return [...shown, ...items.filter((it) => !rank.has(it.i)).map((it) => ({ ...it, more: true }))];
+      };
       const catLabel = (c) => t(CAT_KEY[c]);
       if (which === 'beat') {
         return {
           title: 'lab.pickBeat', action: 'pick-pattern', catAction: 'beat-cat', cats: BEAT_CATS, cat: this.ui.beatCat,
           current: s.patternIndex, edited: s.beatEdited,
-          items: DRUM_PATTERNS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
-            inMeter: p.meter === meter, sub: `${p.meter} · ${catLabel(p.cat)}`, short: catLabel(p.cat) })),
+          items: curated(DRUM_PATTERNS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
+            inMeter: p.meter === meter, sub: `${p.meter} · ${catLabel(p.cat)}`, short: catLabel(p.cat) })), BEAT_ORDER, patternIndexByName),
         };
       }
       if (which === 'prog') {
@@ -6514,8 +6790,8 @@
           current: s.melodyOwnId && own.some((m) => m.id === s.melodyOwnId) ? `own:${s.melodyOwnId}` : s.melodyOwnId ? -1 : s.melodyIndex,
           wide: true,
           items: [
-            ...MELODIES.map((m, i) => ({ i, name: m.name, visual: melodyPreview(m), cat: m.cat,
-              inMeter: m.meter === meter, sub: `${m.meter} · ${catLabel(m.cat)}`, short: catLabel(m.cat) })),
+            ...curated(MELODIES.map((m, i) => ({ i, name: m.name, visual: melodyPreview(m), cat: m.cat,
+              inMeter: m.meter === meter, sub: `${m.meter} · ${catLabel(m.cat)}`, short: catLabel(m.cat) })), MELODY_ORDER, melodyIndexByName),
             ...own.map((m) => ({ i: `own:${m.id}`, name: m.name, visual: melodyPreview(m), cat: OWN_CAT,
               inMeter: true, sub: `${m.meter} · ${catLabel(OWN_CAT)}`, short: catLabel(OWN_CAT) })),
           ],
@@ -6524,8 +6800,8 @@
       return {
         title: 'lab.pickSound', action: 'pick-preset', catAction: 'preset-cat', cats: PRESET_CATS, cat: this.ui.presetCat,
         current: s.sound.custom ? -1 : s.sound.presetIndex,
-        items: SYNTH_PRESETS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
-          inMeter: true, sub: t(presetDescKey(p)), short: t(presetDescKey(p)) })),
+        items: curated(SYNTH_PRESETS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
+          inMeter: true, sub: t(presetDescKey(p)), short: t(presetDescKey(p)) })), PRESET_ORDER, presetIndexByName),
       };
     }
 
@@ -6597,7 +6873,7 @@
         sep.className = 'chip-sep';
         chips.prepend(...meterHost.children, sep);
       }
-      const cards = def.items.filter((it) => it.inMeter && (def.cat === 'all' || it.cat === def.cat)).map((it) => {
+      const makeCard = (it, { chosen = false } = {}) => {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = `pick-card${def.wide ? ' is-wide' : ''}${it.mismatch ? ' is-mismatch' : ''}`;
@@ -6618,8 +6894,34 @@
           note.textContent = t('lab.progModeMismatch');
           btn.querySelector('.pick-text').append(note);
         }
+        if (chosen) {
+          const badge = document.createElement('small');
+          badge.className = 'pick-chosen';
+          badge.textContent = t('lab.chosenTemplate');
+          btn.querySelector('.pick-text').append(badge);
+        }
         return btn;
-      });
+      };
+      const visible = def.items.filter((it) => it.inMeter && (def.cat === 'all' || it.cat === def.cat));
+      const shown = visible.filter((it) => !it.more);
+      const more = visible.filter((it) => it.more);
+      const cards = shown.map((it) => makeCard(it));
+      // Eine ausgeblendete Vorlage, die gerade gewählt ist, steht zusätzlich ganz oben.
+      const chosenHidden = more.find((it) => it.i === def.current);
+      if (chosenHidden) cards.unshift(makeCard(chosenHidden, { chosen: true }));
+      if (more.length) {
+        const details = document.createElement('details');
+        details.className = 'pick-more';
+        details.open = !!this._pickMoreOpen;
+        details.addEventListener('toggle', () => { this._pickMoreOpen = details.open; });
+        const summary = document.createElement('summary');
+        summary.textContent = tf('lab.moreTemplates', { n: more.length });
+        const grid = document.createElement('div');
+        grid.className = 'pick-more-grid';
+        grid.append(...more.map((it) => makeCard(it)));
+        details.append(summary, grid);
+        cards.push(details);
+      }
       root.querySelector('.picker-grid').replaceChildren(...cards);
       root.querySelector('.picker-now-name').textContent = this.$(`.picker-trigger[data-picker="${which}"] .picker-name`).textContent;
     }
@@ -6654,7 +6956,7 @@
     /** ‹ › im Panel: nächster/voriger Eintrag (in der aktuellen Taktart). */
     _stepPicker(which, dir) {
       const def = this._pickerDef(which);
-      const list = def.items.filter((it) => it.inMeter);
+      const list = def.items.filter((it) => it.inMeter && (!it.more || it.i === (which === 'sound' ? this.state.sound.presetIndex : def.current)));
       const current = which === 'sound' ? this.state.sound.presetIndex
         : which === 'melody' && def.current === -1 ? this.state.melodyIndex
           : def.current === -1 ? def.fallback : def.current;
@@ -7403,6 +7705,7 @@
       if (key === 'melChroma') { this.ui.melChroma = on; this._renderMelEditor(); return; }
       if (key === 'progSevenths') { this._progBegin(); s.progSevenths = on; this._progCommit(); return; }
       if (key === 'progDominant') { this._progBegin(); s.progDominant = on; this._progCommit(); return; }
+      if (key === 'chordAdd9') { this._pushHistory(); s.chordAdd9 = on; this._renderSatb(); return; }
       s[key] = on; // melodyOn, chordsOn
     }
 
@@ -7498,7 +7801,7 @@
         // Beat
         case 'meter': {
           if (value === this._meter()) break;
-          s.patternIndex = DRUM_PATTERNS.findIndex((p) => p.meter === value);
+          s.patternIndex = firstPatternOfMeter(value);
           s.beat = beatFromPattern(this._pattern());
           s.percSound = percOf(this._pattern());
           s.beatEdited = false;
@@ -7540,6 +7843,8 @@
         }
         case 'kit-reset': this._pushHistory(); s.kit = { ...KIT_DEFAULTS }; this._renderKit(); if (!this.playing) this._preview('kick', 1); break;
         case 'drum-kit': this._pushHistory(); s.drumKit = DRUM_KITS.includes(value) ? value : 'auto'; this._renderBeat(); if (!this.playing) this._preview('snare', 1); break;
+        case 'chord-voicing': this._pushHistory(); s.chordVoicing = value === 'pop' ? 'pop' : 'satb'; this._renderHarmony(); this._renderSatb(); break;
+        case 'chord-sound': this._pushHistory(); s.chordSound = value === 'choir' ? 'choir' : 'synth'; this._syncEngine(); this._renderHarmony(); break;
         case 'fills': this._pushHistory(); s.fills = FILL_LENGTHS.includes(Number(value)) ? Number(value) : 0; this._renderBeat(); break;
         case 'bass-sound': s.bassSoundId = value; this._renderBeat(); if (!this.playing) this._preview('bass', 0); break;
 
@@ -8003,6 +8308,13 @@
   .step-cell.is-soft { background: rgba(var(--accent-rgb), .45); }
   .step-cell[data-label]::after { content: attr(data-label); }
   .step-cell.is-now { outline: 2px solid var(--text); outline-offset: 1px; }
+  .voicing-chips, .chordsound-chips, .fill-chips, .kit-chips { margin-top: 8px; }
+  .add9-row { margin-top: 8px; }
+  .pick-more { grid-column: 1 / -1; margin-top: 4px; }
+  .pick-more > summary { cursor: pointer; font-size: .82rem; font-weight: 700; color: var(--muted); padding: 8px 2px; }
+  .pick-more-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .pick-chosen { color: var(--accent); font-weight: 700; }
+  .sample-note { margin: 6px 0 0; font-size: .8rem; color: var(--muted); }
   .step-cell.is-fill { opacity: .4; box-shadow: inset 0 0 0 1px var(--accent); }
 
   /* Lupe (Beat-Editor bildschirmfüllend, _setBeatZoom) */
@@ -8935,6 +9247,9 @@
       <div class="panel-head"><h2>${t('lab.satbTitle')}</h2>${help('satbHint')}</div>
       ${helpText('satbHint')}
       <div class="switch-row">${toggle('chordsOn', 'lab.chordsPlay')}</div>
+      <div class="chip-row voicing-chips" role="group" aria-label="${t('lab.voicing')}"></div>
+      <div class="switch-row add9-row">${toggle('chordAdd9', 'lab.chordAdd9')}</div>
+      <div class="chip-row chordsound-chips" role="group" aria-label="${t('lab.chordSoundLabel')}"></div>
       <div class="satb-list"></div>
     </section>
     <section class="panel">
@@ -8994,6 +9309,7 @@
       ${helpText('helpSound')}
       ${pickerTrigger('sound')}
       <div class="reset-sound-row"><button class="chip" type="button" data-action="reset-sound">${t('lab.resetSound')}</button></div>
+      <p class="sample-note" role="status" hidden>${t('lab.sampleFallback')}</p>
       <div class="knob-row macro-knobs"></div>
       <div class="auto-box">
         <div class="auto-row">
@@ -9014,40 +9330,40 @@
       <details class="expert">
         <summary>${pictogramIcon('sliders')} ${t('lab.allControls')}</summary>
         <div class="module-grid">
-          <div class="module">
+          <div class="module" data-mod="osc">
             <div class="module-head"><span class="module-icon">${pictogramIcon('pulse')}</span><h3>${t('lab.oscillator')}</h3>${help('helpOsc')}</div>
             ${helpText('helpOsc')}
             <div class="wave-row" role="group" aria-label="${t('lab.waveformAria')}"></div>
           </div>
-          <div class="module">
+          <div class="module" data-mod="env">
             <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>${t('lab.envelope')}</h3>${help('helpEnv')}</div>
             ${helpText('helpEnv')}
             <svg class="envelope-graph" viewBox="0 0 92 40" preserveAspectRatio="none"><path class="envelope-path" d=""/></svg>
             <div class="adsr-sliders"></div>
           </div>
-          <div class="module">
+          <div class="module" data-mod="filter">
             <div class="module-head"><span class="module-icon">${pictogramIcon('target')}</span><h3>${t('lab.filter')}</h3>${help('helpFilter')}</div>
             ${helpText('helpFilter')}
             <div class="chip-row filter-type-chips"></div>
             <div class="knob-row filter-knobs"></div>
           </div>
-          <div class="module">
+          <div class="module" data-mod="lfo">
             <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>${t('lab.lfo')}</h3>${help('helpLfo')}</div>
             ${helpText('helpLfo')}
             <div class="knob-row lfo-knobs"></div>
             <label class="select-line"><span>${t('lab.lfoSyncLabel')}</span><select data-field="lfoSync"></select></label>
           </div>
-          <div class="module">
+          <div class="module" data-mod="char">
             <div class="module-head"><span class="module-icon">${pictogramIcon('star')}</span><h3>${t('lab.character')}</h3>${help('helpCharacter')}</div>
             ${helpText('helpCharacter')}
             <div class="knob-row character-knobs"></div>
           </div>
-          <div class="module">
+          <div class="module" data-mod="vib">
             <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>${t('lab.vibrato')}</h3>${help('helpVibrato')}</div>
             ${helpText('helpVibrato')}
             <div class="knob-row vibrato-knobs"></div>
           </div>
-          <div class="module">
+          <div class="module" data-mod="glide">
             <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>${t('lab.glide')}</h3>${help('helpGlide')}</div>
             ${helpText('helpGlide')}
             <div class="knob-row glide-knobs"></div>
@@ -9242,7 +9558,7 @@
   const TEST_EXPORT = {
     MODES, PROGRESSIONS, MELODIES, DRUM_PATTERNS, METERS, SATB_RANGES,
     voiceChord, voicePairs, voiceProgressionSatb, leadingToneOf, VOICING_STATS, chordPitchClasses, chordSteps, degreeSemis, progFitsMode, modeForProg, progsForRandom,
-    eighthsPerBeat, tempoSymbol, stepSecondsFor, hatAccent, fillAt, bassNoteSteps, bassRootsFor, BASS_SOUNDS, FILL_HITS, FILL_LENGTHS, resolveKit, pinLegacySound, LabSamples, DRUM_KITS, PERC_SOUNDS, percOf,
+    eighthsPerBeat, tempoSymbol, stepSecondsFor, sanitizeSound, MELODY_ORDER, BEAT_ORDER, PRESET_ORDER, orderIndexes, firstPatternOfMeter, firstMelodyOfMeter, SAMPLE_INSTRUMENTS, SAMPLE_FALLBACK, LAB_INST, hatAccent, fillAt, bassNoteSteps, bassRootsFor, BASS_SOUNDS, FILL_HITS, FILL_LENGTHS, resolveKit, pinLegacySound, LabSamples, DRUM_KITS, PERC_SOUNDS, percOf,
     melodyOffset, snapMelodyMidi, melodyBarShifts, melodyRefOf, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree,
     spell, noteLabel, spellCheck, SPELL_CASES, romanNumeral, chordName, chordQuality,
     sanitizeProgLibrary, sanitizeState, defaultState, sanitizeMelodyLibrary, sanitizeMelodyBars, recNotesToBars, melodyMidi,

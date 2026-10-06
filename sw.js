@@ -12,14 +12,14 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v522';
+const SW_VERSION = 'v523';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 // Samples (echte Instrumente in „Einsatz finden“, Klavier für Übungen und
 // piano.html, ./samples/*.mp3): eigener
 // Cache, cache-first, bewusst NICHT im Shell-Cache und nicht an SW_VERSION
 // gebunden — sonst lüde jedes App-Update ≈ 2,9 MB neu. Ändern sich die
 // Dateien in samples/, diese Nummer erhöhen (activate räumt den alten weg).
-const SAMPLES_CACHE = 'chor-samples-v4'; // v4: + Chor/Bass/Gitarre tiefer, ride/tamb/shaker; v3: Klavier = Salamander Grand Piano (samples/salamander/)
+const SAMPLES_CACHE = 'chor-samples-v5'; // v5: Chor 3,1 s (Loop), v4: + Chor/Bass/Gitarre tiefer, ride/tamb/shaker; v3: Klavier = Salamander Grand Piano (samples/salamander/)
 const SAMPLES_PATH = new URL('./samples/', self.location.href).pathname;
 
 // Alle Pfade relativ, weil die App unter einem Unterpfad liegt

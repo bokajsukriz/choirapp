@@ -53,5 +53,5 @@ fi
 # Flächen setzt die App aus überblendeten Stücken zusammen (sampleNote, loopFrom).
 inst string_ensemble_1 strings 3.1 0.15
 inst electric_guitar_clean guitar 1.8
-inst choir_aahs choir 2.5
+inst choir_aahs choir 3.1 0.15
 inst brass_section brass 1.2

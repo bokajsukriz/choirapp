@@ -307,6 +307,73 @@
     return list;
   }
 
+  /**
+   * Pop-Satz einer Folge (neben dem SATB-Satz): Bass auf dem Akkordgrundton
+   * (oder dem Basston `bassIndexes[i]`: 0 Grundton, 1 Terz, 2 Quinte) im Bereich
+   * 40–52, die drei Oberstimmen in enger Lage (alle innerhalb einer Oktave),
+   * Oberstimme in 60–`topMax`. Jede Stimme geht zum nächsten Akkordton mit
+   * kleinster Gesamtbewegung, ohne Stimmkreuzung und, wenn möglich, ohne
+   * offene Quint-/Oktavparallelen. Gleiches Format wie voiceProgressionSatb:
+   * Liste von { S, A, T, B } je Akkord (S = höchste, T = tiefste Oberstimme),
+   * deshalb gelten Fokus/Stumm je Stimme weiter.
+   * `add9`: bei Dur-/Moll-Dreiklängen ohne Septime ersetzt die None (in der
+   * Tonart) den verdoppelten Grundton in den Oberstimmen; nie bei vermindert,
+   * nie bei Dominantseptakkorden, nie bei Umkehrungen.
+   */
+  function voiceProgressionPop(keyRoot, mode, prog, { add9 = false, topMax = 69, bassIndexes = null } = {}) {
+    const chords = prog.degrees.map((deg, i) => {
+      const steps = chordSteps(mode.steps, mode.id, prog, deg);
+      const pcs = chordPitchClasses(keyRoot, steps, deg, prog.sevenths);
+      const bi = Math.min(bassIndexes?.[i] ?? 0, pcs.length - 1);
+      const quality = chordQuality(steps, deg);
+      let upper = pcs.length === 4 ? pcs.filter((_, k) => k !== bi) : pcs.slice();
+      if (add9 && bi === 0 && pcs.length === 3 && !prog.dom7 && (quality === 'maj' || quality === 'min')) {
+        upper = [mod(keyRoot + degreeSemis(steps, deg + 1), 12), pcs[1], pcs[2]];
+      }
+      return { bassPc: pcs[bi], upper };
+    });
+    const top = clamp(topMax, 60, 72);
+    let prev = { S: 64, A: 60, T: 55, B: 46 };
+    let list = [];
+    const voice = (chord, prior) => {
+      // Bass: Grundton (Oktavlage 40–52); Oberstimmen: oberste Stimme 60–top, die
+      // anderen als nächste tiefere Akkordtöne (enge Lage, höchstens eine Oktave
+      // zwischen T und S). Gewählt wird die kleinste Gesamtbewegung, möglichst
+      // ohne offene Quint-/Oktavparallelen (nur wenn es nicht anders geht, mit).
+      // Liegt unter einer niedrigen Obergrenze (Melodie an) kein Akkordton im
+      // Bereich 60–top, darf die Oberstimme ausnahmsweise bis 54 hinabgehen.
+      for (const lowest of [60, 54]) {
+        let best = null;
+        let bestScore = Infinity;
+        let fallback = null;
+        let fallbackScore = Infinity;
+        for (let B = 40; B <= 52; B++) {
+          if (mod(B, 12) !== chord.bassPc) continue;
+          for (let S = lowest; S <= top; S++) {
+            if (!chord.upper.includes(mod(S, 12))) continue;
+            const rest = chord.upper.filter((pc) => pc !== mod(S, 12));
+            const below = (from, pcs) => { let m = from - 1; while (!pcs.includes(mod(m, 12))) m--; return m; };
+            const A = below(S, rest);
+            const T = below(A, rest.filter((pc) => pc !== mod(A, 12)));
+            if (T <= B || S - T > 12) continue;
+            const next = { S, A, T, B };
+            const score = Math.abs(S - prior.S) + Math.abs(A - prior.A) + Math.abs(T - prior.T) + Math.abs(B - prior.B) * .5 + (B + 100) * 1e-6;
+            if (score < fallbackScore) { fallbackScore = score; fallback = next; }
+            if (voicePairs(prior, next) === 0 && score < bestScore) { bestScore = score; best = next; }
+          }
+        }
+        if (best || fallback) return best || fallback;
+      }
+      return { S: prior.S, A: prior.A, T: prior.T, B: prior.B };
+    };
+    for (let pass = 0; pass < 6; pass++) {
+      const before = JSON.stringify(list);
+      list = chords.map((chord) => { prev = voice(chord, prev); return prev; });
+      if (pass > 0 && JSON.stringify(list) === before) break;
+    }
+    return list;
+  }
+
   /** Offene Quint-/Oktavparallelen zwischen zwei Klängen als Listen
    *  ([Bass, …Oberstimmen]) — dieselbe Regel wie voicePairs. */
   function parallelCount(prev, next) {
@@ -361,7 +428,7 @@
     spell, noteLabel, SPELL_CASES, spellCheck,
     chordQuality, chordPitchClasses, chordSteps, CHORD_SHAPES,
     SATB, VOICE_RANGES, PRACTICE_RANGES, practiceRange,
-    VOICING_STATS, voicePairs, voiceChord, leadingToneOf, voiceProgressionSatb,
+    VOICING_STATS, voicePairs, voiceChord, leadingToneOf, voiceProgressionSatb, voiceProgressionPop,
     parallelCount, voiceUpperClose,
   });
 })(typeof window !== 'undefined' ? window : globalThis);
