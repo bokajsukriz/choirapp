@@ -210,7 +210,7 @@
   }
   /** Chor-Aufgaben, Workshop und de:construct klingen wie vor dem Sample-Kit. */
   function pinLegacySound(s) {
-    s.drumKit = 'synth'; s.feel = false; s.fills = 0; s.trackOn.perc = false;
+    s.drumKit = 'synth'; s.feel = false; s.fills = 0; s.trackOn.perc = false; s.bassSoundId = 'pluck';
     return s;
   }
 
@@ -409,11 +409,46 @@
   // Bass-Klänge für die Basslinie der Drumloops (eigene, einfache Stimme —
   // kein voller Synth-Klang, damit der Bass immer knapp und trocken bleibt).
   const BASS_SOUNDS = [
-    { id: 'pluck', name: 'Square Pluck', wave: 'square', cutoff: 480, q: 8, decay: .14, level: .2, envAmount: 0 },
-    { id: 'sub', name: 'Sub Sine', wave: 'sine', cutoff: 2000, q: 0, decay: .32, level: .42, envAmount: 0 },
-    { id: 'growl', name: 'Saw Growl', wave: 'sawtooth', cutoff: 520, q: 7, decay: .22, level: .2, envAmount: 1400 },
-    { id: 'round', name: 'Round Finger', wave: 'triangle', cutoff: 900, q: 1, decay: .26, level: .36, envAmount: 300 },
+    { id: 'pluck', name: 'Square Pluck', wave: 'square', cutoff: 480, q: 8, decay: .14, sustain: 0, level: .2, envAmount: 0 },
+    { id: 'sub', name: 'Sub Sine', wave: 'sine', cutoff: 2000, q: 0, decay: .32, sustain: .8, level: .42, envAmount: 0 },
+    { id: 'growl', name: 'Saw Growl', wave: 'sawtooth', cutoff: 520, q: 7, decay: .22, sustain: .6, level: .2, envAmount: 1400 },
+    { id: 'round', name: 'Round Finger', wave: 'triangle', cutoff: 900, q: 1, decay: .26, sustain: .7, level: .36, envAmount: 300 },
+    // Echter Bass aus samples/bass (nächster Ton, umgestimmt); ohne geladene
+    // Samples klingt stattdessen 'round' (siehe GrooveEngine.playBass).
+    { id: 'finger', name: 'Finger Bass', sample: 'bass', decay: .3, sustain: .9, level: .6 },
   ];
+  const BASS_SAMPLE_NOTES = [30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66];
+
+  /** Länge eines Basstons in Schritten: bis zum nächsten Bass-Ton im selben
+   *  Takt, sonst bis zum Taktende; mindestens ein Schritt. */
+  function bassNoteSteps(bassSteps, step, barSteps) {
+    let next = barSteps;
+    for (const key of Object.keys(bassSteps)) {
+      const at = Number(key);
+      if (at > step && at < next) next = at;
+    }
+    return Math.max(1, next - step);
+  }
+
+  /** Grundtöne des Basses je Akkord mit Stimmführung: der erste im Bereich
+   *  36–47, jeder weitere in der Oktavlage 28–47 (Anweisung: 33–47; die fünf
+   *  Halbtöne mehr nach unten (bis zum tiefen E der Bassgitarre) braucht es,
+   *  damit kein Sprung über 7 Halbtöne entsteht, z. B. C → G → A → F), die dem vorherigen am nächsten liegt
+   *  (Gleichstand → tiefer). `pcs`: Tonhöhenklassen. */
+  function bassRootsFor(pcs) {
+    const roots = [];
+    for (const pc of pcs) {
+      if (!roots.length) { roots.push(36 + pc); continue; }
+      const prev = roots[roots.length - 1];
+      let best = null;
+      for (let m = 28; m <= 47; m++) {
+        if (mod(m, 12) !== pc) continue;
+        if (best === null || Math.abs(m - prev) < Math.abs(best - prev)) best = m;
+      }
+      roots.push(best);
+    }
+    return roots;
+  }
 
   // Kick-Parameter (Workshop Paket 6): Start-/Endtonhöhe in Hz, Länge in s.
   // Die Standardwerte ergeben genau die bisherige Kick.
@@ -1803,7 +1838,7 @@
       drumKit: 'auto', feel: true, percSound: 'tamb',
       // Fill im letzten Takt jedes Blocks: 0 (aus) | 4 | 8 Takte.
       fills: 8,
-      bassSoundId: 'pluck',
+      bassSoundId: 'finger',
       keyRoot: 0, modeId: 'major', progId: 'pop', chordBars: 1,
       // Bearbeitete oder eigene Akkordfolge (null = Vorlage progId).
       progDegrees: null, progSevenths: false, progDominant: false, progDom7: false, progName: null, progOwnId: null,
@@ -2421,6 +2456,8 @@
       this.noiseBuffer = this._whiteNoise(.5);
       this.labSamples = new LabSamples(ctx);
       this.labSamples.load(); // im Hintergrund; bis dahin klingt die Synthese
+      this.bassSamples = new LabSamples(ctx);
+      this.bassSamples.load(BASS_SAMPLE_NOTES.map(String), 'bass');
       this.lastMidi = {};
       this.monoVoice = {};
       await ctx.resume();
@@ -2432,6 +2469,8 @@
       clearTimeout(this._reverbTimer);
       this.labSamples?.dispose();
       this.labSamples = null;
+      this.bassSamples?.dispose();
+      this.bassSamples = null;
       const ctx = this.ctx;
       this.ctx = null;
       this.buses = null;
@@ -2658,20 +2697,57 @@
       }
     }
 
-    playBass(time, midi, velocity, sound) {
+    /**
+     * Bassnote. `duration` (s) = Gate: 5 ms Anstieg → Peak → in `decay` auf
+     * Peak × `sustain` → halten bis `duration` → 60 ms Release. Ohne `duration`
+     * (Vorhören, Pads) klingt sie kurz. `sound.sample`: nächster Ton aus
+     * samples/bass, umgestimmt; fehlt er, klingt 'round'.
+     */
+    playBass(time, midi, velocity, sound, duration = .3) {
       const ctx = this.ctx;
-      const osc = ctx.createOscillator();
-      const filter = ctx.createBiquadFilter();
+      let buffer = null;
+      let base = 0;
+      if (sound.sample) {
+        const bank = this.bassSamples;
+        base = BASS_SAMPLE_NOTES.reduce((best, n) => (Math.abs(n - midi) < Math.abs(best - midi) ? n : best), BASS_SAMPLE_NOTES[0]);
+        buffer = bank?.get(String(base)) || null;
+        if (!buffer) { sound = BASS_SOUNDS.find((b) => b.id === 'round'); }
+      }
       const gain = ctx.createGain();
-      osc.type = sound.wave;
-      osc.frequency.setValueAtTime(noteHz(midi), time);
-      filter.type = 'lowpass'; filter.Q.value = sound.q;
-      filter.frequency.setValueAtTime(sound.cutoff + sound.envAmount, time);
-      if (sound.envAmount) filter.frequency.exponentialRampToValueAtTime(sound.cutoff, time + sound.decay * .8);
-      gain.gain.setValueAtTime(sound.level * velocity, time);
-      gain.gain.exponentialRampToValueAtTime(.0001, time + sound.decay);
-      osc.connect(filter).connect(gain).connect(this.buses.bass);
-      osc.start(time); osc.stop(time + sound.decay + .02);
+      const t0 = time + .005;
+      const decayEnd = t0 + sound.decay;
+      const holdEnd = Math.max(t0 + .01, time + duration);
+      const floor = .0001;
+      const peak = sound.level * velocity;
+      const sustain = Math.max(floor, peak * sound.sustain);
+      gain.gain.setValueAtTime(floor, time);
+      gain.gain.linearRampToValueAtTime(peak, t0);
+      if (holdEnd <= decayEnd) {
+        // Note endet noch im Abklingen: dort ansetzen, wo die Kurve gerade steht.
+        gain.gain.exponentialRampToValueAtTime(Math.max(floor, peak * Math.pow(sustain / peak, (holdEnd - t0) / sound.decay)), holdEnd);
+      } else {
+        gain.gain.exponentialRampToValueAtTime(sustain, decayEnd);
+        gain.gain.setValueAtTime(sustain, holdEnd);
+      }
+      gain.gain.exponentialRampToValueAtTime(floor, holdEnd + .06);
+      const stop = holdEnd + .08;
+      let source;
+      if (buffer) {
+        source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.playbackRate.value = Math.pow(2, (midi - base) / 12);
+        source.connect(gain).connect(this.buses.bass);
+      } else {
+        source = ctx.createOscillator();
+        const filter = ctx.createBiquadFilter();
+        source.type = sound.wave;
+        source.frequency.setValueAtTime(noteHz(midi), time);
+        filter.type = 'lowpass'; filter.Q.value = sound.q;
+        filter.frequency.setValueAtTime(sound.cutoff + sound.envAmount, time);
+        if (sound.envAmount) filter.frequency.exponentialRampToValueAtTime(sound.cutoff, time + sound.decay * .8);
+        source.connect(filter).connect(gain).connect(this.buses.bass);
+      }
+      source.start(time); source.stop(stop);
     }
 
     /* ---- Synth-Stimmen ---- */
@@ -4662,9 +4738,22 @@
       return [s.keyRoot, s.modeId];
     }
 
+    /** Bass-Grundtöne je Akkord der aktuellen Folge, mit Stimmführung
+     *  (bassRootsFor) — einmal je Tonart/Modus/Folge gerechnet. */
+    _bassRoots() {
+      const s = this.state;
+      const prog = this._progression();
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}`;
+      if (this._bassRootCache?.key === key) return this._bassRootCache.list;
+      const list = bassRootsFor(prog.degrees.map((deg) => mod(s.keyRoot + degreeSemis(this._stepsFor(deg, prog), deg), 12)));
+      this._bassRootCache = { key, list };
+      return list;
+    }
+
     _bassMidi(h, bassDeg) {
       const rootSemis = degreeSemis(h.steps, h.deg);
-      return 36 + mod(h.keyRoot + rootSemis, 12) + degreeSemis(h.steps, h.deg + bassDeg) - rootSemis;
+      const root = this._bassRoots()[h.index] ?? 36 + mod(h.keyRoot + rootSemis, 12);
+      return root + degreeSemis(h.steps, h.deg + bassDeg) - rootSemis;
     }
 
     /* ---- Transport ---- */
@@ -4887,7 +4976,7 @@
         if (track === 'kick' && s.pump > 0) this.engine.duckAt(swung, s.pump, stepSec * 4);
       }
       if (s.trackOn.bass && beat.bass?.[step] !== undefined && this._dcHears('bass')) {
-        this.engine.playBass(swung, this._bassMidi(h, beat.bass[step]), 1, this._bassSound());
+        this.engine.playBass(swung, this._bassMidi(h, beat.bass[step]), 1, this._bassSound(), bassNoteSteps(beat.bass, step, barSteps) * stepSec * .92);
       }
 
       if (h.chordStart && s.chordsOn && this._dcHears('chords')) this._playChord(h, swung, stepSec * barSteps * s.chordBars);
@@ -9020,7 +9109,7 @@
   const TEST_EXPORT = {
     MODES, PROGRESSIONS, MELODIES, DRUM_PATTERNS, METERS, SATB_RANGES,
     voiceChord, voicePairs, voiceProgressionSatb, leadingToneOf, VOICING_STATS, chordPitchClasses, chordSteps, degreeSemis, progFitsMode, modeForProg, progsForRandom,
-    eighthsPerBeat, tempoSymbol, stepSecondsFor, hatAccent, fillAt, FILL_HITS, FILL_LENGTHS, resolveKit, pinLegacySound, LabSamples, DRUM_KITS, PERC_SOUNDS, percOf,
+    eighthsPerBeat, tempoSymbol, stepSecondsFor, hatAccent, fillAt, bassNoteSteps, bassRootsFor, BASS_SOUNDS, FILL_HITS, FILL_LENGTHS, resolveKit, pinLegacySound, LabSamples, DRUM_KITS, PERC_SOUNDS, percOf,
     melodyOffset, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree,
     spell, noteLabel, spellCheck, SPELL_CASES, romanNumeral, chordName, chordQuality,
     sanitizeProgLibrary, sanitizeState, defaultState, sanitizeMelodyLibrary, sanitizeMelodyBars, recNotesToBars, melodyMidi,

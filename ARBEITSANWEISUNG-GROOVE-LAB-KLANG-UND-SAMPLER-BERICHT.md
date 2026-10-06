@@ -60,3 +60,12 @@ pumpt nicht) steht aus, da hier nicht hörbar prüfbar. Die Messung belegt nur P
 - Reine Funktion `fillAt(g, barSteps, fills)` → `{ idx, crash, fillBar }`; `_playStep` schaltet in den letzten vier Schritten des Fill-Takts (4/4: 12–15, 3/4 und 6/8: 8–11) Snare/Clap/Hat/Open/Perc stumm und spielt `tom-hi` 1 / .7, `tom-lo` 1 / .85; Kick und Bass bleiben. Crash (Velocity .8) auf Schritt 0 des Folgetakts. Ohne Tom-Samples Synth-Tom (Sinus 200→120 bzw. 140→85 Hz, .25 s), ohne Crash-Sample ein kurzes Rauschen.
 - UI: Chips „Fills: Aus · Alle 4 Takte · Alle 8 Takte“ im Panel „Schlagzeug-Klang“; Fill-Schritte werden beim Abspielen mit `is-fill` dezent markiert (Raster bleibt unverändert).
 - Tests im Block `GROOVE-LAB-KLANG-TESTS`. `SW_VERSION` v520.
+
+## Paket 5 – Bass: Notenlängen, Lage, echter Bass (erledigt)
+
+- `playBass(time, midi, velocity, sound, duration)`: 5 ms Anstieg → Peak → in `decay` auf Peak × `sustain` → halten bis `duration` → 60 ms Release. `BASS_SOUNDS` mit `sustain` (pluck 0, sub .8, growl .6, round .7). Die Dauer kommt aus `bassNoteSteps()` (Schritte bis zum nächsten Bass-Ton im Takt, mind. 1) × Schrittlänge × .92. Vorhören/Pads/Roll spielen kurz (.3 s).
+- `_bassRoots()` + reine Funktion `bassRootsFor()`: erster Grundton 36–47, weitere in der nächstgelegenen Oktavlage (Gleichstand → tiefer), gecacht pro Tonart/Modus/Folge; `_bassMidi` rechnet ab diesem Grundton.
+- **Abweichung:** Der Bereich für die weiteren Grundtöne ist **28–47** statt 33–47. Mit 33–47 ist die geforderte Prüfung („kein Grundton-Sprung > 7 Halbtöne“) unerfüllbar (z. B. D → A → H → G: 35 → 43 = 8; C → G → A → F: 33 → 41 = 8). 28 = tiefes E der Bassgitarre. Die Töne bleiben ≤ 54 (Grundton + Quinte).
+- Neuer Klang `finger` („Finger Bass“, `samples/bass/`, nächster Ton, `playbackRate`, Gate wie oben); ohne geladene Samples klingt `round`. Default `bassSoundId` für neue Stände `'finger'`, gespeicherte behalten ihren; Chor-Aufgaben, Workshop und de:construct (`pinLegacySound`) bleiben bei `'pluck'`. Pegel von `finger` per Messung auf Round Finger abgestimmt (Level .6).
+- Tests (Block `GROOVE-LAB-KLANG-TESTS`): Sustain-Werte, Defaults/Pinning, `bassNoteSteps`, Grundtöne I–V–vi–IV in allen 12 Tonarten (richtige Tonhöhenklasse, Bereich, Sprung ≤ 7, ≤ 54). Grün. `SW_VERSION` v521.
+- Offen: Hörprobe, vor allem „Bass halbe Noten“ in de:construct „Lighthouse Hands“ (klingt dort mit `pluck` weiter kurz — dort ist der Klang gepinnt).

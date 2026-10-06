@@ -21452,6 +21452,26 @@ async function runMusicSelfTests({ log = true } = {}) {
       // Der Fill ersetzt nur Snare/Clap/Hat/Open/Perc, nie Kick und Bass (Konstante).
       if (T.FILL_HITS.map((h) => h.join(':')).join() !== 'tom-hi:1,tom-hi:0.7,tom-lo:1,tom-lo:0.85') failed.push('Groove Lab: Fill-Toms');
     }
+    // Paket 5: Bass — Gate, Lage mit Stimmführung, Finger Bass.
+    {
+      const sustains = Object.fromEntries(T.BASS_SOUNDS.map((b) => [b.id, b.sustain]));
+      if (sustains.pluck !== 0 || sustains.sub !== .8 || sustains.growl !== .6 || sustains.round !== .7 || !(sustains.finger > .8)) failed.push(`Groove Lab: Bass-Sustain ${JSON.stringify(sustains)}`);
+      if (T.defaultState().bassSoundId !== 'finger') failed.push('Groove Lab: neuer Stand startet nicht mit Finger Bass');
+      if (T.sanitizeState({ ...clone(T.defaultState()), bassSoundId: 'sub' }).bassSoundId !== 'sub') failed.push('Groove Lab: gespeicherter Bass-Klang geht verloren');
+      if (T.lessonState(T.defaultState(), T.WORKSHOP_LESSONS[0]).bassSoundId !== 'pluck') failed.push('Groove Lab: Workshop nicht auf Square Pluck gepinnt');
+      if (T.bassNoteSteps({ 0: 0, 6: 0, 8: 4 }, 0, 16) !== 6 || T.bassNoteSteps({ 0: 0, 6: 0, 8: 4 }, 8, 16) !== 8 || T.bassNoteSteps({ 15: 0 }, 15, 16) !== 1 || T.bassNoteSteps({ 0: 0, 3: 0 }, 0, 12) !== 3) failed.push('Groove Lab: Länge der Basstöne');
+      const major = modeSteps('major');
+      const pop = prog('pop');
+      for (let key = 0; key < 12; key++) {
+        const pcs = pop.degrees.map((deg) => mod12(key + T.degreeSemis(T.chordSteps(major, 'major', pop, deg), deg)));
+        const roots = T.bassRootsFor(pcs);
+        if (roots.some((m, i) => mod12(m) !== pcs[i])) failed.push(`Groove Lab: Bass-Grundtöne Tonart ${key}: falsche Tonhöhenklasse`);
+        if (roots[0] < 36 || roots[0] > 47 || roots.some((m) => m < 28 || m > 47)) failed.push(`Groove Lab: Bass-Grundtöne Tonart ${key} außerhalb 28–47: ${roots}`);
+        for (let i = 1; i < roots.length; i++) if (Math.abs(roots[i] - roots[i - 1]) > 7) failed.push(`Groove Lab: Bass-Grundton-Sprung > 7 in Tonart ${key}: ${roots}`);
+        // Terz (+4) und Quinte (+7) über dem Grundton bleiben im Bassbereich.
+        if (roots.some((m) => m + 7 > 54)) failed.push(`Groove Lab: Bass über 54 in Tonart ${key}`);
+      }
+    }
     // Engine-Weiche je Spur (ohne AudioContext, mit Spionen).
     {
       const calls = [];
