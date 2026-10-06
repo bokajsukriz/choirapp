@@ -2066,8 +2066,7 @@ input[type="checkbox"] {
 }
 
 .loop-controls .icon-only { padding: 10px; border-radius: 999px; border-color: var(--pill-line); }
-.loop-controls .icon-only svg, .rec-toggle-row-routine svg { width: 20px; height: 20px; }
-.rec-toggle-row-routine { padding: 10px; border-radius: 999px; border-color: var(--pill-line); }
+.loop-controls .icon-only svg { width: 20px; height: 20px; }
 
 /* „Üben" (Choirgym) in der Loop-Leiste: beschrifteter Knopf, Akzentfarbe als Umriss */
 .loop-controls .routine-pill {
@@ -2139,30 +2138,6 @@ input[type="checkbox"] {
 .loop-item .go strong { display: block; font-weight: 620; }
 .loop-item .go span { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 .loop-item[data-active="true"] .go { border-color: var(--accent); }
-
-/* REC */
-.rec-controls {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 0;
-}
-
-/* Drei gleich breite Spalten statt fester Pixelbreiten: der Aufnahmeknopf
-   sitzt in der mittleren Spalte und bleibt dadurch exakt zentriert, egal wie
-   breit die äußeren Spalten sind — die Hantel steht rechtsbündig in der
-   rechten Spalte, ohne den Aufnahmeknopf zu verschieben. */
-.rec-toggle-row {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 12px;
-}
-.rec-toggle-row-routine {
-  justify-self: end;
-}
 
 /* Choirgym-Dialog (früher „Übe-Programm") */
 
@@ -2361,40 +2336,10 @@ input[type="checkbox"] {
   50% { opacity: .45; }
 }
 
-.rec-timer {
-  margin: 0;
-  font-weight: 650;
-  font-size: 1.1rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.rec-meter {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-
-.rec-meter-canvas {
-  display: block;
-  width: 100%;
-  height: 56px;
-  border-radius: 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--pill-line);
-}
-
-.rec-meter-warning {
-  margin: 0;
-  color: var(--danger-fg);
-  font-weight: 650;
-  text-align: center;
-}
 
 /* Hinweis auf ein Telefonqualitäts-Mikrofon (Bluetooth-Freisprechprofil) —
    kein Fehler, aber der Grund für eine dumpfe Aufnahme; darum warnfarben,
-   aber ohne die volle Wucht von .rec-meter-warning. */
+   aber ohne die volle Wucht der Übersteuerungswarnung. */
 .rec-input-warning {
   margin: 0;
   text-align: center;
@@ -2402,15 +2347,6 @@ input[type="checkbox"] {
   line-height: 1.35;
 }
 
-.rec-take {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  padding: 12px;
-  margin: 6px 0;
-}
-.take-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; }
-.take-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
 /* Der grüne Zwilling des REC-Knopfs — gleiche Größe, gleiche Position.
    aspect-ratio schützt gegen ein WebKit-Rendering, bei dem die native
@@ -2439,41 +2375,11 @@ input[type="checkbox"] {
 .rec-play.is-playing { background: var(--ok); border-color: var(--ok); }
 .rec-play.is-playing svg { color: var(--surface); }
 
-.take-icon {
-  width: 54px; height: 54px; min-width: 54px; min-height: 54px;
-  max-width: 54px; max-height: 54px; aspect-ratio: 1 / 1; border-radius: 50%; flex: 0 0 auto;
-  appearance: none; -webkit-appearance: none;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--line); background: var(--surface); color: var(--text);
-}
-.take-icon svg { width: 26px; height: 26px; }
-.take-icon--save { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.take-icon--discard { color: var(--danger); border-color: rgba(255,77,109,.45); }
-/* Gesperrt, aber antippbar: der Tipp erklärt, was noch fehlt (siehe allgemeiner Recorder). */
-.take-icon[aria-disabled="true"] { background: var(--surface-2); border-color: var(--line); color: var(--muted); }
 
-.voice-mini {
-  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 40px;
-  padding: 8px 10px; border-radius: 14px;
-  border: 1px solid var(--line); background: var(--surface-2); color: var(--text);
-  font-weight: 620; font-size: .86rem;
-}
-.voice-mini svg { width: 17px; height: 17px; color: var(--muted); flex: 0 0 auto; }
-.voice-mini .grow { flex: 1; text-align: left; }
-.voice-mini[data-empty="true"] .grow { color: var(--muted); }
-
-.take-name {
-  width: 100%; min-height: var(--tap); padding: 10px 14px; margin-top: 12px;
-  border-radius: 14px; border: 1px solid rgba(var(--accent-rgb),.35);
-  background: rgba(var(--accent-rgb),.07); color: var(--text);
-  font-weight: 620; font-size: 15px;
-}
 .take-wave {
   display: block; width: 100%; height: 56px; border-radius: 12px; margin-top: 10px;
   background: var(--surface-2); border: 1px solid var(--pill-line);
 }
-.rec-take-meta { display: flex; justify-content: space-between; align-items: baseline; margin: 8px 2px 0; }
-.rec-take-meta span { color: var(--muted); font-size: .82rem; font-variant-numeric: tabular-nums; }
 
 /* Schere rechts von der Vorschauwelle — Take-Karte (frischer Take) wie
    REC-bearbeiten-Dialog (schon gespeicherter REC) teilen sich dasselbe
@@ -2562,20 +2468,20 @@ input[type="checkbox"] {
   font-size: 13px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
 }
 .rc-pill-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--danger); }
-#recorder-view[data-state="idle"] .rc-pill { visibility: hidden; }
-#recorder-view[data-state="recording"] .rc-pill-dot { animation: rec-pulse 1.4s ease-in-out infinite; }
-#recorder-view[data-state="paused"] .rc-pill,
-#recorder-view[data-state="countin"] .rc-pill { background: var(--surface-2); color: var(--muted); }
-#recorder-view[data-state="paused"] .rc-pill-dot,
-#recorder-view[data-state="countin"] .rc-pill-dot { background: var(--muted); }
+.rc-host[data-state="idle"] .rc-pill { visibility: hidden; }
+.rc-host[data-state="recording"] .rc-pill-dot { animation: rec-pulse 1.4s ease-in-out infinite; }
+.rc-host[data-state="paused"] .rc-pill,
+.rc-host[data-state="countin"] .rc-pill { background: var(--surface-2); color: var(--muted); }
+.rc-host[data-state="paused"] .rc-pill-dot,
+.rc-host[data-state="countin"] .rc-pill-dot { background: var(--muted); }
 .rc-timer {
   margin: 0; font-family: var(--font-display); font-weight: 700; font-size: clamp(60px, 22vw, 84px);
   line-height: 1; letter-spacing: -1px; font-variant-numeric: tabular-nums; color: var(--text);
 }
-#recorder-view[data-state="idle"] .rc-timer,
-#recorder-view[data-state="paused"] .rc-timer { color: var(--muted); }
-#recorder-view[data-state="countin"] .rc-timer { color: var(--accent-foreground); }
-#recorder-view:not([data-state="idle"]) .rc-status { display: none; }
+.rc-host[data-state="idle"] .rc-timer,
+.rc-host[data-state="paused"] .rc-timer { color: var(--muted); }
+.rc-host[data-state="countin"] .rc-timer { color: var(--accent-foreground); }
+.rc-host:not([data-state="idle"]) .rc-status { display: none; }
 .rc-status { margin: 0; max-width: 30ch; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.4; }
 .rc-meter { width: 100%; }
 .rc-meter-canvas {
@@ -2618,22 +2524,22 @@ input[type="checkbox"] {
 .rc-side-btn[aria-pressed="true"] .rc-icon-pause { display: none; }
 .rc-side-btn[aria-pressed="true"] .rc-icon-resume { display: block; color: var(--danger); }
 /* Je Zustand nur die passenden Seitenknöpfe — die Mitte (REC/Stopp) bleibt. */
-#recorder-view:not([data-state="idle"]) .rc-only-idle,
-#recorder-view[data-state="idle"] .rc-only-busy,
-#recorder-view:not([data-state="recording"]):not([data-state="paused"]) .rc-only-running { display: none; }
+.rc-host:not([data-state="idle"]) .rc-only-idle,
+.rc-host[data-state="idle"] .rc-only-busy,
+.rc-host:not([data-state="recording"]):not([data-state="paused"]) .rc-only-running { display: none; }
 /* Im Vorlauf bricht der Mittelknopf ab — kein zweites „Abbrechen" links. */
-#recorder-view[data-state="countin"] #btn-recorder-cancel { display: none; }
+.rc-host[data-state="countin"] .rc-side-btn--danger { display: none; }
 .rc-rec-btn { margin: 0; }
-#recorder-view[data-state="recording"] .rc-rec-btn,
-#recorder-view[data-state="paused"] .rc-rec-btn { box-shadow: 0 0 0 8px rgba(255,77,109,.16); }
+.rc-host[data-state="recording"] .rc-rec-btn,
+.rc-host[data-state="paused"] .rc-rec-btn { box-shadow: 0 0 0 8px rgba(255,77,109,.16); }
 /* Im Recorder heißt der laufende Knopf „Stopp" — weißes Quadrat statt der
    Pausenbalken des Player-REC-Knopfs, Pause hat hier einen eigenen Knopf. */
-#recorder-view .rec-btn--lg[aria-pressed="true"] .rec-btn-dot {
+.rc-host .rec-btn--lg[aria-pressed="true"] .rec-btn-dot {
   width: 30px; height: 30px; border-radius: 7px; background: #fff; animation: none;
 }
-#recorder-view .rec-btn--lg[aria-pressed="true"] .rec-btn-dot::before,
-#recorder-view .rec-btn--lg[aria-pressed="true"] .rec-btn-dot::after { content: none; }
-#recorder-view[data-state="countin"] .rc-rec-btn .rec-btn-dot { width: 26px; height: 26px; border-radius: 6px; }
+.rc-host .rec-btn--lg[aria-pressed="true"] .rec-btn-dot::before,
+.rc-host .rec-btn--lg[aria-pressed="true"] .rec-btn-dot::after { content: none; }
+.rc-host[data-state="countin"] .rc-rec-btn .rec-btn-dot { width: 26px; height: 26px; border-radius: 6px; }
 
 .rc-take { overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .rc-review {
@@ -2677,6 +2583,32 @@ input[type="checkbox"] {
   padding: 10px calc(20px + var(--safe-right)) calc(26px + var(--safe-bottom)) calc(20px + var(--safe-left));
   background: var(--surface); border-radius: 28px 28px 0 0; box-shadow: 0 -8px 30px rgba(36,27,61,.10);
 }
+
+/* Dieselben Bausteine im REC-Reiter des Players (#rec-host): kein eigener
+   Vollbild-Bereich, deshalb als Karten im Fluss der Seite. In Ruhe nur das
+   Dock (Hinweis darüber, solange es noch keine RECs gibt); Pille und große
+   Zeit erst während Vorlauf und Aufnahme. */
+.rc-host--player .rc-live, .rc-host--player .rc-take { flex: 0 0 auto; }
+.rc-host--player .rc-take { overflow: visible; gap: 12px; margin: 6px 0 10px; }
+.rc-host--player .rc-stage { flex: 0 0 auto; overflow: visible; gap: 12px; padding: 4px 0 12px; }
+.rc-host--player[data-state="idle"] .rc-pill,
+.rc-host--player[data-state="idle"] .rc-timer { display: none; }
+.rc-host--player[data-state="idle"] .rc-stage { padding: 0 0 8px; }
+.rc-host--player .rc-timer { font-size: clamp(48px, 16vw, 64px); }
+.rc-host--player .rc-meter-canvas { height: 110px; }
+.rc-host--player .rc-dock {
+  padding: 16px 14px; border-radius: 24px; border: 1px solid var(--pill-line);
+  box-shadow: 0 6px 20px rgba(36,27,61,.07);
+}
+.rc-host--player .rc-review {
+  padding: 14px; border-radius: 24px; background: var(--surface); border: 1px solid var(--pill-line);
+}
+.rc-host--player .rc-trim { margin: 0 14px; }
+.rc-host--player .rc-sheet {
+  flex: 0 0 auto; padding: 18px 16px; border-radius: 24px; border: 1px solid var(--pill-line);
+  box-shadow: 0 6px 20px rgba(36,27,61,.07);
+}
+.rc-song-fixed { margin: 0; min-height: var(--tap); border-color: var(--accent); background: rgba(var(--accent-rgb),.09); cursor: default; }
 .rc-sheet-grip { align-self: center; width: 40px; height: 5px; border-radius: 3px; background: var(--line); }
 .rc-sheet-title { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 22px; line-height: 1.1; }
 .rc-field { display: flex; flex-direction: column; gap: 8px; }
@@ -3720,62 +3652,107 @@ input[type="checkbox"] {
     </div>
 
     <div id="tab-panel-rec" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-rec" tabindex="0" hidden>
-      <div class="rec-controls" id="rec-controls">
-        <div class="rec-toggle-row">
-          <span aria-hidden="true"></span>
-          <button class="rec-btn" id="btn-rec-toggle" type="button" aria-pressed="false" aria-label="REC starten" data-i18n-aria="rec.startAria">
-            <span class="rec-btn-dot"></span>
-          </button>
-          <button class="btn icon-only rec-toggle-row-routine" id="btn-rec-routine" type="button" data-i18n-aria="routine.ariaLabel" aria-label="Choirgym">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4h-4"/><path d="M10 9.5v5l4-2.5z" fill="currentColor"/></svg>
-          </button>
-        </div>
-        <div class="rec-meter" id="rec-meter" hidden>
-          <canvas class="rec-meter-canvas" id="rec-meter-canvas"></canvas>
-          <p class="small rec-meter-warning" id="rec-meter-warning" hidden data-i18n="rec.clippingWarning">Zu laut — die Aufnahme übersteuert</p>
-        </div>
-        <p class="rec-timer" id="rec-timer" hidden>0:00</p>
-        <p class="small muted" id="rec-status" style="margin:0; text-align:center" data-i18n="rec.statusPlayer">
-          Nimm dich selbst auf, um dich anzuhören oder die Probe mitzuschneiden.
-        </p>
-        <p class="small rec-input-warning" id="rec-input-warning" hidden></p>
-      </div>
-      <div class="rec-take" id="rec-take" hidden>
-        <div class="take-row">
-          <button class="voice-mini" id="btn-rec-take-voice" type="button" aria-label="Stimme zuordnen" data-i18n-aria="rec.assignVoiceAria" data-empty="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-            <span class="grow" id="rec-take-voice-label" data-i18n="rec.voicePlaceholder">Stimme</span>
-            <span aria-hidden="true">▾</span>
-          </button>
-          <button class="rec-play" id="btn-rec-preview" type="button" aria-label="REC anhören" data-i18n-aria="rec.previewAria">
-            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-rec-play" class="rec-icon-visible"><path d="M8 5.5v13l11-6.5z"/></svg>
-            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-rec-pause"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
-          </button>
-          <div class="take-actions">
-            <button class="take-icon take-icon--discard" id="btn-rec-discard" type="button" aria-label="REC verwerfen" data-i18n-aria="rec.discardAria">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>
-            </button>
-            <button class="take-icon take-icon--save" id="btn-rec-save" type="button" aria-label="REC speichern" data-i18n-aria="rec.saveAria">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
-            </button>
+      <!-- Gleiches Design wie der allgemeine Recorder (#recorder-view): data-state
+           (idle | countin | recording) setzt setRecorderState(). In Ruhe nur das
+           Dock; während der Aufnahme Status-Pille, große Zeit und Pegel; nach dem
+           Stopp Wellenform mit Griffen und das Blatt „Speichern unter“ (der Song
+           steht im Player schon fest). Pause gibt es hier nicht — der REC ist am
+           weiterlaufenden Song verankert (captureRecAnchor). -->
+      <div class="rc-host rc-host--player" id="rec-host" data-state="idle">
+        <div class="rc-live" id="rec-controls">
+          <div class="rc-stage">
+            <span class="rc-pill" aria-live="polite"><span class="rc-pill-dot" aria-hidden="true"></span><span id="rec-pill-text"></span></span>
+            <p class="rc-timer" id="rec-timer" role="timer">0:00</p>
+            <div class="rc-meter" id="rec-meter" hidden>
+              <canvas class="rc-meter-canvas" id="rec-meter-canvas"></canvas>
+            </div>
+            <p class="rc-warning" id="rec-meter-warning" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg>
+              <span data-i18n="rec.clippingWarning">Zu laut — die Aufnahme übersteuert</span>
+            </p>
+            <p class="small rec-input-warning" id="rec-input-warning" hidden></p>
+            <p class="rc-status" id="rec-status" data-i18n="rec.statusPlayer">
+              Nimm dich selbst auf, um dich anzuhören oder die Probe mitzuschneiden.
+            </p>
+          </div>
+
+          <div class="rc-dock">
+            <div class="rc-dock-side rc-dock-side--start">
+              <button class="rc-side-btn rc-only-idle" id="btn-rec-countin" type="button" aria-pressed="false" aria-label="Vorlauf: 3 Sekunden Countdown vor der Aufnahme" data-i18n-aria="rec.countInOnAria">
+                <span class="rc-side-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/></svg></span>
+                <span class="rc-side-label" data-i18n="rec.countIn">Vorlauf 3 s</span>
+              </button>
+              <button class="rc-side-btn rc-side-btn--danger rc-only-busy" id="btn-rec-cancel" type="button" aria-label="Aufnahme abbrechen" data-i18n-aria="rec.cancelRecAria">
+                <span class="rc-side-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+                <span class="rc-side-label" data-i18n="common.cancel">Abbrechen</span>
+              </button>
+            </div>
+            <div class="rc-dock-main">
+              <button class="rec-btn rec-btn--lg rc-rec-btn" id="btn-rec-toggle" type="button" aria-pressed="false" aria-label="REC starten" data-i18n-aria="rec.startAria">
+                <span class="rec-btn-dot"></span>
+              </button>
+              <span class="rc-side-label rc-main-label" id="rec-toggle-label" aria-hidden="true">Aufnehmen</span>
+            </div>
+            <div class="rc-dock-side rc-dock-side--end">
+              <button class="rc-side-btn rc-only-idle" id="btn-rec-routine" type="button" data-i18n-aria="routine.ariaLabel" aria-label="Choirgym">
+                <span class="rc-side-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4h-4"/><path d="M10 9.5v5l4-2.5z" fill="currentColor"/></svg></span>
+                <span class="rc-side-label" data-i18n="routine.openLabel">Üben</span>
+              </button>
+            </div>
           </div>
         </div>
-        <label class="visually-hidden" for="rec-take-name" data-i18n="rec.nameLabel">Name des RECs</label>
-        <input class="take-name" id="rec-take-name" type="text" maxlength="60"
-               autocomplete="off" autocorrect="off" spellcheck="false">
-        <div class="take-wave-row">
-          <div class="wave-shade-wrap">
-            <canvas class="take-wave" id="rec-take-wave"></canvas>
-            <div class="trim-shade trim-shade--left" id="rec-take-shade-left"></div>
-            <div class="trim-shade trim-shade--right" id="rec-take-shade-right"></div>
-          </div>
-          <button class="take-trim-btn" id="btn-rec-take-trim" type="button" aria-label="REC zuschneiden" data-i18n-aria="rec.trimAria">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
-          </button>
-        </div>
-        <div class="rec-take-meta">
-          <span id="rec-take-duration"></span>
-          <span id="rec-take-hint" data-i18n="rec.justRecorded">gerade aufgenommen</span>
+
+        <div class="rc-take" id="rec-take" hidden>
+          <section class="rc-review" aria-label="REC anhören und zuschneiden" data-i18n-aria="rec.reviewAria">
+            <div class="rc-trim" id="rec-trim">
+              <canvas class="rc-take-wave" id="rec-take-wave"></canvas>
+              <div class="trim-shade trim-shade--left" id="rec-take-shade-left"></div>
+              <div class="trim-shade trim-shade--right" id="rec-take-shade-right"></div>
+              <button class="rc-handle rc-handle--start" id="rec-trim-start" type="button" role="slider" aria-label="Anfang" data-i18n-aria="rec.trimStart"></button>
+              <button class="rc-handle rc-handle--end" id="rec-trim-end" type="button" role="slider" aria-label="Ende" data-i18n-aria="rec.trimEnd"></button>
+            </div>
+            <div class="rc-review-row">
+              <button class="rec-play rc-play" id="btn-rec-preview" type="button" aria-label="REC anhören" data-i18n-aria="rec.previewAria">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-rec-play" class="rec-icon-visible"><path d="M8 5.5v13l11-6.5z"/></svg>
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="icon-rec-pause"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+              </button>
+              <div class="rc-review-text">
+                <span class="rc-review-time" id="rec-take-hint"></span>
+                <span class="rc-review-sub" id="rec-take-duration"></span>
+              </div>
+              <button class="trim-end-btn rc-tail-btn" id="btn-rec-tail" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 5.5v13l8-6.5z"/><path d="M17 5v14"/></svg>
+                <span id="rec-tail-label"></span>
+              </button>
+            </div>
+          </section>
+
+          <section class="rc-sheet" aria-labelledby="rec-sheet-title">
+            <h2 class="rc-sheet-title" id="rec-sheet-title" data-i18n="rec.saveSheetTitle">Speichern unter</h2>
+            <div class="rc-field">
+              <span class="rc-field-label" data-i18n="rec.songLabel">Song</span>
+              <div class="list-item is-picked rc-song-fixed"><strong id="rec-take-song"></strong></div>
+            </div>
+            <div class="rc-field">
+              <span class="rc-field-label" id="rec-voice-label"><span data-i18n="rec.voiceLabel">Stimme</span> <span class="rc-field-optional" data-i18n="rec.optional">(optional)</span></span>
+              <div class="chip-grid chip-grid--lg voice-pill-picker rc-voices" id="rec-voices" role="group" aria-labelledby="rec-voice-label"></div>
+            </div>
+            <div class="rc-field">
+              <label class="rc-field-label" for="rec-take-name" data-i18n="rec.nameShort">Name</label>
+              <input class="rc-input" id="rec-take-name" type="text" maxlength="60"
+                     autocomplete="off" autocorrect="off" spellcheck="false">
+            </div>
+            <div class="rc-sheet-actions">
+              <button class="rc-action rc-action--discard" id="btn-rec-discard" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>
+                <span data-i18n="common.discard">Verwerfen</span>
+              </button>
+              <button class="rc-action rc-action--save" id="btn-rec-save" type="button" aria-disabled="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
+                <span data-i18n="common.save">Speichern</span>
+              </button>
+            </div>
+          </section>
         </div>
       </div>
       <div id="recording-list"></div>
@@ -4114,7 +4091,7 @@ input[type="checkbox"] {
      #import-view. Kein Song vorausgewählt; die Zuordnung passiert erst beim
      Speichern über die Songliste unten in #recorder-take.
      ========================================================================== -->
-<section class="player" id="recorder-view" data-state="idle" hidden aria-labelledby="recorder-title">
+<section class="player rc-host" id="recorder-view" data-state="idle" hidden aria-labelledby="recorder-title">
   <div class="player-head">
     <button class="icon-btn" id="recorder-back" type="button" aria-label="Zurück zu den Liedern" data-i18n-aria="rec.backAria">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

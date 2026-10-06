@@ -650,9 +650,8 @@ function promptDialog({ title, text = '', value = '', placeholder = '',
   });
 }
 
-// Schere — auch am Take (siehe onTakeTrimClick) und hier bei schon
-// gespeicherten RECs, deshalb ein gemeinsames Icon statt zweimal derselben
-// SVG-Zeichenkette.
+// Schere beim Bearbeiten schon gespeicherter RECs (frische Takes schneidet
+// man direkt an den Griffen der Wellenform zu).
 const REC_SCISSORS_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>';
 
 /**
@@ -11193,39 +11192,49 @@ let recChunks = [];
 let recMimeType = '';
 let recStartedAt = 0;
 let recTimerHandle = null;
-// Welche Oberfläche die Aufnahme gerade zeigt — 'player' (Loops-Tab) oder
+// Welche Oberfläche die Aufnahme gerade zeigt — 'player' (REC-Reiter) oder
 // 'recorder' (allgemeine Aufnahme-Ansicht). Es läuft immer nur eine Aufnahme,
-// aber sie muss wissen, welche Knoten sie bedient. Beide Oberflächen bauen
-// dieselbe Take-Karte nach, nur mit eigenen IDs (der große Knopf im Recorder
-// ist z.B. optisch größer) — RID bildet recHost auf die jeweils richtigen
-// Knoten ab, rn() ist die Kurzform dafür.
+// aber sie muss wissen, welche Knoten sie bedient. Beide Oberflächen haben
+// dasselbe Design (Statuspille, große Zeit, Dock, Wellenform mit Griffen,
+// Blatt „Speichern unter“), nur mit eigenen IDs — RID bildet recHost auf die
+// jeweils richtigen Knoten ab, rn() ist die Kurzform dafür. Der Player hat
+// keine Pause (der REC ist am weiterlaufenden Song verankert, siehe
+// captureRecAnchor) und keine Songauswahl (der Song steht fest).
 let recHost = 'player';
 const RID = {
+  // Beide im selben Design (Statuspille, große Zeit, Dock, Wellenform mit
+  // Griffen, Blatt „Speichern unter“); der Player ohne Pause und Songauswahl.
   player: {
-    controls: 'rec-controls', toggle: 'btn-rec-toggle', timer: 'rec-timer', status: 'rec-status',
+    host: 'rec-host', controls: 'rec-controls', toggle: 'btn-rec-toggle', toggleLabel: 'rec-toggle-label',
+    pillText: 'rec-pill-text', timer: 'rec-timer', status: 'rec-status',
+    countin: 'btn-rec-countin', cancel: 'btn-rec-cancel', pause: null, pauseLabel: null,
     meter: 'rec-meter', meterCanvas: 'rec-meter-canvas', meterWarning: 'rec-meter-warning',
     inputWarning: 'rec-input-warning',
     take: 'rec-take', name: 'rec-take-name', duration: 'rec-take-duration', hint: 'rec-take-hint',
-    voiceBtn: 'btn-rec-take-voice', voiceLabel: 'rec-take-voice-label',
-    wave: 'rec-take-wave', trimBtn: 'btn-rec-take-trim', preview: 'btn-rec-preview', playIcon: 'icon-rec-play', pauseIcon: 'icon-rec-pause',
+    voices: 'rec-voices', trim: 'rec-trim', trimStart: 'rec-trim-start', trimEnd: 'rec-trim-end',
+    tail: 'btn-rec-tail', tailLabel: 'rec-tail-label',
+    wave: 'rec-take-wave', preview: 'btn-rec-preview', playIcon: 'icon-rec-play', pauseIcon: 'icon-rec-pause',
     shadeLeft: 'rec-take-shade-left', shadeRight: 'rec-take-shade-right',
     save: 'btn-rec-save', discard: 'btn-rec-discard',
   },
   recorder: {
-    controls: 'recorder-idle', toggle: 'btn-recorder-toggle', timer: 'recorder-timer', status: 'recorder-status',
+    host: 'recorder-view', controls: 'recorder-idle', toggle: 'btn-recorder-toggle', toggleLabel: 'recorder-toggle-label',
+    pillText: 'recorder-pill-text', timer: 'recorder-timer', status: 'recorder-status',
+    countin: 'btn-recorder-countin', cancel: 'btn-recorder-cancel', pause: 'btn-recorder-pause', pauseLabel: 'recorder-pause-label',
     meter: 'recorder-meter', meterCanvas: 'recorder-meter-canvas', meterWarning: 'recorder-meter-warning',
     inputWarning: 'recorder-input-warning',
     take: 'recorder-take', name: 'recorder-take-name', duration: 'recorder-take-duration', hint: 'recorder-take-hint',
-    // Stimme als Segmentgruppe (renderRecorderVoices) statt Knopf mit Dialog,
-    // Zuschneiden direkt an der Wellenform (wireRecorderTrim) statt Schere.
-    voiceBtn: null, voiceLabel: null,
-    wave: 'recorder-take-wave', trimBtn: null, preview: 'btn-recorder-preview', playIcon: 'icon-recorder-play', pauseIcon: 'icon-recorder-pause',
+    voices: 'recorder-voices', trim: 'recorder-trim', trimStart: 'recorder-trim-start', trimEnd: 'recorder-trim-end',
+    tail: 'btn-recorder-tail', tailLabel: 'recorder-tail-label',
+    wave: 'recorder-take-wave', preview: 'btn-recorder-preview', playIcon: 'icon-recorder-play', pauseIcon: 'icon-recorder-pause',
     shadeLeft: 'recorder-take-shade-left', shadeRight: 'recorder-take-shade-right',
     save: 'btn-recorder-save', discard: 'btn-recorder-discard',
   },
 };
 /** Liefert den Knoten der gerade aktiven Aufnahme-Oberfläche (siehe recHost/RID). */
 function rn(key) { const id = RID[recHost][key]; return id ? $('#' + id) : null; }
+/** Wie rn(), aber für eine bestimmte Oberfläche statt der gerade aktiven. */
+function rnOf(host, key) { const id = RID[host][key]; return id ? $('#' + id) : null; }
 
 // Schützt vor einem schnellen Doppel-Tipp auf REC-Start, bevor getUserMedia()
 // beim ersten Aufruf überhaupt zurückkommt — recMediaRecorder wird erst nach
@@ -11400,20 +11409,15 @@ function setRecUI(recording) {
   const btn = rn('toggle');
   btn.setAttribute('aria-pressed', recording ? 'true' : 'false');
   btn.setAttribute('aria-label', t(recording ? 'rec.stopAria' : 'rec.startAria'));
-  if (recHost === 'recorder') {
-    // Im Recorder bleibt die große Zeit stehen (Bereit: grau „0:00"), den
-    // Hinweistext blendet das CSS je nach data-state aus.
-    rn('timer').hidden = false;
-    rn('status').hidden = false;
-    if (!recording) rn('timer').textContent = fmtTime(0);
-    setRecorderState();
-    return;
-  }
-  rn('timer').hidden = !recording;
-  rn('status').hidden = recording;
+  // Die große Zeit bleibt stehen (Bereit: grau „0:00"), den Hinweistext
+  // blendet das CSS je nach data-state aus.
+  rn('timer').hidden = false;
+  if (recHost === 'recorder') rn('status').hidden = false;
+  if (!recording) rn('timer').textContent = fmtTime(0);
+  setRecorderState();
 }
 
-// Pause gibt es nur im allgemeinen Recorder. Pausenzeit zählt nicht zur
+// Pause gibt es nur im allgemeinen Recorder (siehe RID). Pausenzeit zählt nicht zur
 // Länge des Takes — sonst lägen Wellenform, Zuschnitt und Dauer daneben.
 let recPausedMs = 0;
 let recPauseStartedAt = 0;
@@ -11433,7 +11437,7 @@ let recCountIn = null;
 const REC_COUNT_IN_S = 3;
 
 /**
- * Zählt im Recorder vor dem eigentlichen Start herunter. Das Mikrofon ist
+ * Zählt (Recorder und Player) vor dem eigentlichen Start herunter. Das Mikrofon ist
  * dann schon offen (die Berechtigungsabfrage kommt also nicht mitten in den
  * Countdown), aufgezeichnet wird erst danach. Löst mit true auf, wenn der
  * Countdown durchlief, sonst false (abgebrochen).
@@ -11469,33 +11473,37 @@ const recPauseSupported = () => !!(window.MediaRecorder && typeof MediaRecorder.
  * gerade im Player (recHost 'player'), zeigt der Recorder „Bereit".
  */
 function setRecorderState() {
-  const view = $('#recorder-view');
-  if (!view) return;
-  const mine = recHost === 'recorder';
-  const recState = mine && recMediaRecorder ? recMediaRecorder.state : 'inactive';
-  const state = mine && recCountIn ? 'countin'
-    : recState === 'paused' ? 'paused'
-      : recState === 'recording' ? 'recording' : 'idle';
-  view.dataset.state = state;
+  for (const host of ['player', 'recorder']) {
+    const view = rnOf(host, 'host');
+    if (!view) continue;
+    const mine = recHost === host;
+    const recState = mine && recMediaRecorder ? recMediaRecorder.state : 'inactive';
+    const state = mine && recCountIn ? 'countin'
+      : recState === 'paused' ? 'paused'
+        : recState === 'recording' ? 'recording' : 'idle';
+    view.dataset.state = state;
 
-  $('#recorder-pill-text').textContent = t(state === 'countin' ? 'rec.countInPill'
-    : state === 'paused' ? 'rec.pausedPill' : 'rec.livePill');
-  $('#recorder-toggle-label').textContent = state === 'idle' ? t('rec.globalTitle')
-    : state === 'countin' ? t('common.cancel') : t('rec.stopLabel');
-  if (state === 'countin') {
-    const toggle = $('#btn-recorder-toggle');
-    toggle.setAttribute('aria-pressed', 'true');
-    toggle.setAttribute('aria-label', t('rec.countInCancelAria'));
+    rnOf(host, 'pillText').textContent = t(state === 'countin' ? 'rec.countInPill'
+      : state === 'paused' ? 'rec.pausedPill' : 'rec.livePill');
+    rnOf(host, 'toggleLabel').textContent = state === 'idle' ? t('rec.globalTitle')
+      : state === 'countin' ? t('common.cancel') : t('rec.stopLabel');
+    if (state === 'countin') {
+      const toggle = rnOf(host, 'toggle');
+      toggle.setAttribute('aria-pressed', 'true');
+      toggle.setAttribute('aria-label', t('rec.countInCancelAria'));
+    }
+
+    const pauseBtn = rnOf(host, 'pause');
+    if (pauseBtn) {
+      pauseBtn.hidden = !recPauseSupported();
+      pauseBtn.setAttribute('aria-pressed', state === 'paused' ? 'true' : 'false');
+      pauseBtn.setAttribute('aria-label', t(state === 'paused' ? 'rec.resumeRecAria' : 'rec.pauseRecAria'));
+      rnOf(host, 'pauseLabel').textContent = t(state === 'paused' ? 'rec.resumeLabel' : 'rec.pauseLabel');
+    }
+
+    rnOf(host, 'countin').setAttribute('aria-pressed', settings.recCountIn ? 'true' : 'false');
+    if (state === 'idle' && !(mine && pendingTake)) rnOf(host, 'timer').textContent = fmtTime(0);
   }
-
-  const pauseBtn = $('#btn-recorder-pause');
-  pauseBtn.hidden = !recPauseSupported();
-  pauseBtn.setAttribute('aria-pressed', state === 'paused' ? 'true' : 'false');
-  pauseBtn.setAttribute('aria-label', t(state === 'paused' ? 'rec.resumeRecAria' : 'rec.pauseRecAria'));
-  $('#recorder-pause-label').textContent = t(state === 'paused' ? 'rec.resumeLabel' : 'rec.pauseLabel');
-
-  $('#btn-recorder-countin').setAttribute('aria-pressed', settings.recCountIn ? 'true' : 'false');
-  if (state === 'idle' && !(mine && pendingTake)) $('#recorder-timer').textContent = fmtTime(0);
 }
 
 /** Pause/Weiter im Recorder — MediaRecorder.pause()/resume(). */
@@ -11522,10 +11530,10 @@ function toggleRecPause() {
 $('#btn-recorder-pause').addEventListener('click', toggleRecPause);
 
 /** Linker Dock-Knopf während Vorlauf/Aufnahme: abbrechen, ohne zu speichern. */
-async function onRecorderCancelClick() {
-  if (recHost !== 'recorder') return;
+async function onRecorderCancelClick(host) {
+  if (recHost !== host) return;
   if (recCountIn) { recCountIn.cancel(); return; }
-  const running = () => recHost === 'recorder' && recMediaRecorder && recMediaRecorder.state !== 'inactive';
+  const running = () => recHost === host && recMediaRecorder && recMediaRecorder.state !== 'inactive';
   if (!running()) return;
   const ok = await confirmDialog({
     title: t('rec.cancelRecTitle'), text: t('rec.cancelRecText'),
@@ -11533,12 +11541,15 @@ async function onRecorderCancelClick() {
   });
   if (ok && running()) discardActiveRecording();
 }
-$('#btn-recorder-cancel').addEventListener('click', onRecorderCancelClick);
+$('#btn-recorder-cancel').addEventListener('click', () => onRecorderCancelClick('recorder'));
+$('#btn-rec-cancel').addEventListener('click', () => onRecorderCancelClick('player'));
 
-$('#btn-recorder-countin').addEventListener('click', async () => {
-  await saveSettings({ recCountIn: !settings.recCountIn });
-  setRecorderState();
-});
+for (const id of ['#btn-recorder-countin', '#btn-rec-countin']) {
+  $(id).addEventListener('click', async () => {
+    await saveSettings({ recCountIn: !settings.recCountIn });
+    setRecorderState();
+  });
+}
 
 /**
  * Der Umweg zwischen Song und Aufnahme in Sekunden, soweit der Browser ihn
@@ -11697,7 +11708,7 @@ async function startRecording() {
     recAnchor = recHost === 'player' ? captureRecAnchor(recStream) : null;
   }, { once: true });
 
-  if (startingHost === 'recorder' && settings.recCountIn) {
+  if (settings.recCountIn) {
     const recorder = recMediaRecorder;
     recStarting = true;
     const go = await runRecCountIn();
@@ -12151,18 +12162,17 @@ function renderPendingTake() {
   const has = !!pendingTake;
   rn('controls').hidden = has;
   rn('take').hidden = !has;
-  if (recHost === 'recorder') setRecorderState();
+  setRecorderState();
   if (!has) { takeDraft = null; return; }
   const isNew = !takeDraft;
   if (!takeDraft) {
     const suggestion = recHost === 'recorder' ? `REC ${dateStamp()}` : `REC ${songRecordings.length + 1}`;
     takeDraft = { name: suggestion, voice: null, songId: null };
     rn('name').value = takeDraft.name;
-    // Sofort tippbereit — wer gerade gestoppt hat, will den Namen setzen,
-    // ohne erst hinzutippen zu müssen. Nicht im Recorder: dort steht der
-    // Name unten im Blatt, die Tastatur verdeckte sonst Wellenform und Song.
-    if (recHost !== 'recorder') rn('name').focus();
+    // Kein Fokus aufs Namensfeld: der Name steht unten im Blatt, die
+    // Tastatur verdeckte sonst Wellenform und Song.
   }
+  if (recHost === 'player') $('#rec-take-song').textContent = playerSong ? songLabel(playerSong) : '';
   renderTakeTrim();
   renderTakeVoiceLabel();
   updateRecPreviewButton();
@@ -12182,10 +12192,10 @@ function renderTakeTrim() {
   const range = recordingTrimRange(pendingTake);
   const length = fmtTime(range.end - range.start);
   setTakeShade(range, pendingTake.duration);
-  if (recHost === 'recorder') {
+  {
     const pct = (sec) => (pendingTake.duration > 0 ? Math.max(0, Math.min(100, (sec / pendingTake.duration) * 100)) : 0);
-    const startHandle = $('#recorder-trim-start');
-    const endHandle = $('#recorder-trim-end');
+    const startHandle = rn('trimStart');
+    const endHandle = rn('trimEnd');
     startHandle.style.left = `${pct(range.start)}%`;
     endHandle.style.left = `${pct(range.end)}%`;
     for (const [handle, sec] of [[startHandle, range.start], [endHandle, range.end]]) {
@@ -12195,10 +12205,8 @@ function renderTakeTrim() {
       handle.setAttribute('aria-valuetext', fmtTime(sec));
     }
     rn('duration').textContent = `${t('rec.selectionLength').replace('{length}', length)} · ${t('rec.trimDrag')}`;
-    $('#recorder-tail-label').textContent = t('rec.tailLabel').replace('{seconds}', REC_TAIL_PREVIEW_S);
-    $('#btn-recorder-tail').setAttribute('aria-label', t('rec.trimPlayEnd').replace('{seconds}', REC_TAIL_PREVIEW_S));
-  } else {
-    rn('duration').textContent = length;
+    rn('tailLabel').textContent = t('rec.tailLabel').replace('{seconds}', REC_TAIL_PREVIEW_S);
+    rn('tail').setAttribute('aria-label', t('rec.trimPlayEnd').replace('{seconds}', REC_TAIL_PREVIEW_S));
   }
   drawTakeWaveform();
 }
@@ -12209,11 +12217,11 @@ function renderTakeTrim() {
  * Pfeiltasten (mit Umschalt in ganzen Sekunden), mindestens 0,3 s Auswahl,
  * nicht destruktiv (nur trimStart/trimEnd am pendingTake).
  */
-function wireRecorderTrim() {
-  const wrap = $('#recorder-trim');
+function wireRecorderTrim(host) {
+  const wrap = rnOf(host, 'trim');
   const MIN_LEN = 0.3;
   const setEdge = async (isStart, sec) => {
-    if (!pendingTake || recHost !== 'recorder') return;
+    if (!pendingTake || recHost !== host) return;
     // Eine laufende Vorschau kennt noch die alten Grenzen.
     if (audioPreview?.tag?.pending) await endRecordingPreview();
     const duration = pendingTake.duration;
@@ -12255,10 +12263,11 @@ function wireRecorderTrim() {
       setEdge(isStart, (isStart ? range.start : range.end) + step);
     });
   };
-  wire($('#recorder-trim-start'), true);
-  wire($('#recorder-trim-end'), false);
+  wire(rnOf(host, 'trimStart'), true);
+  wire(rnOf(host, 'trimEnd'), false);
 }
-wireRecorderTrim();
+wireRecorderTrim('recorder');
+wireRecorderTrim('player');
 
 // Wie der „Ende"-Knopf im Zuschneide-Dialog (END_PREVIEW_LEN dort): spielt
 // die letzten Sekunden vor dem Ende der Auswahl, um das Ende genau zu setzen.
@@ -12278,12 +12287,13 @@ async function onRecorderTailClick() {
   updateRecTakePosition();
 }
 $('#btn-recorder-tail').addEventListener('click', onRecorderTailClick);
+$('#btn-rec-tail').addEventListener('click', onRecorderTailClick);
 
 const REC_VOICE_CHOICES = ['SOP', 'ALT', 'TEN', 'BASS', 'LEAD', null];
 
 /** Stimme im Recorder als Segmentgruppe — ein Tipp statt Dialog. */
 function renderRecorderVoices() {
-  const host = $('#recorder-voices');
+  const host = rn('voices');
   host.textContent = '';
   for (const voice of REC_VOICE_CHOICES) {
     const pressed = (takeDraft?.voice ?? null) === voice;
@@ -12301,12 +12311,9 @@ function renderRecorderVoices() {
   }
 }
 
-/** Beschriftung des Stimme-Knopfs auf der Take-Karte. */
+/** Stimmwahl des Takes (farbige Pills, beide Oberflächen). */
 function renderTakeVoiceLabel() {
-  if (recHost === 'recorder') { renderRecorderVoices(); return; }
-  const btn = rn('voiceBtn');
-  rn('voiceLabel').textContent = takeDraft?.voice ? voiceName(takeDraft.voice) : t('rec.voicePlaceholder');
-  btn.dataset.empty = takeDraft?.voice ? 'false' : 'true';
+  renderRecorderVoices();
 }
 
 /**
@@ -12331,7 +12338,7 @@ function updateRecPreviewButton() {
   const btn = rn('preview');
   if (!btn) return;
   const tailPlaying = !!(audioPreview?.tag?.tail && Audio.playing);
-  if (recHost === 'recorder') $('#btn-recorder-tail').classList.toggle('is-playing', tailPlaying);
+  rn('tail')?.classList.toggle('is-playing', tailPlaying);
   const playing = !!(audioPreview?.tag?.pending && !audioPreview.tag.tail && Audio.playing);
   // .rec-icon-visible statt der hidden-Eigenschaft (siehe CSS-Kommentar bei
   // .rec-play svg) — auf einem iPhone SE blieb die Füllung zwar grün, aber
@@ -12355,20 +12362,13 @@ function updateRecTakePosition() {
   if (!pendingTake) return;
   const hint = rn('hint');
   if (!hint) return;
-  const playing = !!(audioPreview?.tag?.pending && Audio.playing);
   const previewing = !!audioPreview?.tag?.pending;
   drawTakeWaveform(previewing && pendingTake.duration
     ? Math.min(1, Audio.position / pendingTake.duration)
     : null);
-  if (recHost === 'recorder') {
-    // Immer als Zeit: Position (bzw. Anfang der Auswahl) / Gesamtlänge.
-    const pos = previewing ? Audio.position : recordingTrimRange(pendingTake).start;
-    hint.textContent = `${fmtTime(pos)} / ${fmtTime(pendingTake.duration)}`;
-    return;
-  }
-  hint.textContent = playing
-    ? `${fmtTime(Audio.position)} / ${fmtTime(pendingTake.duration)}`
-    : t('rec.justRecorded');
+  // Immer als Zeit: Position (bzw. Anfang der Auswahl) / Gesamtlänge.
+  const pos = previewing ? Audio.position : recordingTrimRange(pendingTake).start;
+  hint.textContent = `${fmtTime(pos)} / ${fmtTime(pendingTake.duration)}`;
 }
 
 $('#rec-take-name').addEventListener('input', (e) => {
@@ -12378,14 +12378,6 @@ $('#recorder-take-name').addEventListener('input', (e) => {
   if (takeDraft) takeDraft.name = e.target.value;
 });
 
-async function onTakeVoiceClick() {
-  if (!takeDraft) return;
-  const voice = await pickRecordingVoice(takeDraft.voice);
-  if (voice === undefined) return; // abgebrochen
-  takeDraft.voice = voice;
-  renderTakeVoiceLabel();
-}
-$('#btn-rec-take-voice').addEventListener('click', onTakeVoiceClick);
 
 async function onTakePreviewClick() {
   if (!pendingTake) return;
@@ -12402,28 +12394,6 @@ async function onTakePreviewClick() {
 $('#btn-rec-preview').addEventListener('click', onTakePreviewClick);
 $('#btn-recorder-preview').addEventListener('click', onTakePreviewClick);
 
-/**
- * Legt eine Trim-Auswahl für den noch nicht gespeicherten Take fest — nicht
- * destruktiv: pendingTake.blob bleibt der volle Take, nur trimStart/trimEnd
- * ändern sich (siehe recordingTrimRange()). Anhören (onTakePreviewClick)
- * und später der gespeicherte REC beschränken sich von da an auf diesen
- * Bereich.
- */
-async function onTakeTrimClick() {
-  if (!pendingTake) return;
-  if (audioPreview?.tag?.pending) await endRecordingPreview();
-
-  const range = recordingTrimRange(pendingTake);
-  let result;
-  try { result = await pickTrimRange(pendingTake.blob, range.start, range.end); }
-  catch (err) { bannerError(t('msg.recTrimOpenFailed'), 'REC-TRIM', err); return; }
-  if (!result) return;
-
-  pendingTake.trimStart = result.startSec;
-  pendingTake.trimEnd = result.endSec;
-  renderPendingTake();
-}
-$('#btn-rec-take-trim').addEventListener('click', onTakeTrimClick);
 
 async function onTakeDiscardClick() {
   if (!pendingTake) return;
