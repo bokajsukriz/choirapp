@@ -2585,15 +2585,23 @@ input[type="checkbox"] {
 }
 
 /* Dieselben Bausteine im REC-Reiter des Players (#rec-host): kein eigener
-   Vollbild-Bereich, deshalb als Karten im Fluss der Seite. In Ruhe nur das
-   Dock (Hinweis darüber, solange es noch keine RECs gibt); Pille und große
-   Zeit erst während Vorlauf und Aufnahme. */
+   Vollbild-Bereich, deshalb als Karten im Fluss der Seite. In Ruhe schlicht
+   wie früher: REC-Knopf mittig, rechts Üben (nicht hinterlegt — gehört nicht
+   zum Recorder), darunter der Hinweis, solange es noch keine RECs gibt; Pille,
+   große Zeit und Dock-Karte erst während der Aufnahme. */
 .rc-host--player .rc-live, .rc-host--player .rc-take { flex: 0 0 auto; }
 .rc-host--player .rc-take { overflow: visible; gap: 12px; margin: 6px 0 10px; }
 .rc-host--player .rc-stage { flex: 0 0 auto; overflow: visible; gap: 12px; padding: 4px 0 12px; }
 .rc-host--player[data-state="idle"] .rc-pill,
 .rc-host--player[data-state="idle"] .rc-timer { display: none; }
-.rc-host--player[data-state="idle"] .rc-stage { padding: 0 0 8px; }
+.rc-host--player[data-state="idle"] .rc-stage { padding: 0 0 4px; }
+.rc-host--player[data-state="idle"] .rc-live { flex-direction: column-reverse; }
+.rc-host--player[data-state="idle"] .rc-dock { background: none; border: 0; box-shadow: none; padding: 6px 0; align-items: center; }
+.rc-host--player[data-state="idle"] .rc-main-label { display: none; }
+.rc-host--player[data-state="idle"] .rc-rec-btn { width: 56px; height: 56px; min-width: 56px; min-height: 56px; max-width: 56px; max-height: 56px; }
+.rc-host--player[data-state="idle"] .rc-rec-btn .rec-btn-dot { width: 22px; height: 22px; }
+.rec-routine-btn { padding: 10px; border-radius: 999px; border-color: var(--pill-line); }
+.rec-routine-btn svg { width: 20px; height: 20px; }
 .rc-host--player .rc-timer { font-size: clamp(48px, 16vw, 64px); }
 .rc-host--player .rc-meter-canvas { height: 110px; }
 .rc-host--player .rc-dock {
@@ -3653,8 +3661,8 @@ input[type="checkbox"] {
 
     <div id="tab-panel-rec" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-rec" tabindex="0" hidden>
       <!-- Gleiches Design wie der allgemeine Recorder (#recorder-view): data-state
-           (idle | countin | recording) setzt setRecorderState(). In Ruhe nur das
-           Dock; während der Aufnahme Status-Pille, große Zeit und Pegel; nach dem
+           (idle | recording) setzt setRecorderState(). In Ruhe wie früher nur der
+           REC-Knopf mittig und rechts Üben, ohne Vorlauf; während der Aufnahme Status-Pille, große Zeit und Pegel; nach dem
            Stopp Wellenform mit Griffen und das Blatt „Speichern unter“ (der Song
            steht im Player schon fest). Pause gibt es hier nicht — der REC ist am
            weiterlaufenden Song verankert (captureRecAnchor). -->
@@ -3678,10 +3686,6 @@ input[type="checkbox"] {
 
           <div class="rc-dock">
             <div class="rc-dock-side rc-dock-side--start">
-              <button class="rc-side-btn rc-only-idle" id="btn-rec-countin" type="button" aria-pressed="false" aria-label="Vorlauf: 3 Sekunden Countdown vor der Aufnahme" data-i18n-aria="rec.countInOnAria">
-                <span class="rc-side-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/></svg></span>
-                <span class="rc-side-label" data-i18n="rec.countIn">Vorlauf 3 s</span>
-              </button>
               <button class="rc-side-btn rc-side-btn--danger rc-only-busy" id="btn-rec-cancel" type="button" aria-label="Aufnahme abbrechen" data-i18n-aria="rec.cancelRecAria">
                 <span class="rc-side-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
                 <span class="rc-side-label" data-i18n="common.cancel">Abbrechen</span>
@@ -3694,9 +3698,9 @@ input[type="checkbox"] {
               <span class="rc-side-label rc-main-label" id="rec-toggle-label" aria-hidden="true">Aufnehmen</span>
             </div>
             <div class="rc-dock-side rc-dock-side--end">
-              <button class="rc-side-btn rc-only-idle" id="btn-rec-routine" type="button" data-i18n-aria="routine.ariaLabel" aria-label="Choirgym">
-                <span class="rc-side-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4h-4"/><path d="M10 9.5v5l4-2.5z" fill="currentColor"/></svg></span>
-                <span class="rc-side-label" data-i18n="routine.openLabel">Üben</span>
+              <!-- Bewusst ohne Dock-Optik: Üben gehört nicht zum Recorder selbst. -->
+              <button class="btn icon-only rec-routine-btn rc-only-idle" id="btn-rec-routine" type="button" data-i18n-aria="routine.ariaLabel" aria-label="Choirgym">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4h-4"/><path d="M10 9.5v5l4-2.5z" fill="currentColor"/></svg>
               </button>
             </div>
           </div>

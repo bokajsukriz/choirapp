@@ -11198,16 +11198,16 @@ let recTimerHandle = null;
 // dasselbe Design (Statuspille, große Zeit, Dock, Wellenform mit Griffen,
 // Blatt „Speichern unter“), nur mit eigenen IDs — RID bildet recHost auf die
 // jeweils richtigen Knoten ab, rn() ist die Kurzform dafür. Der Player hat
-// keine Pause (der REC ist am weiterlaufenden Song verankert, siehe
-// captureRecAnchor) und keine Songauswahl (der Song steht fest).
+// keinen Vorlauf und keine Pause (der REC ist am weiterlaufenden Song
+// verankert, siehe captureRecAnchor) und keine Songauswahl (der Song steht fest).
 let recHost = 'player';
 const RID = {
   // Beide im selben Design (Statuspille, große Zeit, Dock, Wellenform mit
-  // Griffen, Blatt „Speichern unter“); der Player ohne Pause und Songauswahl.
+  // Griffen, Blatt „Speichern unter“); der Player ohne Vorlauf, Pause und Songauswahl.
   player: {
     host: 'rec-host', controls: 'rec-controls', toggle: 'btn-rec-toggle', toggleLabel: 'rec-toggle-label',
     pillText: 'rec-pill-text', timer: 'rec-timer', status: 'rec-status',
-    countin: 'btn-rec-countin', cancel: 'btn-rec-cancel', pause: null, pauseLabel: null,
+    countin: null, cancel: 'btn-rec-cancel', pause: null, pauseLabel: null,
     meter: 'rec-meter', meterCanvas: 'rec-meter-canvas', meterWarning: 'rec-meter-warning',
     inputWarning: 'rec-input-warning',
     take: 'rec-take', name: 'rec-take-name', duration: 'rec-take-duration', hint: 'rec-take-hint',
@@ -11437,7 +11437,7 @@ let recCountIn = null;
 const REC_COUNT_IN_S = 3;
 
 /**
- * Zählt (Recorder und Player) vor dem eigentlichen Start herunter. Das Mikrofon ist
+ * Zählt im Recorder vor dem eigentlichen Start herunter. Das Mikrofon ist
  * dann schon offen (die Berechtigungsabfrage kommt also nicht mitten in den
  * Countdown), aufgezeichnet wird erst danach. Löst mit true auf, wenn der
  * Countdown durchlief, sonst false (abgebrochen).
@@ -11501,7 +11501,7 @@ function setRecorderState() {
       rnOf(host, 'pauseLabel').textContent = t(state === 'paused' ? 'rec.resumeLabel' : 'rec.pauseLabel');
     }
 
-    rnOf(host, 'countin').setAttribute('aria-pressed', settings.recCountIn ? 'true' : 'false');
+    rnOf(host, 'countin')?.setAttribute('aria-pressed', settings.recCountIn ? 'true' : 'false');
     if (state === 'idle' && !(mine && pendingTake)) rnOf(host, 'timer').textContent = fmtTime(0);
   }
 }
@@ -11544,12 +11544,10 @@ async function onRecorderCancelClick(host) {
 $('#btn-recorder-cancel').addEventListener('click', () => onRecorderCancelClick('recorder'));
 $('#btn-rec-cancel').addEventListener('click', () => onRecorderCancelClick('player'));
 
-for (const id of ['#btn-recorder-countin', '#btn-rec-countin']) {
-  $(id).addEventListener('click', async () => {
-    await saveSettings({ recCountIn: !settings.recCountIn });
-    setRecorderState();
-  });
-}
+$('#btn-recorder-countin').addEventListener('click', async () => {
+  await saveSettings({ recCountIn: !settings.recCountIn });
+  setRecorderState();
+});
 
 /**
  * Der Umweg zwischen Song und Aufnahme in Sekunden, soweit der Browser ihn
@@ -11708,7 +11706,7 @@ async function startRecording() {
     recAnchor = recHost === 'player' ? captureRecAnchor(recStream) : null;
   }, { once: true });
 
-  if (settings.recCountIn) {
+  if (startingHost === 'recorder' && settings.recCountIn) {
     const recorder = recMediaRecorder;
     recStarting = true;
     const go = await runRecCountIn();
