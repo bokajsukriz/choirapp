@@ -135,7 +135,8 @@ ein Dialog mit echter Wahl).
   Ablage `sing.singTap`;
   Rhythmus-Training mit Stufen, Phrasen,
   Auftakt, Rhythmussprache, Eingabe per Tippen oder Mikrofon;
-  Hören: Intervalle, Klänge, Schlüsse, Töne in der Tonart, Akkorde in der
+  Hören: Intervalle (Noten-Knopf neben dem Zahnrad: Merkhilfe mit bekannten
+  Songanfängen je Intervall, `INTERVAL_SONGS`), Klänge, Schlüsse, Töne in der Tonart, Akkorde in der
   Tonart, Akkordfolgen, Stimmen heraushören, Intonation; Singen: Ton halten, Intervalle singen, Ton im Akkord finden (intern `findTone`; eigene Auswahl „Nur das a′“ oder „a′, dann Akkord“),
   Nachsingen, Im Takt, Blattsingen, Diktat; der Tuner – Zielton per Klaviatur,
   Kammerton, dauerhaft gemerkter Tonumfang – ist eine eigene Tools-Kachel,
@@ -335,8 +336,9 @@ Drei Punkte dazu:
 ## Übe-Programme
 
 An drei Stellen (aktuelle Setliste, übrige Setlisten, Loops und REC im
-Player) öffnet ein Knopf (in der Loop-Leiste beschriftet „Üben", sonst ein
-Hantel-Symbol) einen Dialog zum Zusammenstellen eines
+Player) öffnet ein Knopf (in der Loop-Leiste beschriftet „Üben", sonst
+dasselbe Symbol ohne Text; bei Setlisten auch im Menü als „Übeprogramm")
+einen Dialog zum Zusammenstellen eines
 Übe-Programms (Choirgym; Vorlagen-Chips „Kennenlernen", „Festigen",
 „Durchsingen" belegen die Schritte vor): eine Folge aus „N mal auf Tempo X als Stimme Y, dann …",
 danach automatisch der nächste Song/Loop/REC. Je Setliste bzw. Song wird
