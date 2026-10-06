@@ -525,6 +525,14 @@
     return Math.max(1, next - step);
   }
 
+  /** MIDI-Ton einer Bassstufe `bassDeg` über dem Akkord auf Stufe `deg`: `root` ist der Basston
+   *  des Akkords (bei einer Umkehrung Terz/Quinte), Stufe 0 liegt auf diesem Basston, alle
+   *  anderen Stufen bleiben Stufen über dem Akkordgrundton. */
+  function bassNoteMidi(root, steps, deg, bassIndex, bassDeg) {
+    const inv = 2 * bassIndex;
+    return root + degreeSemis(steps, deg + (bassDeg === 0 ? inv : bassDeg)) - degreeSemis(steps, deg + inv);
+  }
+
   /** Grundtöne des Basses je Akkord mit Stimmführung: der erste im Bereich
    *  36–47, jeder weitere in der Oktavlage 28–47 (Anweisung: 33–47; die fünf
    *  Halbtöne mehr nach unten (bis zum tiefen E der Bassgitarre) braucht es,
@@ -603,7 +611,23 @@
     { id: 'andalusian', cat: 'modal', degrees: [0, 6, 5, 4], dominant: true, modes: ['minor'] },
     { id: 'epic', cat: 'modal', degrees: [0, 5, 2, 6], modes: ['minor'] },
     { id: 'drone', cat: 'modal', degrees: [0] },
+    // Paket 8: geliehene Akkorde, Zwischendominanten, Umkehrungen. `alter` und `bass` sind
+    // optionale Parallel-Arrays zu `degrees`: alter[i] null | 'borrow' | 'secdom', bass[i]
+    // 0 | 1 | 2 (Grundton, Terz, Quinte im Bass). In C: C – G/H – Am – F …
+    { id: 'descend', cat: 'pop', degrees: [0, 4, 5, 3], bass: [0, 1, 0, 0] },
+    { id: 'gospelIv', cat: 'pop', degrees: [0, 3, 3, 0], alter: [null, null, 'borrow', null] },
+    { id: 'mixFlat7', cat: 'pop', degrees: [0, 6, 3, 0], alter: [null, 'borrow', null, null] },
+    { id: 'secDom', cat: 'pop', degrees: [0, 2, 5, 3], alter: [null, 'secdom', null, null] },
   ];
+  const PROG_ALTERS = ['borrow', 'secdom'];
+  /** alter/bass auf `n` Akkorde bringen (fehlend/ungültig → normal bzw. Grundton). */
+  const normAlter = (arr, n) => Array.from({ length: n }, (_, i) => (PROG_ALTERS.includes(arr?.[i]) ? arr[i] : null));
+  const normBass = (arr, n) => Array.from({ length: n }, (_, i) => ([0, 1, 2].includes(arr?.[i]) ? arr[i] : 0));
+  const plainAlter = (arr) => !arr || arr.every((x) => !x);
+  const plainBass = (arr) => !arr || arr.every((x) => !x);
+  /** Eingelesene Arrays prüfen: null, wenn nichts Besonderes übrig bleibt. */
+  const sanitizeProgAlter = (raw, n) => { const a = Array.isArray(raw) ? normAlter(raw, n) : null; return a && !plainAlter(a) ? a : null; };
+  const sanitizeProgBass = (raw, n) => { const b = Array.isArray(raw) ? normBass(raw, n) : null; return b && !plainBass(b) ? b : null; };
   const PROG_CATS = ['pop', 'classic', 'jazz', 'modal'];
   /** Passt die Folge zum Modus? Eigene Folgen (ohne `modes`) immer. */
   const progFitsMode = (prog, modeId) => !prog?.modes || prog.modes.includes(modeId);
@@ -616,11 +640,13 @@
   const progKey = (kind, id) => `lab.prog${kind}${id[0].toUpperCase()}${id.slice(1)}`;
 
   /** Mini-Bild einer Akkordfolge: je Akkord ein Balken, Höhe = Stufe. */
-  function progPreview(degrees) {
+  function progPreview(degrees, alter = null) {
     const w = 64 / degrees.length;
     const rects = degrees.map((d, i) => {
       const h = 3 + (mod(d, 7) / 6) * 11;
-      return `<rect x="${(i * w + .6).toFixed(2)}" y="${(15 - h).toFixed(2)}" width="${Math.max(1, w - 1.2).toFixed(2)}" height="${h.toFixed(2)}" rx="1"/>`;
+      // Geliehene Akkorde und Zwischendominanten: Balken blasser, mit hellem Kopf.
+      const tint = alter?.[i] ? ' fill-opacity=".5"' : '';
+      return `<rect x="${(i * w + .6).toFixed(2)}" y="${(15 - h).toFixed(2)}" width="${Math.max(1, w - 1.2).toFixed(2)}" height="${h.toFixed(2)}" rx="1"${tint}/>`;
     }).join('');
     return `<svg class="preview" viewBox="0 0 64 16" preserveAspectRatio="none" aria-hidden="true">${rects}</svg>`;
   }
@@ -640,7 +666,12 @@
       if (!degrees) return null;
       seen.add(p.id);
       const name = typeof p.name === 'string' && p.name.trim() ? p.name.trim().slice(0, 40) : 'Progression';
-      return { id: p.id.slice(0, 24), name, degrees, sevenths: p.sevenths === true, dominant: p.dominant === true, dom7: p.dom7 === true };
+      const entry = { id: p.id.slice(0, 24), name, degrees, sevenths: p.sevenths === true, dominant: p.dominant === true, dom7: p.dom7 === true };
+      const alter = sanitizeProgAlter(p.alter, degrees.length);
+      const bass = sanitizeProgBass(p.bass, degrees.length);
+      if (alter) entry.alter = alter;
+      if (bass) entry.bass = bass;
+      return entry;
     }).filter(Boolean);
   }
 
@@ -747,22 +778,32 @@
   // Sprache der Tonnamen (spell/noteLabel), gesetzt in ChorGrooveLab.open.
   let labLang = 'de';
 
-  function romanNumeral(steps, deg, sevenths) {
+  /**
+   * Stufenzahl eines Akkords: „V“, „vi“, „♭VII“, „iv“. `alter` 'secdom' → „V/vi“ (Dominante der
+   * Zielstufe; `modeSteps` = Leiter des Modus, daraus der Zielakkord), `bassIndex` → Umkehrung
+   * („V⁶“, „I⁶₄“, bei Septakkorden „⁶₅“, „⁴₃“).
+   */
+  function romanNumeral(steps, deg, sevenths, alter = null, bassIndex = 0, modeSteps = MAJOR) {
     const d = mod(deg, 7);
     const quality = chordQuality(steps, d);
     const base = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'][d];
+    const figure = bassIndex === 1 ? (sevenths ? '⁶₅' : '⁶') : bassIndex === 2 ? (sevenths ? '⁴₃' : '⁶₄') : '';
+    if (alter === 'secdom') return `V${sevenths ? '7' : ''}${figure}/${romanNumeral(modeSteps, d + 3, false)}`;
     const flat = steps[d] < MAJOR[d] ? '♭' : '';
     const core = quality === 'min' || quality === 'dim' ? base.toLowerCase() : base;
-    return flat + core + (quality === 'dim' ? '°' : quality === 'aug' ? '+' : '') + (sevenths ? '7' : '');
+    return flat + core + (quality === 'dim' ? '°' : quality === 'aug' ? '+' : '') + (sevenths ? '7' : '') + figure;
   }
 
-  function chordName(keyRoot, steps, deg, sevenths, modeId = 'major', lang = labLang) {
+  function chordName(keyRoot, steps, deg, sevenths, modeId = 'major', lang = labLang, alter = null, bassIndex = 0) {
     const d = mod(deg, 7);
     const quality = chordQuality(steps, d);
-    const name = spell(keyRoot + steps[d], keyRoot, modeId, lang);
-    if (quality === 'dim') return name + (sevenths ? 'm7♭5' : '°');
+    // Geliehene Akkorde schreibt man wie in der Gegen-Tonart (in C: B♭, A♭, Fm).
+    const spellMode = alter === 'borrow' ? (modeId === 'minor' || modeId === 'dorian' ? 'major' : 'minor') : modeId;
+    const name = spell(keyRoot + steps[d], keyRoot, spellMode, lang);
+    const slash = bassIndex ? `/${spell(keyRoot + degreeSemis(steps, d + 2 * bassIndex), keyRoot, spellMode, lang)}` : '';
+    if (quality === 'dim') return name + (sevenths ? 'm7♭5' : '°') + slash;
     const seventh = sevenths ? (degreeSemis(steps, d + 6) - steps[d] === 11 ? 'maj7' : '7') : '';
-    return name + (quality === 'min' ? 'm' : quality === 'aug' ? '+' : '') + seventh;
+    return name + (quality === 'min' ? 'm' : quality === 'aug' ? '+' : '') + seventh + slash;
   }
 
   // Farbe und Name je Stimme (Umfänge: VOICE_RANGES in harmony.js).
@@ -932,7 +973,7 @@
     for (const [key, value] of Object.entries(set)) {
       if (key === 'progId') {
         s.progId = value;
-        s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progName = null; s.progOwnId = null;
+        s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progName = null; s.progOwnId = null; s.progAlter = null; s.progBass = null;
         const prog = PROGRESSIONS.find((p) => p.id === value);
         if (!set.modeId) s.modeId = modeForProg(prog, s.modeId);
       } else if (key === 'bpm') {
@@ -1179,7 +1220,7 @@
       focus: ['progSevenths'],
       checks: [(s) => !progSeventhsOf(s), (s) => progSeventhsOf(s)],
       solution: [(s) => { s.progDegrees = [...progOf(s).degrees]; s.progSevenths = false; s.progDominant = true; s.progDom7 = true; },
-                 (s) => { s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; }] },
+                 (s) => { s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progAlter = null; s.progBass = null; }] },
 
     { id: 'modi', tier: 'deep', area: 'harmony', tab: 'harmony', groove: 'Backbeat Open',
       set: { bpm: 96, progId: 'modal', modeId: 'minor', chordsOn: true },
@@ -1728,7 +1769,7 @@
     // Eigene/neue Folgen (mit Namen) erben von der zuletzt gewählten
     // Vorlage nur Id und Kategorie — keine Modus-Bindung.
     const from = s.progName ? { id: base.id, cat: base.cat } : base;
-    return { ...from, degrees: s.progDegrees, sevenths: s.progSevenths, dominant: !!s.progDominant, dom7: !!s.progDom7, custom: true };
+    return { ...from, degrees: s.progDegrees, sevenths: s.progSevenths, dominant: !!s.progDominant, dom7: !!s.progDom7, alter: s.progAlter || undefined, bass: s.progBass || undefined, custom: true };
   }
   const meterOfState = (s) => DRUM_PATTERNS[s.patternIndex].meter;
   const modeStepsOf = (s) => (MODES.find((m) => m.id === s.modeId) || MODES[0]).steps;
@@ -1739,7 +1780,8 @@
     const barSteps = METERS[meterOfState(s)].steps;
     const index = Math.floor(Math.floor(g / barSteps) / s.chordBars) % prog.degrees.length;
     const deg = prog.degrees[index];
-    return { keyRoot: s.keyRoot, steps: chordSteps(modeStepsOf(s), s.modeId, prog, deg), deg, sevenths: !!prog.sevenths, index };
+    const alter = prog.alter?.[index] || null;
+    return { keyRoot: s.keyRoot, steps: chordSteps(modeStepsOf(s), s.modeId, prog, deg, alter), deg, sevenths: !!prog.sevenths, index, alter, bass: prog.bass?.[index] || 0 };
   }
 
   /** Beat eines Songs aus seinen Rasterzeilen (siehe DC_SONGS). */
@@ -2040,6 +2082,8 @@
       keyRoot: 0, modeId: 'major', progId: 'pop', chordBars: 1,
       // Bearbeitete oder eigene Akkordfolge (null = Vorlage progId).
       progDegrees: null, progSevenths: false, progDominant: false, progDom7: false, progName: null, progOwnId: null,
+      // Geliehene Akkorde/Umkehrungen der bearbeiteten Folge (Parallel-Arrays zu progDegrees, siehe PROGRESSIONS).
+      progAlter: null, progBass: null,
       chordsOn: true, satb: { S: 'on', A: 'on', T: 'on', B: 'on' },
       // Satz der Akkorde ('satb' Chor | 'pop' enge Lage), Farbe add9, Klang ('synth' | 'choir').
       chordVoicing: 'pop', chordAdd9: false, chordSound: 'choir',
@@ -2262,6 +2306,10 @@
       s.progDominant = bool(raw.progDominant, !s.progName && !!base.dominant);
       // progDom7 (Dominantseptakkorde, Blues) ebenso, seit v298.
       s.progDom7 = bool(raw.progDom7, !s.progName && !!base.dom7);
+      // Geliehene Akkorde/Umkehrungen (seit Paket 8); eine bearbeitete Vorlage ohne diese Felder erbt die der Vorlage.
+      const inherit = !s.progName && s.progDegrees.length === base.degrees.length;
+      s.progAlter = sanitizeProgAlter('progAlter' in raw ? raw.progAlter : inherit ? base.alter : null, s.progDegrees.length);
+      s.progBass = sanitizeProgBass('progBass' in raw ? raw.progBass : inherit ? base.bass : null, s.progDegrees.length);
     }
     s.chordBars = oneOf(raw.chordBars, [1, 2], 1);
     s.chordsOn = bool(raw.chordsOn, false);
@@ -4145,11 +4193,12 @@
         const prog = progressionOfState(o);
         const tiles = mk('div', 'dc-tiles');
         tiles.setAttribute('role', 'list');
-        for (const deg of prog.degrees) {
-          const steps = chordSteps(modeStepsOf(o), o.modeId, prog, deg);
+        for (const [i, deg] of prog.degrees.entries()) {
+          const alter = prog.alter?.[i] || null;
+          const steps = chordSteps(modeStepsOf(o), o.modeId, prog, deg, alter);
           const tile = mk('div', 'dc-tile');
           tile.setAttribute('role', 'listitem');
-          tile.append(mk('strong', '', chordName(o.keyRoot, steps, deg, !!prog.sevenths, o.modeId)), mk('span', '', romanNumeral(steps, deg, prog.sevenths)));
+          tile.append(mk('strong', '', chordName(o.keyRoot, steps, deg, !!prog.sevenths, o.modeId, labLang, alter, prog.bass?.[i] || 0)), mk('span', '', romanNumeral(steps, deg, prog.sevenths, alter, prog.bass?.[i] || 0, modeStepsOf(o))));
           tiles.append(tile);
         }
         return [label, tiles, mk('span', 'dc-sol-text', this._dcSolution('chords'))];
@@ -4934,7 +4983,7 @@
       const h = this._harmonyAt(Math.max(0, g));
       const [spellRoot, spellMode] = this._spellKeyAt(h.index);
       const name = (pc) => { const n = spell(pc, spellRoot, spellMode, labLang); return labLang === 'en' ? n : n.charAt(0).toLowerCase() + n.slice(1); };
-      this.$('.choir-now-chord').textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths, s.modeId);
+      this.$('.choir-now-chord').textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths, s.modeId, labLang, h.alter, h.bass);
       const barSteps = this._barSteps();
       const step = mod(g, barSteps);
       const bar = Math.floor(Math.max(0, g) / barSteps);
@@ -5009,14 +5058,17 @@
     /** Klingende Akkordfolge: Vorlage, bearbeitete Vorlage oder eigene. */
     _progression() { return progressionOfState(this.state); }
     /** Tonleiter für den Akkord auf Stufe `deg` (siehe chordSteps). */
-    _stepsFor(deg, prog = this._progression()) { return chordSteps(this._mode().steps, this.state.modeId, prog, deg); }
+    _stepsFor(deg, prog = this._progression(), index = -1) { return chordSteps(this._mode().steps, this.state.modeId, prog, deg, prog.alter?.[index] || null); }
+    /** Stufenzahl/Name des Akkords an Stelle `index` der Folge (mit geliehenen Akkorden und Umkehrung). */
+    _romanAt(prog, index) { return romanNumeral(this._stepsFor(prog.degrees[index], prog, index), prog.degrees[index], prog.sevenths, prog.alter?.[index] || null, prog.bass?.[index] || 0, this._mode().steps); }
+    _nameAt(prog, index) { return chordName(this.state.keyRoot, this._stepsFor(prog.degrees[index], prog, index), prog.degrees[index], prog.sevenths, this.state.modeId, labLang, prog.alter?.[index] || null, prog.bass?.[index] || 0); }
     _progName() {
       const s = this.state;
       return s.progName || t(progKey('Name', (PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0]).id));
     }
     _clearProgEdit() {
       const s = this.state;
-      s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progName = null; s.progOwnId = null;
+      s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progName = null; s.progOwnId = null; s.progAlter = null; s.progBass = null;
       this.ui.progUndo = []; this.ui.progRedo = []; this.ui.progSel = 0;
     }
     /** Die klingende Melodie: Vorlage, bearbeitete Vorlage oder eigene. */
@@ -5056,7 +5108,7 @@
       const index = Math.floor(bar / s.chordBars) % prog.degrees.length;
       const deg = prog.degrees[index];
       return {
-        keyRoot: s.keyRoot, steps: this._stepsFor(deg, prog), deg, sevenths: !!prog.sevenths,
+        keyRoot: s.keyRoot, steps: this._stepsFor(deg, prog, index), deg, sevenths: !!prog.sevenths, alter: prog.alter?.[index] || null, bass: prog.bass?.[index] || 0,
         index, chordStart: g % (barSteps * s.chordBars) === 0,
       };
     }
@@ -5074,7 +5126,7 @@
       const prog = this._progression();
       // Pop-Satz: bei laufender Melodie liegt die Oberstimme höchstens auf 64 (statt 69).
       const pop = s.chordVoicing === 'pop';
-      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}`
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}|${(prog.alter || []).join()}|${(prog.bass || []).join()}`
         + (pop ? `|pop|${s.chordAdd9}|${s.melodyOn}` : '');
       if (this._voicingCache?.key === key) return this._voicingCache.list;
       const list = pop
@@ -5100,17 +5152,19 @@
     _bassRoots() {
       const s = this.state;
       const prog = this._progression();
-      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}`;
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}|${(prog.alter || []).join()}|${(prog.bass || []).join()}`;
       if (this._bassRootCache?.key === key) return this._bassRootCache.list;
-      const list = bassRootsFor(prog.degrees.map((deg) => mod(s.keyRoot + degreeSemis(this._stepsFor(deg, prog), deg), 12)));
+      // Der Basston ist der Akkordton der Umkehrung (bass: 0 Grundton, 1 Terz, 2 Quinte).
+      const list = bassRootsFor(prog.degrees.map((deg, i) => mod(s.keyRoot + degreeSemis(this._stepsFor(deg, prog, i), deg + 2 * (prog.bass?.[i] || 0)), 12)));
       this._bassRootCache = { key, list };
       return list;
     }
 
     _bassMidi(h, bassDeg) {
-      const rootSemis = degreeSemis(h.steps, h.deg);
-      const root = this._bassRoots()[h.index] ?? 36 + mod(h.keyRoot + rootSemis, 12);
-      return root + degreeSemis(h.steps, h.deg + bassDeg) - rootSemis;
+      // Die Linie hängt am Basston des Akkords: bei einer Umkehrung (h.bass) liegt die Stufe 0
+      // auf Terz oder Quinte, die übrigen Stufen bleiben Stufen über dem Akkordgrundton.
+      const invSemis = degreeSemis(h.steps, h.deg + 2 * (h.bass || 0));
+      return bassNoteMidi(this._bassRoots()[h.index] ?? 36 + mod(h.keyRoot + invSemis, 12), h.steps, h.deg, h.bass || 0, bassDeg);
     }
 
     /* ---- Transport ---- */
@@ -5512,7 +5566,7 @@
       if (ref === 'key') return null;
       const s = this.state;
       const prog = this._progression();
-      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}|${s.chordBars}|${s.melodyOctave}|${altBars}|${this._barSteps()}|${JSON.stringify(bars)}`;
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}|${(prog.alter || []).join()}|${s.chordBars}|${s.melodyOctave}|${altBars}|${this._barSteps()}|${JSON.stringify(bars)}`;
       if (this._melShiftCache?.key === key) return this._melShiftCache.shifts;
       const barSteps = this._barSteps();
       const gcd = (a, b) => (b ? gcd(b, a % b) : a);
@@ -5899,9 +5953,9 @@
         }
         const roman = document.createElement('span');
         roman.className = 'chord-roman';
-        roman.textContent = romanNumeral(this._stepsFor(deg, prog), deg, prog.sevenths);
+        roman.textContent = this._romanAt(prog, i);
         const name = document.createElement('strong');
-        name.textContent = chordName(s.keyRoot, this._stepsFor(deg, prog), deg, prog.sevenths, s.modeId);
+        name.textContent = this._nameAt(prog, i);
         box.append(roman, name);
         return box;
       }));
@@ -6596,7 +6650,7 @@
         label.textContent = t('lab.dc.original');
       } else {
         const h = (this.playing && this.shown?.h) || this._harmonyAt(0);
-        label.textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths, this.state.modeId);
+        label.textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths, this.state.modeId, labLang, h.alter, h.bass);
       }
       if (!this.playing) this._renderBeatDots(-1);
       this._renderChordStrip();
@@ -6632,6 +6686,8 @@
         btn.querySelector('strong').textContent = chordName(s.keyRoot, this._stepsFor(d, prog), d, prog.sevenths, s.modeId);
         return btn;
       }));
+      this._chips(this.$('.prog-alter-chips'), [['', 'lab.alterNormal'], ['borrow', 'lab.alterBorrow'], ['secdom', 'lab.alterSecdom']].map(([value, key]) => ({ value, label: t(key) })), prog.alter?.[this.ui.progSel] || '', 'prog-alter');
+      this._chips(this.$('.prog-bass-chips'), [[0, 'lab.bassRoot'], [1, 'lab.bassThird'], [2, 'lab.bassFifth']].map(([value, key]) => ({ value, label: t(key) })), prog.bass?.[this.ui.progSel] || 0, 'prog-bass');
       this.$('.prog-count').textContent = tf('lab.progCount', { n: prog.degrees.length });
       this.$('[data-action="prog-undo"]').disabled = !this.ui.progUndo.length;
       this.$('[data-action="prog-redo"]').disabled = !this.ui.progRedo.length;
@@ -6652,16 +6708,22 @@
 
     _progBegin() {
       const s = this.state;
-      this.ui.progUndo.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant, s.progDom7]));
+      this.ui.progUndo.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant, s.progDom7, s.progAlter, s.progBass]));
       if (this.ui.progUndo.length > 60) this.ui.progUndo.shift();
       this.ui.progRedo = [];
+      let baseAlter = null;
+      let baseBass = null;
       if (!s.progDegrees) {
         const base = this._progression();
         s.progDegrees = [...base.degrees];
         s.progSevenths = !!base.sevenths;
         s.progDominant = !!base.dominant;
         s.progDom7 = !!base.dom7;
+        baseAlter = base.alter; baseBass = base.bass;
       }
+      // Parallel-Arrays immer in voller Länge, solange die Folge bearbeitet wird.
+      s.progAlter = normAlter(s.progAlter ?? baseAlter, s.progDegrees.length);
+      s.progBass = normBass(s.progBass ?? baseBass, s.progDegrees.length);
       return s.progDegrees;
     }
 
@@ -6669,8 +6731,10 @@
       const s = this.state;
       const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
       if (s.progDegrees && !s.progName && s.progDegrees.join() === base.degrees.join() && s.progSevenths === !!base.sevenths
-        && !!s.progDominant === !!base.dominant && !!s.progDom7 === !!base.dom7) {
-        s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false;
+        && !!s.progDominant === !!base.dominant && !!s.progDom7 === !!base.dom7
+        && normAlter(s.progAlter, s.progDegrees.length).join() === normAlter(base.alter, base.degrees.length).join()
+        && normBass(s.progBass, s.progDegrees.length).join() === normBass(base.bass, base.degrees.length).join()) {
+        s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progAlter = null; s.progBass = null;
       }
       const own = s.progOwnId && this._saved.progressions.find((p) => p.id === s.progOwnId);
       if (own && s.progDegrees) {
@@ -6678,6 +6742,10 @@
         own.sevenths = s.progSevenths;
         own.dominant = !!s.progDominant;
         own.dom7 = !!s.progDom7;
+        const ownAlter = sanitizeProgAlter(s.progAlter, s.progDegrees.length);
+        const ownBass = sanitizeProgBass(s.progBass, s.progDegrees.length);
+        if (ownAlter) own.alter = ownAlter; else delete own.alter;
+        if (ownBass) own.bass = ownBass; else delete own.bass;
         own.name = s.progName || own.name;
         this._persist();
       }
@@ -6689,19 +6757,20 @@
       const snap = from.pop();
       if (!snap) return;
       const s = this.state;
-      to.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant, s.progDom7]));
-      [s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant = false, s.progDom7 = false] = JSON.parse(snap);
+      to.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant, s.progDom7, s.progAlter, s.progBass]));
+      [s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant = false, s.progDom7 = false, s.progAlter = null, s.progBass = null] = JSON.parse(snap);
       this._progCommit();
     }
 
     /** Akkord kurz anspielen (vierstimmig, im Chorklang). */
-    async _previewChord(deg) {
+    async _previewChord(deg, index = -1) {
       try { await this._ensureAudio(); } catch { return; }
       const s = this.state;
       const prog = this._progression();
-      const steps = this._stepsFor(deg, prog);
+      const alter = prog.alter?.[index] || null;
+      const steps = this._stepsFor(deg, prog, index);
       const voicing = voiceChord(chordPitchClasses(s.keyRoot, steps, deg, prog.sevenths), { S: 67, A: 62, T: 55, B: 48 },
-        { leading: leadingToneOf(s.keyRoot, s.modeId, prog, deg), bassIndex: chordQuality(steps, deg) === 'dim' ? 1 : 0 });
+        { leading: leadingToneOf(s.keyRoot, s.modeId, prog, deg, alter), bassIndex: prog.bass?.[index] || (chordQuality(steps, deg) === 'dim' ? 1 : 0) });
       const now = this.engine.ctx.currentTime + .01;
       for (const voice of SATB) {
         this.engine.playTone(this._chordSound(), voicing[voice], now, .1, .9, { layer: 'keys', glide: 0, stepSeconds: this._stepSeconds() });
@@ -6717,7 +6786,14 @@
       while (lib.some((p) => p.name === tf('lab.myProgN', { n }))) n++;
       const name = s.progName && !s.progOwnId && s.progName !== t('lab.newProg') ? s.progName : tf('lab.myProgN', { n });
       const id = `p${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
-      lib.push({ id, name, degrees: [...prog.degrees], sevenths: !!prog.sevenths, dominant: !!prog.dominant, dom7: !!prog.dom7 });
+      const entry = { id, name, degrees: [...prog.degrees], sevenths: !!prog.sevenths, dominant: !!prog.dominant, dom7: !!prog.dom7 };
+      const keepAlter = sanitizeProgAlter(prog.alter, prog.degrees.length);
+      const keepBass = sanitizeProgBass(prog.bass, prog.degrees.length);
+      if (keepAlter) entry.alter = keepAlter;
+      if (keepBass) entry.bass = keepBass;
+      lib.push(entry);
+      s.progAlter = keepAlter;
+      s.progBass = keepBass;
       s.progDegrees = [...prog.degrees];
       s.progSevenths = !!prog.sevenths;
       s.progDominant = !!prog.dominant;
@@ -6766,7 +6842,7 @@
         };
       }
       if (which === 'prog') {
-        const romans = (p) => p.degrees.map((d) => romanNumeral(this._stepsFor(d, p), d, p.sevenths)).join('–');
+        const romans = (p) => p.degrees.map((d, i) => this._romanAt(p, i)).join('–');
         const own = this._saved.progressions;
         return {
           title: 'lab.pickProg', action: 'pick-prog', catAction: 'prog-cat',
@@ -6774,10 +6850,10 @@
           current: s.progOwnId && own.some((p) => p.id === s.progOwnId) ? `own:${s.progOwnId}` : s.progOwnId ? -1 : s.progId,
           fallback: s.progId, wide: true,
           items: [
-            ...PROGRESSIONS.map((p) => ({ i: p.id, name: t(progKey('Name', p.id)), visual: progPreview(p.degrees), cat: p.cat,
+            ...PROGRESSIONS.map((p) => ({ i: p.id, name: t(progKey('Name', p.id)), visual: progPreview(p.degrees, p.alter), cat: p.cat,
               inMeter: true, sub: romans(p), short: romans(p), info: t(progKey('Info', p.id)),
               mismatch: !progFitsMode(p, s.modeId) })),
-            ...own.map((p) => ({ i: `own:${p.id}`, name: p.name, visual: progPreview(p.degrees), cat: OWN_CAT,
+            ...own.map((p) => ({ i: `own:${p.id}`, name: p.name, visual: progPreview(p.degrees, p.alter), cat: OWN_CAT,
               inMeter: true, sub: romans(p), short: romans(p) })),
           ],
         };
@@ -6822,9 +6898,9 @@
           const prog = this._progression();
           const s = this.state;
           name = this._progName();
-          sub = prog.degrees.map((d) => romanNumeral(this._stepsFor(d, prog), d, prog.sevenths)).join('–') + (s.progDegrees && !s.progName ? ` · ${t('lab.edited')}` : '')
+          sub = prog.degrees.map((d, i) => this._romanAt(prog, i)).join('–') + (s.progDegrees && !s.progName ? ` · ${t('lab.edited')}` : '')
             + (progFitsMode(prog, s.modeId) ? '' : ` · ${t('lab.progModeMismatch')}`);
-          visual = progPreview(prog.degrees);
+          visual = progPreview(prog.degrees, prog.alter);
         } else if (which === 'melody') {
           const melody = this._melody();
           const s = this.state;
@@ -7858,6 +7934,8 @@
             s.progSevenths = own.sevenths;
             s.progDominant = !!own.dominant;
             s.progDom7 = !!own.dom7;
+            s.progAlter = own.alter ? [...own.alter] : null;
+            s.progBass = own.bass ? [...own.bass] : null;
             s.progName = own.name;
             s.progOwnId = own.id;
           } else if (PROGRESSIONS.some((p) => p.id === value)) {
@@ -7879,19 +7957,36 @@
         case 'prog-slot':
           this.ui.progSel = Number(value);
           this._renderChordStrip(); this._renderProgEditor();
-          this._previewChord(this._progression().degrees[this.ui.progSel]);
+          this._previewChord(this._progression().degrees[this.ui.progSel], this.ui.progSel);
           break;
         case 'prog-deg': {
           const degrees = this._progBegin();
           degrees[this.ui.progSel] = Number(value);
           this._progCommit();
-          this._previewChord(Number(value));
+          this._previewChord(Number(value), this.ui.progSel);
+          break;
+        }
+        // Akkord tauschen: normal | geliehen (aus der Gegen-Tonart) | Zwischendominante; Bass: Grundton | Terz | Quinte.
+        case 'prog-alter': {
+          const degrees = this._progBegin();
+          s.progAlter[this.ui.progSel] = PROG_ALTERS.includes(value) ? value : null;
+          this._progCommit();
+          this._previewChord(degrees[this.ui.progSel], this.ui.progSel);
+          break;
+        }
+        case 'prog-bass': {
+          const degrees = this._progBegin();
+          s.progBass[this.ui.progSel] = [1, 2].includes(Number(value)) ? Number(value) : 0;
+          this._progCommit();
+          this._previewChord(degrees[this.ui.progSel], this.ui.progSel);
           break;
         }
         case 'prog-add': {
           const degrees = this._progBegin();
           if (degrees.length < PROG_MAX_CHORDS) {
             degrees.splice(this.ui.progSel + 1, 0, degrees[this.ui.progSel]);
+            s.progAlter.splice(this.ui.progSel + 1, 0, s.progAlter[this.ui.progSel]);
+            s.progBass.splice(this.ui.progSel + 1, 0, s.progBass[this.ui.progSel]);
             this.ui.progSel++;
           }
           this._progCommit();
@@ -7899,7 +7994,7 @@
         }
         case 'prog-remove': {
           const degrees = this._progBegin();
-          if (degrees.length > 1) degrees.splice(this.ui.progSel, 1);
+          if (degrees.length > 1) { degrees.splice(this.ui.progSel, 1); s.progAlter.splice(this.ui.progSel, 1); s.progBass.splice(this.ui.progSel, 1); }
           this.ui.progSel = Math.max(0, this.ui.progSel - 1);
           this._progCommit();
           break;
@@ -7908,7 +8003,7 @@
           const to = this.ui.progSel + Number(value);
           const degrees = this._progBegin();
           if (to >= 0 && to < degrees.length) {
-            [degrees[this.ui.progSel], degrees[to]] = [degrees[to], degrees[this.ui.progSel]];
+            for (const list of [degrees, s.progAlter, s.progBass]) [list[this.ui.progSel], list[to]] = [list[to], list[this.ui.progSel]];
             this.ui.progSel = to;
           }
           this._progCommit();
@@ -7922,6 +8017,7 @@
           s.progSevenths = false;
           s.progDominant = false;
           s.progDom7 = false;
+          s.progAlter = null; s.progBass = null;
           s.progName = t('lab.newProg');
           s.progOwnId = null;
           this.ui.progSel = 0;
@@ -7929,7 +8025,7 @@
           break;
         case 'prog-original':
           this._progBegin();
-          s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false;
+          s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progAlter = null; s.progBass = null;
           this._progCommit();
           break;
         case 'prog-save': this._progSaveOwn(); break;
@@ -8308,6 +8404,7 @@
   .step-cell.is-soft { background: rgba(var(--accent-rgb), .45); }
   .step-cell[data-label]::after { content: attr(data-label); }
   .step-cell.is-now { outline: 2px solid var(--text); outline-offset: 1px; }
+  .prog-alter-row { margin-top: 8px; }
   .voicing-chips, .chordsound-chips, .fill-chips, .kit-chips { margin-top: 8px; }
   .add9-row { margin-top: 8px; }
   .pick-more { grid-column: 1 / -1; margin-top: 4px; }
@@ -9231,6 +9328,8 @@
           <button class="chip" type="button" data-action="prog-remove">− ${t('lab.progRemove')}</button>
         </div>
         <div class="switch-row" style="margin-top:10px">${toggle('progSevenths', 'lab.progSevenths')}${toggle('progDominant', 'lab.progDominant')}</div>
+        <div class="prog-alter-row"><span class="chip-label">${t('lab.alterLabel')}</span><div class="chip-row prog-alter-chips" role="group" aria-label="${t('lab.alterLabel')}"></div></div>
+        <div class="prog-alter-row"><span class="chip-label">${t('lab.bassLabel')}</span><div class="chip-row prog-bass-chips" role="group" aria-label="${t('lab.bassLabel')}"></div></div>
         <label class="prog-name-row" hidden><span>${t('lab.melName')}</span><input class="mel-name-input prog-name" type="text" maxlength="40" autocomplete="off"></label>
         <div class="mel-foot">
           <button class="chip" type="button" data-action="prog-original">${t('lab.melOriginal')}</button>
@@ -9558,7 +9657,7 @@
   const TEST_EXPORT = {
     MODES, PROGRESSIONS, MELODIES, DRUM_PATTERNS, METERS, SATB_RANGES,
     voiceChord, voicePairs, voiceProgressionSatb, leadingToneOf, VOICING_STATS, chordPitchClasses, chordSteps, degreeSemis, progFitsMode, modeForProg, progsForRandom,
-    eighthsPerBeat, tempoSymbol, stepSecondsFor, sanitizeSound, MELODY_ORDER, BEAT_ORDER, PRESET_ORDER, orderIndexes, firstPatternOfMeter, firstMelodyOfMeter, SAMPLE_INSTRUMENTS, SAMPLE_FALLBACK, LAB_INST, hatAccent, fillAt, bassNoteSteps, bassRootsFor, BASS_SOUNDS, FILL_HITS, FILL_LENGTHS, resolveKit, pinLegacySound, LabSamples, DRUM_KITS, PERC_SOUNDS, percOf,
+    eighthsPerBeat, tempoSymbol, stepSecondsFor, sanitizeSound, PROG_ALTERS, normAlter, normBass, sanitizeProgAlter, sanitizeProgBass, bassNoteMidi, MELODY_ORDER, BEAT_ORDER, PRESET_ORDER, orderIndexes, firstPatternOfMeter, firstMelodyOfMeter, SAMPLE_INSTRUMENTS, SAMPLE_FALLBACK, LAB_INST, hatAccent, fillAt, bassNoteSteps, bassRootsFor, BASS_SOUNDS, FILL_HITS, FILL_LENGTHS, resolveKit, pinLegacySound, LabSamples, DRUM_KITS, PERC_SOUNDS, percOf,
     melodyOffset, snapMelodyMidi, melodyBarShifts, melodyRefOf, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree,
     spell, noteLabel, spellCheck, SPELL_CASES, romanNumeral, chordName, chordQuality,
     sanitizeProgLibrary, sanitizeState, defaultState, sanitizeMelodyLibrary, sanitizeMelodyBars, recNotesToBars, melodyMidi,

@@ -20695,18 +20695,21 @@ async function runMusicSelfTests({ log = true } = {}) {
               changes++;
               if (H.voicePairs(list[(i - 1 + n) % n], cur)) parallels++;
             }
-            const lead = H.leadingToneOf(key, mode.id, p, p.degrees[i]);
+            const alter = p.alter?.[i] || null;
+            const lead = H.leadingToneOf(key, mode.id, p, p.degrees[i], alter);
             if (lead !== null && V.filter((v) => mod12(cur[v]) === lead).length > 1) doubled++;
             for (const v of V) if (cur[v] < T.SATB_RANGES[v][0] || cur[v] > T.SATB_RANGES[v][1]) range++;
             if (!(cur.B < cur.T && cur.T < cur.A && cur.A < cur.S)) crossing++;
-            const steps = T.chordSteps(mode.steps, mode.id, p, p.degrees[i]);
-            if (T.chordQuality(steps, p.degrees[i]) === 'dim' && mod12(cur.B) !== T.chordPitchClasses(key, steps, p.degrees[i], p.sevenths)[1]) failed.push(`Groove Lab: ${p.id} ${mode.id} ${key}: verminderter Akkord nicht als Sextakkord`);
+            const steps = T.chordSteps(mode.steps, mode.id, p, p.degrees[i], alter);
+            const pcsHere = T.chordPitchClasses(key, steps, p.degrees[i], p.sevenths);
+            const wantBass = p.bass?.[i] || (T.chordQuality(steps, p.degrees[i]) === 'dim' ? 1 : 0);
+            if (mod12(cur.B) !== pcsHere[wantBass]) failed.push(`Groove Lab: ${p.id} ${mode.id} ${key}: Basston stimmt nicht (Umkehrung/verminderter Sextakkord)`);
           });
         }
       }
     }
     const fallbacks = H.VOICING_STATS.fallbacks - fallbacksBefore;
-    if (changes !== 4320) failed.push(`Groove Lab: ${changes} statt 4320 Akkordwechsel geprüft`);
+    if (changes !== 5088) failed.push(`Groove Lab: ${changes} statt 5088 Akkordwechsel geprüft`);
     if (parallels) failed.push(`Groove Lab: ${parallels} Akkordwechsel mit Quint-/Oktavparallelen (${fallbacks} ohne regelkonforme Lösung)`);
     if (doubled) failed.push(`Groove Lab: ${doubled}× Leitton verdoppelt`);
     if (range) failed.push(`Groove Lab: ${range} Stimmen außerhalb des Umfangs`);
@@ -21547,8 +21550,9 @@ async function runMusicSelfTests({ log = true } = {}) {
               if (list.length !== p.degrees.length) { bad++; continue; }
               list.forEach((v, i) => {
                 const ok = v.S >= (topMax >= 69 ? 60 : 54) && v.S <= topMax && v.S > v.A && v.A > v.T && v.T > v.B && v.S - v.T <= 12 && v.B >= 40 && v.B <= 52;
-                const pcs = T.chordPitchClasses(key, T.chordSteps(mode.steps, mode.id, p, p.degrees[i]), p.degrees[i], p.sevenths);
-                const tones = [v.T, v.A, v.S].every((m) => pcs.includes(mod12(m)) || (add9 && mod12(m) === mod12(key + T.degreeSemis(T.chordSteps(mode.steps, mode.id, p, p.degrees[i]), p.degrees[i] + 1)))) && pcs[0] === mod12(v.B);
+                const stepsHere = T.chordSteps(mode.steps, mode.id, p, p.degrees[i], p.alter?.[i] || null);
+                const pcs = T.chordPitchClasses(key, stepsHere, p.degrees[i], p.sevenths);
+                const tones = [v.T, v.A, v.S].every((m) => pcs.includes(mod12(m)) || (add9 && mod12(m) === mod12(key + T.degreeSemis(stepsHere, p.degrees[i] + 1)))) && pcs[p.bass?.[i] || 0] === mod12(v.B);
                 if (!ok || !tones) { bad++; first ||= `${p.id}/${mode.id}/${key}/${i}`; }
               });
             }
@@ -21619,6 +21623,75 @@ async function runMusicSelfTests({ log = true } = {}) {
       // Ausgeblendetes bleibt ladbar: Workshop „Klang nachbauen“ nennt Soft Brass und Warm Sub weiter per Name.
       for (const name of ['Soft Brass', 'Warm Sub', 'Velvet Choir', 'Airy Choir', 'Pulse Basic']) if (T.presetIndexByName(name) < 0 && !T.DRUM_PATTERNS.some((p) => p.name === name)) failed.push(`Groove Lab: ${name} nicht mehr vorhanden`);
       for (const hidden of ['Velvet Choir', 'Airy Choir', 'Deep Pad', 'Soft Brass', 'Square Bell', 'Warm Sub', 'Growl Bass', 'Wobble', 'Dub Chamber', 'Hollow Band']) if (T.PRESET_ORDER.includes(hidden)) failed.push(`Groove Lab: ${hidden} sollte ausgeblendet sein`);
+    }
+    // Paket 8: geliehene Akkorde, Zwischendominanten, Umkehrungen.
+    {
+      const major8 = modeSteps('major');
+      const minor8 = modeSteps('minor');
+      const pcsOf = (key, steps, deg, alter, sevenths = false) => T.chordPitchClasses(key, T.chordSteps(steps, steps === major8 ? 'major' : 'minor', {}, deg, alter), deg, sevenths);
+      const cases = [
+        [major8, 3, 'borrow', [5, 8, 0], 'iv (F–As–C)'], [major8, 5, 'borrow', [8, 0, 3], '♭VI'], [major8, 6, 'borrow', [10, 2, 5], '♭VII'], [major8, 2, 'borrow', [3, 7, 10], '♭III'],
+        [major8, 2, 'secdom', [4, 8, 11], 'V/vi (E-Dur)'], [major8, 1, 'secdom', [2, 6, 9], 'V/V (D-Dur)'], [major8, 5, 'secdom', [9, 1, 4], 'V/ii (A-Dur)'],
+        [minor8, 3, 'borrow', [2, 6, 9], 'IV aus Dur (a-Moll → D-Dur)'], [minor8, 4, 'borrow', [4, 8, 11], 'V aus Dur (a-Moll → E-Dur)'],
+      ];
+      for (const [steps, deg, alter, want, label] of cases) {
+        const key = steps === minor8 ? 9 : 0;
+        const got = pcsOf(key, steps, deg, alter);
+        if (!sameSet(got, want.map((pc) => mod12(pc)))) failed.push(`Groove Lab: ${label} = {${got}} statt {${want}}`);
+      }
+      if (!sameSet(pcsOf(0, major8, 2, 'secdom', true), [4, 8, 11, 2])) failed.push('Groove Lab: V7/vi ist kein Dominantseptakkord');
+      // Stufenzahlen und Namen.
+      const st = (deg, alter) => T.chordSteps(major8, 'major', {}, deg, alter);
+      const rn = (deg, alter, bass = 0, seventh = false) => T.romanNumeral(st(deg, alter), deg, seventh, alter, bass, major8);
+      const wantRoman = [[rn(2, 'secdom'), 'V/vi'], [rn(1, 'secdom'), 'V/V'], [rn(5, 'secdom'), 'V/ii'], [rn(3, 'borrow'), 'iv'], [rn(6, 'borrow'), '♭VII'], [rn(5, 'borrow'), '♭VI'], [rn(4, null, 1), 'V⁶'], [rn(0, null, 2), 'I⁶₄'], [rn(2, 'secdom', 0, true), 'V7/vi']];
+      for (const [got, want] of wantRoman) if (got !== want) failed.push(`Groove Lab: Stufenzahl ${got} statt ${want}`);
+      const nm = (deg, alter, bass = 0, lang = 'de') => T.chordName(0, st(deg, alter), deg, false, 'major', lang, alter, bass);
+      const wantNames = [[nm(2, 'secdom'), 'E'], [nm(3, 'borrow'), 'Fm'], [nm(6, 'borrow'), 'B'], [nm(6, 'borrow', 0, 'en'), 'B♭'], [nm(5, 'borrow', 0, 'en'), 'A♭'], [nm(4, null, 1), 'G/H'], [nm(4, null, 1, 'en'), 'G/B'], [nm(0, null, 2), 'C/G']];
+      for (const [got, want] of wantNames) if (got !== want) failed.push(`Groove Lab: Akkordname ${got} statt ${want}`);
+      // Neue Vorlagen: Parallel-Arrays passen, `degrees` bleiben Zahlen 0–6.
+      const wantProgs = { descend: [[0, 4, 5, 3], null, [0, 1, 0, 0]], gospelIv: [[0, 3, 3, 0], [null, null, 'borrow', null], null], mixFlat7: [[0, 6, 3, 0], [null, 'borrow', null, null], null], secDom: [[0, 2, 5, 3], [null, 'secdom', null, null], null] };
+      for (const [id, [degrees, alter, bass]] of Object.entries(wantProgs)) {
+        const p8 = T.PROGRESSIONS.find((x) => x.id === id);
+        if (!p8 || p8.cat !== 'pop' || p8.degrees.join() !== degrees.join() || JSON.stringify(p8.alter ?? null) !== JSON.stringify(alter) || JSON.stringify(p8.bass ?? null) !== JSON.stringify(bass)) failed.push(`Groove Lab: Vorlage ${id}`);
+        for (const lang of ['de', 'en', 'pl']) for (const kind of ['Name', 'Info']) if (!STRINGS[lang][`lab.prog${kind}${id[0].toUpperCase()}${id.slice(1)}`]) failed.push(`Groove Lab: Text lab.prog${kind}${id} (${lang}) fehlt`);
+      }
+      // Zustand: Tonart, Harmonie, Bearbeiten und Laden.
+      const sd = T.defaultState();
+      sd.progId = 'secDom';
+      const hs = T.harmonyOfState(sd, 16);
+      if (hs.alter !== 'secdom' || T.chordName(0, hs.steps, hs.deg, hs.sevenths, 'major', 'de', hs.alter, hs.bass) !== 'E') failed.push('Groove Lab: harmonyOfState ohne geliehenen Akkord');
+      const sd2 = T.defaultState();
+      sd2.progId = 'descend';
+      if (T.harmonyOfState(sd2, 16).bass !== 1) failed.push('Groove Lab: harmonyOfState ohne Umkehrung');
+      const edited = T.sanitizeState({ ...clone(T.defaultState()), progDegrees: [0, 3, 3, 0], progAlter: [null, null, 'borrow', 'quatsch'], progBass: [0, 5, 2, 0] });
+      if (edited.progAlter.join() !== ',,borrow,' || edited.progBass.join() !== '0,0,2,0') failed.push(`Groove Lab: progAlter/progBass ${edited.progAlter}/${edited.progBass}`);
+      const mism = T.sanitizeState({ ...clone(T.defaultState()), progDegrees: [0, 3], progAlter: ['borrow'], progBass: [1, 2, 1, 1, 1] });
+      if (mism.progAlter.length !== 2 || mism.progBass.length !== 2) failed.push('Groove Lab: progAlter/progBass falsche Länge');
+      const old8 = T.sanitizeState({ ...clone(T.defaultState()), progDegrees: [0, 4, 5, 3] });
+      if (old8.progAlter !== null || old8.progBass !== null) failed.push('Groove Lab: alte eigene Folge bekommt Umkehrungen');
+      const rawTpl = { ...clone(T.defaultState()), progId: 'gospelIv', progDegrees: [0, 3, 3, 0] };
+      delete rawTpl.progAlter; delete rawTpl.progBass; // Stand von vor Paket 8
+      const tpl = T.sanitizeState(rawTpl);
+      if (tpl.progAlter?.join() !== ',,borrow,') failed.push('Groove Lab: bearbeitete Vorlage erbt geliehene Akkorde nicht');
+      const lib8 = T.sanitizeProgLibrary([{ id: 'a', name: 'A', degrees: [0, 4], alter: [null, 'secdom'], bass: [0, 1] }, { id: 'b', name: 'B', degrees: [0, 4] }, { id: 'c', name: 'C', degrees: [0, 4], alter: 'x', bass: [9, 9] }]);
+      if (lib8[0].alter?.join() !== ',secdom' || lib8[0].bass?.join() !== '0,1' || 'alter' in lib8[1] || 'bass' in lib8[1] || 'alter' in lib8[2] || 'bass' in lib8[2]) failed.push('Groove Lab: Folgen-Bibliothek mit geliehenen Akkorden');
+      // Bass: Stufe 0 liegt auf dem Basston der Umkehrung, die übrigen bleiben über dem Grundton.
+      const gSteps = st(4);
+      const bn = (bass, deg) => T.bassNoteMidi(bass === 1 ? 35 : bass === 2 ? 38 : 43, gSteps, 4, bass, deg);
+      if (bn(0, 0) !== 43 || bn(1, 0) !== 35 || bn(2, 0) !== 38 || bn(1, 4) !== 38 || bn(1, 7) !== 43 || bn(0, 4) !== 50) failed.push(`Groove Lab: bassNoteMidi ${bn(0, 0)} ${bn(1, 0)} ${bn(2, 0)} ${bn(1, 4)} ${bn(1, 7)} ${bn(0, 4)}`);
+      for (const id of ['descend', 'gospelIv', 'mixFlat7', 'secDom']) {
+        const p8 = T.PROGRESSIONS.find((x) => x.id === id);
+        for (let key = 0; key < 12; key++) {
+          const roots = T.bassRootsFor(p8.degrees.map((deg, i) => mod12(key + T.degreeSemis(T.chordSteps(major8, 'major', p8, deg, p8.alter?.[i] || null), deg + 2 * (p8.bass?.[i] || 0)))));
+          p8.degrees.forEach((deg, i) => {
+            const steps8 = T.chordSteps(major8, 'major', p8, deg, p8.alter?.[i] || null);
+            for (const bassDeg of [0, 2, 4]) {
+              const m = T.bassNoteMidi(roots[i], steps8, deg, p8.bass?.[i] || 0, bassDeg);
+              if (m < 24 || m > 59) failed.push(`Groove Lab: Bass ${id} Tonart ${key} Akkord ${i}: ${m} außerhalb 24–59`);
+            }
+          });
+        }
+      }
     }
     // Engine-Weiche je Spur (ohne AudioContext, mit Spionen).
     {
