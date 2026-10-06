@@ -20625,7 +20625,7 @@ async function runMusicSelfTests({ log = true } = {}) {
     // Beats (Reihenfolge und Anzahl unverändert).
     const pat = (name) => T.DRUM_PATTERNS.find((p) => p.name === name);
     if (T.DRUM_PATTERNS.length !== 23 || T.DRUM_PATTERNS[13].name !== 'Shuffle Roll' || T.DRUM_PATTERNS[19].name !== 'Folk Jig') failed.push('Groove Lab: Loop-Liste verschoben oder Shuffle Roll fehlt');
-    if (T.MELODIES.length !== 22) failed.push('Groove Lab: Melodie-Liste verändert');
+    if (T.MELODIES.length !== 29 || T.MELODIES[21].name !== 'Jig Hop') failed.push('Groove Lab: Melodie-Liste verändert');
     const eighths = '0,2,4,6,8,10,12,14';
     if (pat('Swing Soul').hat.join() !== eighths || pat('Swing Soul').swingUnit !== 8) failed.push('Groove Lab: Swing Soul ohne Achtel-Hat/Achtel-Swing');
     if (pat('Deep House').hat.join() !== eighths || pat('Deep House').open.join() !== '2,6,10,14') failed.push('Groove Lab: Deep House Hats falsch');
@@ -21471,6 +21471,68 @@ async function runMusicSelfTests({ log = true } = {}) {
         // Terz (+4) und Quinte (+7) über dem Grundton bleiben im Bassbereich.
         if (roots.some((m) => m + 7 > 54)) failed.push(`Groove Lab: Bass über 54 in Tonart ${key}`);
       }
+    }
+    // Paket 6: Melodien mit Tonart-Bezug, Akkord-Anpassung, Oktavlage.
+    {
+      const keyed = T.MELODIES.filter((m) => m.ref === 'key');
+      const names = keyed.map((m) => m.name).join();
+      if (names !== 'Pop Hook,Ballad Line,Offbeat Chant,Gospel Call,Synco Verse,Anthem Oh,Guide Tones') failed.push(`Groove Lab: Tonart-Vorlagen ${names}`);
+      if (keyed.some((m) => m.meter !== '4/4' || !Array.isArray(m.bars) || m.bars.length !== 4)) failed.push('Groove Lab: Tonart-Vorlagen unvollständig');
+      if (T.melodyRefOf(T.melodyIndexByName('Pop Hook')) !== 'key' || T.melodyRefOf(T.melodyIndexByName('Hook Line')) !== 'chord') failed.push('Groove Lab: melodyRefOf');
+      // snapMelodyMidi: kleine None über einem Akkordton fällt auf ihn; sonst unverändert.
+      if (T.snapMelodyMidi(65, [0, 4, 7]) !== 64 || T.snapMelodyMidi(72 + 5, [0, 4, 7]) !== 76 || T.snapMelodyMidi(69, [0, 4, 7]) !== 69 || T.snapMelodyMidi(71, [0, 4, 7]) !== 71 || T.snapMelodyMidi(65, [9, 0, 4]) !== 64) failed.push('Groove Lab: snapMelodyMidi');
+      const combos = [[0, 'major', 'pop'], [0, 'major', 'sad'], [0, 'major', 'fifties'], [9, 'minor', 'pop'], [9, 'minor', 'sad'], [9, 'minor', 'fifties']];
+      const mod12b = (n) => ((n % 12) + 12) % 12;
+      for (const mel of keyed) {
+        for (const [kr, mode, progId] of combos) {
+          const st = T.defaultState();
+          st.keyRoot = kr; st.modeId = mode; st.progId = progId; st.melodyIndex = T.melodyIndexByName(mel.name); st.chordBars = 1;
+          const bar = (n) => T.harmonyOfState(st, n * 16);
+          const pcsOf = (n) => { const h = bar(n); return T.chordPitchClasses(h.keyRoot, h.steps, h.deg, h.sevenths); };
+          const mid = (n, [at, deg, , alt = 0]) => {
+            const m = T.melodyMidi(deg, alt, bar(n), 'key', modeSteps(mode), 4);
+            return at % 4 === 0 ? T.snapMelodyMidi(m, pcsOf(n)) : m;
+          };
+          for (let n = 0; n < 4; n++) {
+            const notes = mel.bars[n];
+            for (const note of notes) if (note[0] % 4 === 0 && pcsOf(n).includes(mod12b(mid(n, note) - 1))) failed.push(`Groove Lab: ${mel.name} (${kr}/${mode}/${progId}) Takt ${n + 1}: Halbton über Akkordton auf dem Schlag`);
+            const jump = Math.abs(mid(n + 1, mel.bars[(n + 1) % 4][0]) - mid(n, notes[notes.length - 1]));
+            if (jump > 9) failed.push(`Groove Lab: ${mel.name} (${kr}/${mode}/${progId}) Takt ${n + 1} → ${(n + 1) % 4 + 1}: Sprung ${jump} > 9`);
+          }
+        }
+      }
+      // 6c: Oktavlage über die Periode — nie schlechter als die alte Lage (foldDegree), und die Summe der Sprünge schrumpft.
+      const lcmb = (a, b) => { const g = (x, y) => (y ? g(y, x % y) : x); return (a * b) / g(a, b); };
+      for (const mel of T.MELODIES.filter((m) => !m.ref && m.meter === '4/4')) {
+        for (const [kr, mode, progId] of combos) {
+          const st = T.defaultState();
+          st.keyRoot = kr; st.modeId = mode; st.progId = progId; st.chordBars = 1;
+          const cnt = lcmb(mel.bars.length, T.progressionOfState(st).degrees.length);
+          const at = (n, deg, alt) => T.melodyMidi(deg, alt, T.harmonyOfState(st, n * 16), 'chord', modeSteps(mode), 4);
+          const sh = T.melodyBarShifts(mel.bars, cnt, at, false);
+          if (sh.some((x) => ![-12, 0, 12].includes(x))) failed.push(`Groove Lab: Oktavlage ${mel.name}: ${sh}`);
+          let sumOld = 0;
+          let sumNew = 0;
+          for (let n = 0; n < cnt; n++) {
+            const a = mel.bars[n % mel.bars.length];
+            const b = mel.bars[(n + 1) % mel.bars.length];
+            const l = a[a.length - 1];
+            const f = b[0];
+            sumOld += Math.abs(at(n + 1, f[1], f[3] || 0) - at(n, l[1], l[3] || 0));
+            sumNew += Math.abs(at(n + 1, f[1], f[3] || 0) + sh[(n + 1) % cnt] - at(n, l[1], l[3] || 0) - sh[n % cnt]);
+          }
+          if (sumNew > sumOld) failed.push(`Groove Lab: Oktavlage ${mel.name} (${kr}/${mode}/${progId}) verschlechtert ${sumOld} → ${sumNew}`);
+        }
+      }
+      if (T.melodyBarShifts([[[0, 0, 4]]], 1, () => 60, false).join() !== '0') failed.push('Groove Lab: Oktavlage ohne Vergleichstakt');
+      // Neuer Klang der Melodie: Tape Keys, Workshop/de:construct bleiben bei Velvet Choir.
+      if (T.defaultState().sound.presetIndex !== T.presetIndexByName('Tape Keys')) failed.push('Groove Lab: Standard-Klang der Melodie');
+      if (T.lessonState(T.defaultState(), T.WORKSHOP_LESSONS[0]).sound.presetIndex !== T.presetIndexByName('Velvet Choir') && !T.WORKSHOP_LESSONS[0].preset) failed.push('Groove Lab: Workshop nicht auf Velvet Choir gepinnt');
+      // Gespeicherter Stand mit Tonart-Vorlage lädt, ein alter Stand behält seinen Klang.
+      const withKey = T.sanitizeState({ ...clone(T.defaultState()), melodyIndex: T.melodyIndexByName('Anthem Oh') });
+      if (withKey.melodyIndex !== T.melodyIndexByName('Anthem Oh')) failed.push('Groove Lab: Stand mit Tonart-Vorlage lädt nicht');
+      const oldSound = T.sanitizeState({ ...clone(T.defaultState()), sound: { presetIndex: T.presetIndexByName('Velvet Choir') } });
+      if (oldSound.sound.presetIndex !== T.presetIndexByName('Velvet Choir')) failed.push('Groove Lab: gespeicherter Klang geht verloren');
     }
     // Engine-Weiche je Spur (ohne AudioContext, mit Spionen).
     {

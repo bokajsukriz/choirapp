@@ -208,6 +208,8 @@
       fillBar,
     };
   }
+  /** Workshop und de:construct beginnen mit dem früheren Standard-Klang der Melodie. */
+  const pinLegacyVoice = (s) => { s.sound = soundFromPreset(presetIndexByName('Velvet Choir')); return s; };
   /** Chor-Aufgaben, Workshop und de:construct klingen wie vor dem Sample-Kit. */
   function pinLegacySound(s) {
     s.drumKit = 'synth'; s.feel = false; s.fills = 0; s.trackOn.perc = false; s.bassSoundId = 'pluck';
@@ -295,10 +297,50 @@
       vary: [{}, { extendLast: 2 }] },
     { name: 'Jig Hop', meter: '6/8', cat: 'dance', motif: [[0, 0, 2], [2, 2, 2], [4, 4, 2], [6, 5, 2], [8, 4, 2], [10, 2, 2]],
       vary: [{}, {}, { extendLast: 2 }] },
+    // Synco Verse endet auf der Quinte (Vorlage: Oktave): Oktave → Tonika im nächsten
+    // Durchlauf wäre ein Sprung von 12 Halbtönen (Prüfung: höchstens 9).
+    // --- Tonart-Bezug (ref 'key'): fertige Takte, Stufen über der Tonika (0 = Tonika,
+    // 7 = Oktave, negativ = darunter) — keine Motive über dem Akkordgrundton, sondern
+    // eine singbare Linie, die über jede Folge passt (siehe snapMelodyMidi). ---
+    { name: 'Pop Hook', meter: '4/4', cat: 'dance', ref: 'key', bars: [
+      [[0, 2, 2], [2, 2, 1], [3, 4, 3], [6, 2, 2], [10, 1, 2], [12, 0, 4]],
+      [[0, 1, 2], [2, 1, 1], [3, 4, 3], [6, 1, 2], [10, 0, 2], [12, -1, 4]],
+      [[0, 0, 2], [2, 0, 1], [3, 2, 3], [6, 4, 2], [8, 5, 4], [12, 2, 4]],
+      [[0, 5, 3], [3, 7, 3], [6, 5, 2], [8, 3, 4], [12, 0, 4]]] },
+    { name: 'Ballad Line', meter: '4/4', cat: 'calm', ref: 'key', bars: [
+      [[0, 2, 6], [6, 1, 2], [8, 0, 6], [14, -1, 2]],
+      [[0, 1, 8], [8, -1, 4], [12, 1, 4]],
+      [[0, 0, 6], [6, -1, 2], [8, 0, 4], [12, 2, 4]],
+      [[0, 5, 8], [8, 3, 4], [12, 1, 4]]] },
+    { name: 'Offbeat Chant', meter: '4/4', cat: 'dance', ref: 'key', bars: [
+      [[2, 4, 1], [4, 4, 1], [6, 2, 2], [10, 4, 1], [12, 4, 2]],
+      [[2, 4, 1], [4, 4, 1], [6, 6, 2], [10, 4, 1], [12, 1, 4]],
+      [[2, 2, 1], [4, 2, 1], [6, 0, 2], [10, 2, 1], [12, 2, 2]],
+      [[2, 3, 1], [4, 3, 1], [6, 5, 2], [10, 5, 1], [12, 7, 4]]] },
+    { name: 'Gospel Call', meter: '4/4', cat: 'funky', ref: 'key', bars: [
+      [[0, 4, 2], [2, 5, 2], [4, 4, 2], [6, 2, 2], [8, 4, 6], [14, 2, 2]],
+      [[0, 1, 4], [4, 2, 2], [6, 1, 2], [8, -1, 6]],
+      [[0, 4, 2], [2, 5, 2], [4, 4, 2], [6, 2, 2], [8, 0, 6], [14, 2, 2]],
+      [[0, 5, 4], [4, 4, 2], [6, 2, 2], [8, 0, 8]]] },
+    { name: 'Synco Verse', meter: '4/4', cat: 'funky', ref: 'key', bars: [
+      [[0, 0, 1], [2, 0, 1], [3, 0, 1], [6, 2, 2], [9, 2, 1], [11, 0, 1], [12, -1, 1], [14, 0, 2]],
+      [[0, -1, 1], [2, -1, 1], [3, -1, 1], [6, 1, 2], [9, 1, 1], [11, -1, 1], [12, -3, 1], [14, -1, 2]],
+      [[0, 0, 1], [2, 0, 1], [3, 0, 1], [6, 2, 2], [9, 2, 1], [11, 4, 1], [12, 2, 2], [14, 0, 2]],
+      [[0, 0, 1], [2, 0, 1], [3, 0, 1], [6, 3, 2], [9, 3, 1], [11, 5, 1], [12, 4, 4]]] },
+    { name: 'Anthem Oh', meter: '4/4', cat: 'dance', ref: 'key', bars: [
+      [[0, 4, 3], [3, 4, 3], [6, 5, 2], [8, 4, 4], [12, 2, 4]],
+      [[0, 4, 3], [3, 4, 3], [6, 5, 2], [8, 4, 4], [12, 1, 4]],
+      [[0, 4, 3], [3, 4, 3], [6, 5, 2], [8, 4, 4], [12, 2, 4]],
+      [[0, 5, 3], [3, 5, 3], [6, 7, 2], [8, 5, 4], [12, 4, 4]]] },
+    { name: 'Guide Tones', meter: '4/4', cat: 'calm', ref: 'key', bars: [
+      [[0, 2, 16]], [[0, 1, 16]], [[0, 0, 16]], [[0, 0, 8], [8, -2, 8]]] },
   ];
+  /** Bezug der Stufen einer Vorlage: 'chord' (über dem Akkordgrundton) oder 'key' (über der Tonika). */
+  const melodyRefOf = (index) => MELODIES[index]?.ref ?? 'chord';
 
   // Je Abwandlung einmal fertig ausrechnen — der Scheduler liest nur noch.
   MELODIES.forEach((melody) => {
+    if (!melody.vary) return; // fertige Takte (ref 'key', siehe unten): nichts auszurechnen
     const steps = METERS[melody.meter].steps;
     melody.bars = melody.vary.map(({ rhythmShift = 0, extendLast = 0, shift = 0, motif = melody.motif }) => {
       const bar = motif.map(([at, deg, len, alt]) => (alt ? [mod(at + rhythmShift, steps), deg + shift, len, alt] : [mod(at + rhythmShift, steps), deg + shift, len]));
@@ -567,10 +609,77 @@
    * der Tonika in der Tonleiter des Modus — klingt über jedem Akkord gleich,
    * auch wenn die Aufnahme kürzer ist als die Folge.
    */
-  function melodyMidi(deg, alt, h, ref, modeSteps, melodyOctave) {
+  function melodyMidi(deg, alt, h, ref, modeSteps, melodyOctave, shift = 0) {
     const base = 12 * (melodyOctave + 1) + foldRoot(h.keyRoot);
     if (ref === 'key') return base + degreeSemis(modeSteps, deg) + alt;
-    return base + melodyOffset(h.steps, foldDegree(h.deg), deg, alt);
+    return base + melodyOffset(h.steps, foldDegree(h.deg), deg, alt) + shift;
+  }
+  /**
+   * Akkord-Anpassung auf schweren Zählzeiten (alle Vorlagen): liegt der Ton
+   * genau einen Halbton über einem Akkordton (kleine None, reibt), wird er auf
+   * diesen Akkordton abgesenkt. Alles andere (Optionen, Sexten, Septimen)
+   * bleibt. `pcs`: Tonhöhenklassen des klingenden Akkords.
+   */
+  function snapMelodyMidi(midi, pcs) {
+    return pcs.includes(mod(midi - 1, 12)) ? midi - 1 : midi;
+  }
+  /**
+   * Oktavlage je Takt für Melodien mit Akkord-Bezug (statt foldDegree): der
+   * erste Ton eines Takts soll dem letzten Ton des Vortakts möglichst nah
+   * liegen (Gleichstand → tiefer), je Takt um höchstens eine Oktave nach oben
+   * oder unten gegenüber der bisherigen Lage (melodyOctave ± 1). Weil Takt
+   * für Takt nacheinander gewählt an der Grenze „hängen bleibt“ (der Akkord-
+   * grundton wandert reihum), wird die ganze Periode (Ende → Anfang inklusive)
+   * auf einmal gelöst: kleinste Summe der Sprünge, bei Gleichstand die
+   * Lage nahe der bisherigen, dann die tiefere.
+   * `bars`: Takte der Melodie; `count`: Takte der Periode; `midiAt(bar, deg, alt)`:
+   * Ton im Takt `bar` ohne Verschiebung; `altBars`: nur jeder zweite Takt.
+   * Liefert je Takt der Periode eine Verschiebung in {−12, 0, 12}.
+   */
+  function melodyBarShifts(bars, count, midiAt, altBars = false) {
+    const shifts = new Array(count).fill(0);
+    const idx = [];
+    for (let n = 0; n < count; n++) {
+      if (altBars && n % 2 === 1) continue;
+      if (bars[n % bars.length].length) idx.push(n);
+    }
+    const L = idx.length;
+    if (L < 2) return shifts;
+    const options = [-12, 0, 12];
+    const first = idx.map((n) => { const note = bars[n % bars.length][0]; return midiAt(n, note[1], note[3] || 0); });
+    const last = idx.map((n) => { const notes = bars[n % bars.length]; const note = notes[notes.length - 1]; return midiAt(n, note[1], note[3] || 0); });
+    const stateCost = (b) => Math.abs(options[b]) * 1e-3 + (options[b] + 12) * 1e-6;
+    let best = null;
+    for (let start = 0; start < 3; start++) {
+      // cost[b]: bester Gesamtpreis bis Takt i, wenn dort Zustand b gewählt ist
+      let cost = [Infinity, Infinity, Infinity];
+      let back = [];
+      cost[start] = stateCost(start);
+      for (let i = 1; i <= L; i++) {
+        const next = [Infinity, Infinity, Infinity];
+        const from = [0, 0, 0];
+        for (let b = 0; b < 3; b++) {
+          if (i === L && b !== start) continue; // Ende schließt an den Anfang an
+          for (let a = 0; a < 3; a++) {
+            if (cost[a] === Infinity) continue;
+            const c = cost[a] + Math.abs(first[i % L] + options[b] - (last[i - 1] + options[a])) + (i === L ? 0 : stateCost(b));
+            if (c < next[b]) { next[b] = c; from[b] = a; }
+          }
+        }
+        back.push(from);
+        cost = next;
+      }
+      if (cost[start] === Infinity) continue;
+      if (!best || cost[start] < best.cost) {
+        const path = new Array(L);
+        let b = start;
+        for (let i = L; i >= 1; i--) { path[i % L] = b; b = back[i - 1][b]; }
+        path[0] = start;
+        best = { cost: cost[start], path };
+      }
+    }
+    if (best) idx.forEach((n, i) => { shifts[n] = options[best.path[i]]; });
+    return shifts;
   }
   /** Stufe in den Bereich -3…3 falten — ein Motiv, das dem Akkord folgt,
    *  soll nicht mit jeder höheren Stufe weiter nach oben wandern. */
@@ -1177,7 +1286,7 @@
    *  Einheit gleich beginnt. Behält nur Ansicht, Tastenlayout, Oktave und
    *  Master-Pegel des aktuellen Stands. */
   function lessonState(current, lesson) {
-    const s = defaultState();
+    const s = pinLegacyVoice(defaultState());
     s.view = current.view; s.keysLayout = current.keysLayout; s.octave = current.octave;
     s.mix.master = current.mix.master;
     pinLegacySound(s);
@@ -1567,7 +1676,7 @@
     if (!song) return null;
     const level = dcLevel(song.level);
     const has = (el) => level.elements.includes(el);
-    const o = pinLegacySound(defaultState());
+    const o = pinLegacyVoice(pinLegacySound(defaultState()));
     o.patternIndex = DRUM_PATTERNS.findIndex((p) => p.meter === song.meter);
     o.beat = dcBeat(song);
     o.beatEdited = true;
@@ -1633,10 +1742,10 @@
     if (!s.melodyOn) return [];
     const barSteps = METERS[meterOfState(ref)].steps;
     const melBars = s.melodyBars || MELODIES[s.melodyIndex].bars;
-    const melRef = s.melodyBars ? s.melodyRef : 'chord';
+    const melRef = s.melodyBars ? s.melodyRef : melodyRefOf(s.melodyIndex);
     const out = [];
     for (let g = 0; g < bars * barSteps; g++) {
-      for (const [at, deg, , alt = 0] of melodyNotesAt(g, melBars, barSteps, s.melodyAltBars && melRef !== 'key')) {
+      for (const [at, deg, , alt = 0] of melodyNotesAt(g, melBars, barSteps, s.melodyAltBars && !(s.melodyBars && melRef === 'key'))) {
         out.push({ g: Math.floor(g / barSteps) * barSteps + Math.round(at), midi: melodyMidi(deg, alt, harmonyOfState(ref, g), melRef, modeStepsOf(ref), s.melodyOctave) });
       }
     }
@@ -1855,7 +1964,7 @@
       arpDivision: 2, arpRhythm: 'straight', arpOctaves: 1, arpRef: 'key',
       keysLayout: 'piano',
       octave: 4,
-      sound: soundFromPreset(presetIndexByName('Velvet Choir')),
+      sound: soundFromPreset(presetIndexByName('Tape Keys')),
       mix: { drums: .8, bass: .8, melody: .75, arp: .6, chords: .55, keys: .8, drone: .5, master: .8 },
       mute: { drums: false, bass: false, melody: false, arp: false, chords: false, keys: false, drone: false },
       fx: { reverbLength: 1.8, echoDiv: 3, echoFeedback: .35, chorus: .2, reverbOn: true, echoOn: true, chorusOn: true },
@@ -4685,7 +4794,7 @@
     _melody() {
       const s = this.state;
       const base = MELODIES[s.melodyIndex];
-      if (!s.melodyBars) return { ...base, ref: 'chord' };
+      if (!s.melodyBars) return { ...base, ref: base.ref ?? 'chord' };
       return { name: s.melodyName || base.name, meter: s.melodyMeter, cat: s.melodyOwnId ? OWN_CAT : base.cat, bars: s.melodyBars, ref: s.melodyRef };
     }
     _clearMelodyEdit() {
@@ -4984,7 +5093,7 @@
       // gespeichert oder verworfen ist; beim Einzählen/Aufnehmen: Stille.
       const recPhase = this.rec.phase;
       if (recPhase === 'done') {
-        if (this.rec.looping) this._playMelodyStep(g, h, swung, stepSec, this.rec.loopBars, 'key');
+        if (this.rec.looping) this._playMelodyStep(g, h, swung, stepSec, this.rec.loopBars, 'key', true);
       } else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording' && this._dcHears('melody')) this._playMelodyStep(g, h, swung, stepSec);
 
       if (s.arpOn && this._dcHears('all')) {
@@ -5143,19 +5252,43 @@
     }
 
     /** Klingender Ton einer Melodiestufe über der Harmonie `h`. */
-    _melodyMidi(deg, alt, h, ref) {
-      return melodyMidi(deg, alt, h, ref, this._mode().steps, this.state.melodyOctave);
+    _melodyMidi(deg, alt, h, ref, shift = 0) {
+      return melodyMidi(deg, alt, h, ref, this._mode().steps, this.state.melodyOctave, shift);
     }
 
-    _playMelodyStep(g, h, time, stepSec, bars = this._melody().bars, ref = this._melody().ref) {
+    /** Oktavlage je Takt (melodyBarShifts) für Melodien mit Akkord-Bezug;
+     *  null bei Tonart-Bezug (feste Tonhöhen). Je Folge/Melodie gecacht. */
+    _melodyShifts(bars, ref, altBars) {
+      if (ref === 'key') return null;
+      const s = this.state;
+      const prog = this._progression();
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}|${s.chordBars}|${s.melodyOctave}|${altBars}|${this._barSteps()}|${JSON.stringify(bars)}`;
+      if (this._melShiftCache?.key === key) return this._melShiftCache.shifts;
+      const barSteps = this._barSteps();
+      const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+      const lcm = (a, b) => (a * b) / gcd(a, b);
+      const count = lcm(lcm(bars.length, prog.degrees.length * s.chordBars), altBars ? 2 : 1);
+      const modeSteps = this._mode().steps;
+      const shifts = melodyBarShifts(bars, count, (bar, deg, alt) => melodyMidi(deg, alt, this._harmonyAt(bar * barSteps), 'chord', modeSteps, s.melodyOctave), altBars);
+      this._melShiftCache = { key, shifts };
+      return shifts;
+    }
+
+    /** `rec`: Schleife einer Aufnahme (kein Echo, keine Anpassung). */
+    _playMelodyStep(g, h, time, stepSec, bars = this._melody().bars, ref = this._melody().ref, rec = false) {
       const s = this.state;
       const barSteps = this._barSteps();
       const step = g % barSteps;
       // Echo (melodyAltBars): nur jeden zweiten Takt; Aufnahmen immer.
-      for (const [at, deg, len, alt = 0] of melodyNotesAt(g, bars, barSteps, s.melodyAltBars && ref !== 'key')) {
+      const altBars = s.melodyAltBars && !rec && !(s.melodyBars && ref === 'key');
+      const template = !rec && !s.melodyBars;
+      const shifts = this._melodyShifts(bars, ref, altBars);
+      for (const [at, deg, len, alt = 0] of melodyNotesAt(g, bars, barSteps, altBars)) {
         // Eingespielte Töne liegen zwischen den Sechzehnteln: im Schritt, in
         // dem sie beginnen, mit dem Rest als Verzögerung ansetzen.
-        const midi = this._melodyMidi(deg, alt, h, ref);
+        let midi = this._melodyMidi(deg, alt, h, ref, shifts ? shifts[Math.floor(g / barSteps) % shifts.length] : 0);
+        // Vorlagen: auf dem Schlag keine kleine None über einem Akkordton.
+        if (template && METERS[this._meter()].beats.includes(at)) midi = snapMelodyMidi(midi, chordPitchClasses(h.keyRoot, h.steps, h.deg, h.sevenths));
         const barIndex = Math.floor(g / barSteps) % bars.length;
         const room = bars.length * barSteps - (barIndex * barSteps + at);
         this.engine.playTone(this._heardSound(), midi, time + (at - step) * stepSec, .2, Math.min(len, room) * stepSec, { layer: 'melody', stepSeconds: stepSec });
@@ -5714,7 +5847,7 @@
       if (!s.melodyBars) {
         s.melodyBars = MELODIES[s.melodyIndex].bars.map((bar) => bar.map((n) => [...n]));
         s.melodyMeter = this._meter();
-        s.melodyRef = 'chord';
+        s.melodyRef = melodyRefOf(s.melodyIndex);
       }
       return s.melodyBars;
     }
@@ -5723,7 +5856,7 @@
      *  eigene Melodie in der Bibliothek nachziehen, neu zeichnen. */
     _melCommit({ persist = true } = {}) {
       const s = this.state;
-      if (s.melodyBars && !s.melodyName && s.melodyRef !== 'key' && JSON.stringify(s.melodyBars) === JSON.stringify(MELODIES[s.melodyIndex].bars)) {
+      if (s.melodyBars && !s.melodyName && s.melodyRef === melodyRefOf(s.melodyIndex) && JSON.stringify(s.melodyBars) === JSON.stringify(MELODIES[s.melodyIndex].bars)) {
         s.melodyBars = null; s.melodyMeter = null;
       }
       const own = s.melodyOwnId && this._saved.melodies.find((m) => m.id === s.melodyOwnId);
@@ -5835,7 +5968,7 @@
       while (lib.some((m) => m.name === tf('lab.myMelodyN', { n }))) n++;
       const name = s.melodyName && !s.melodyOwnId && s.melodyName !== t('lab.newMelody') ? s.melodyName : tf('lab.myMelodyN', { n });
       const id = `m${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
-      const ref = s.melodyBars ? s.melodyRef : 'chord';
+      const ref = s.melodyBars ? s.melodyRef : melodyRefOf(s.melodyIndex);
       lib.push(ref === 'key' ? { id, name, meter: this._meter(), bars, ref } : { id, name, meter: this._meter(), bars });
       s.melodyBars = bars.map((bar) => bar.map((note) => [...note]));
       s.melodyMeter = this._meter();
@@ -9110,7 +9243,7 @@
     MODES, PROGRESSIONS, MELODIES, DRUM_PATTERNS, METERS, SATB_RANGES,
     voiceChord, voicePairs, voiceProgressionSatb, leadingToneOf, VOICING_STATS, chordPitchClasses, chordSteps, degreeSemis, progFitsMode, modeForProg, progsForRandom,
     eighthsPerBeat, tempoSymbol, stepSecondsFor, hatAccent, fillAt, bassNoteSteps, bassRootsFor, BASS_SOUNDS, FILL_HITS, FILL_LENGTHS, resolveKit, pinLegacySound, LabSamples, DRUM_KITS, PERC_SOUNDS, percOf,
-    melodyOffset, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree,
+    melodyOffset, snapMelodyMidi, melodyBarShifts, melodyRefOf, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree,
     spell, noteLabel, spellCheck, SPELL_CASES, romanNumeral, chordName, chordQuality,
     sanitizeProgLibrary, sanitizeState, defaultState, sanitizeMelodyLibrary, sanitizeMelodyBars, recNotesToBars, melodyMidi,
     GrooveEngine, CHOIR_TASKS, choirTaskState, melodyNotesAt, choirTargetPc, patternIndexByName, beatFromPattern,
