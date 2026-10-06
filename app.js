@@ -21437,6 +21437,21 @@ async function runMusicSelfTests({ log = true } = {}) {
     for (const task of T.CHOIR_TASKS) pinned(T.choirTaskState(clone(fresh), task, 'S'), `Chor-Aufgabe ${task.id}`);
     for (const lesson of T.WORKSHOP_LESSONS) pinned(T.lessonState(clone(fresh), lesson), `Workshop ${lesson.id}`);
     for (const song of T.DC_SONGS) { const b = T.dcBuild(song.id); pinned(b.original, `de:construct ${song.id} Original`); pinned(b.mine, `de:construct ${song.id} Meine`); }
+    // Paket 4: Fills.
+    {
+      const f = (g, steps, n) => T.fillAt(g, steps, n);
+      if (f(15, 16, 0).idx !== -1 || f(63, 16, 0).crash) failed.push('Groove Lab: Fill bei fills = 0');
+      if (f(12 + 48, 16, 4).idx !== 0 || f(15 + 48, 16, 4).idx !== 3 || f(11 + 48, 16, 4).idx !== -1) failed.push('Groove Lab: Fill-Schritte 4/4 (alle 4 Takte)');
+      if (f(15 + 16, 16, 4).idx !== -1 || f(15, 16, 4).idx !== -1) failed.push('Groove Lab: Fill zu früh');
+      if (f(8 + 24, 12, 4).idx !== 0 && f(8 + 36, 12, 4).idx !== 0) failed.push('Groove Lab: Fill-Schritte 3/4');
+      if (f(8 + 36, 12, 4).idx !== 0 || f(11 + 36, 12, 4).idx !== 3) failed.push('Groove Lab: Fill-Schritte 3/4 und 6/8 (8–11)');
+      if (!f(64, 16, 4).crash || f(65, 16, 4).crash || f(0, 16, 4).crash) failed.push('Groove Lab: Crash nach dem Fill');
+      if (!f(16 * 8, 16, 8).crash || f(16 * 4, 16, 8).crash) failed.push('Groove Lab: Crash nach 8-Takte-Fill');
+      if (T.defaultState().fills !== 8 || T.sanitizeState({ ...T.defaultState(), fills: 5 }).fills !== 8) failed.push('Groove Lab: Fill-Standard/Müll');
+      if (T.sanitizeState({ ...clone(T.defaultState()), fills: 4 }).fills !== 4) failed.push('Groove Lab: fills 4 geht verloren');
+      // Der Fill ersetzt nur Snare/Clap/Hat/Open/Perc, nie Kick und Bass (Konstante).
+      if (T.FILL_HITS.map((h) => h.join(':')).join() !== 'tom-hi:1,tom-hi:0.7,tom-lo:1,tom-lo:0.85') failed.push('Groove Lab: Fill-Toms');
+    }
     // Engine-Weiche je Spur (ohne AudioContext, mit Spionen).
     {
       const calls = [];

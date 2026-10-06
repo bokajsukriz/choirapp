@@ -179,6 +179,7 @@
   /** Schlagzeug-Klänge: Kit-Wahl, Percussion-Klang (siehe LabSamples). */
   const DRUM_KITS = ['auto', 'synth', 'acoustic', 'hybrid'];
   const PERC_SOUNDS = ['tamb', 'shaker', 'snap'];
+  const FILL_LENGTHS = [0, 4, 8];
   const percOf = (pattern) => (PERC_SOUNDS.includes(pattern.percSound) ? pattern.percSound : 'tamb');
   /** 'auto' nach Loop-Kategorie auflösen: dance → synth, breaks → hybrid,
    *  calm/funky → acoustic. */
@@ -191,9 +192,25 @@
     if (meter === '4/4') return step % 4 === 0 ? 1 : step % 2 === 0 ? .72 : .55;
     return METERS[meter].beats.includes(step) ? 1 : .6;
   }
+  /** Fill: im letzten Takt jedes `fills`-Takte-Blocks spielen die letzten vier
+   *  Schritte Toms (idx 0–3 → Tom, Velocity) statt Snare/Clap/Hat/Open/Perc;
+   *  auf Schritt 0 des Folgetakts kommt ein Crash. Nur Wiedergabe. */
+  const FILL_HITS = [['tom-hi', 1], ['tom-hi', .7], ['tom-lo', 1], ['tom-lo', .85]];
+  const FILL_MUTED = ['snare', 'clap', 'hat', 'open', 'perc'];
+  function fillAt(g, barSteps, fills) {
+    if (!fills) return { idx: -1, crash: false, fillBar: false };
+    const bar = Math.floor(g / barSteps);
+    const step = g % barSteps;
+    const fillBar = bar % fills === fills - 1;
+    return {
+      idx: fillBar && step >= barSteps - 4 ? step - (barSteps - 4) : -1,
+      crash: step === 0 && bar > 0 && (bar - 1) % fills === fills - 1,
+      fillBar,
+    };
+  }
   /** Chor-Aufgaben, Workshop und de:construct klingen wie vor dem Sample-Kit. */
   function pinLegacySound(s) {
-    s.drumKit = 'synth'; s.feel = false; s.trackOn.perc = false;
+    s.drumKit = 'synth'; s.feel = false; s.fills = 0; s.trackOn.perc = false;
     return s;
   }
 
@@ -1784,6 +1801,8 @@
       // feel: Akzente/Mikro-Timing nur bei der Wiedergabe; percSound: Klang der
       // Percussion-Spur (übernimmt beim Loop-Wählen den Wert des Loops).
       drumKit: 'auto', feel: true, percSound: 'tamb',
+      // Fill im letzten Takt jedes Blocks: 0 (aus) | 4 | 8 Takte.
+      fills: 8,
       bassSoundId: 'pluck',
       keyRoot: 0, modeId: 'major', progId: 'pop', chordBars: 1,
       // Bearbeitete oder eigene Akkordfolge (null = Vorlage progId).
@@ -1991,6 +2010,7 @@
     const legacy = ['choir', 'workshop', 'deconstruct'].includes(raw.view) || !!raw.choirTask || !!raw.lessonId;
     s.drumKit = oneOf(raw.drumKit, DRUM_KITS, legacy ? 'synth' : 'auto');
     s.feel = bool(raw.feel, !legacy);
+    s.fills = oneOf(raw.fills, FILL_LENGTHS, legacy ? 0 : 8);
     s.percSound = oneOf(raw.percSound, PERC_SOUNDS, percOf(pattern));
     s.keyRoot = int(raw.keyRoot, 0, 11, 0);
     s.modeId = oneOf(raw.modeId, MODES.map((m) => m.id), s.modeId);
@@ -2630,7 +2650,7 @@
       else if (track === 'perc') {
         if (!sample(o.perc || 'tamb')) this.playNoise(time, { cutoff: 5000, length: .08, volume: .08 * velocity, type: 'bandpass', q: 1 });
       } else if (track === 'tom-hi' || track === 'tom-lo') { if (!sample(track)) this.playTom(time, velocity, track === 'tom-lo'); }
-      else if (track === 'crash') sample('crash');
+      else if (track === 'crash') { if (!sample('crash')) this.playNoise(time, { cutoff: 5500, length: .7, volume: .06 * velocity, type: 'highpass', q: .8 }); }
       else {
         const open = track === 'open';
         const id = open ? 'open' : o.hat === 'ride' ? 'ride' : o.soft ? 'hat-soft' : 'hat';
@@ -4699,7 +4719,7 @@
       this.shown = null;
       // Liegeton und gehaltene Tasten laufen unabhängig vom Transport weiter.
       if (this.engine.ready) this.engine.releaseLayers(['melody', 'arp', 'chords']);
-      this.$all('.step-cell.is-now').forEach((cell) => cell.classList.remove('is-now'));
+      this.$all('.step-cell.is-now, .step-cell.is-fill').forEach((cell) => cell.classList.remove('is-now', 'is-fill'));
       this._showMelodyStep(-1);
       this._showRecLoopStep(-1);
       if (this.autoRec.phase !== 'idle') this._autoFinish();
@@ -4839,9 +4859,16 @@
       // de:construct „Nur …“: nur die gewählte Spur klingt (in A und B).
       const hearBeat = this._dcHears('beat');
       const drumOpts = this._drumOpts();
+      const fill = fillAt(g, barSteps, s.fills);
+      if (hearBeat && fill.idx >= 0) {
+        const [tom, velocity] = FILL_HITS[fill.idx];
+        this.engine.hitTrack(tom, swung, s.feel ? Math.min(1, velocity * (.94 + Math.random() * .12)) : velocity, s.kit, drumOpts);
+      }
+      if (hearBeat && fill.crash) this.engine.hitTrack('crash', swung, .8, s.kit, drumOpts);
       for (const track of DRUM_TRACKS) {
         let value = beat[track]?.[step];
         if (value === undefined || !s.trackOn[track] || !hearBeat) continue;
+        if (fill.idx >= 0 && FILL_MUTED.includes(track)) continue;
         let when = swung;
         let opts = drumOpts;
         if (s.feel) {
@@ -5076,7 +5103,12 @@
 
     _showStep({ g }, chordChanged) {
       const step = g % this._barSteps();
-      this.$all('.track-list .step-cell').forEach((cell) => cell.classList.toggle('is-now', Number(cell.dataset.step) === step));
+      const barSteps = this._barSteps();
+      const fillBar = fillAt(g, barSteps, this.state.fills).fillBar;
+      this.$all('.track-list .step-cell').forEach((cell) => {
+        cell.classList.toggle('is-now', Number(cell.dataset.step) === step);
+        cell.classList.toggle('is-fill', fillBar && Number(cell.dataset.step) >= barSteps - 4 && cell.dataset.track !== 'kick' && cell.dataset.track !== 'bass');
+      });
       this._renderBeatDots(step);
       this._showMelodyStep(g);
       this._showRecLoopStep(g);
@@ -5232,6 +5264,7 @@
       this._chips(this.$('.bass-chips'), BASS_SOUNDS.map((b) => ({ value: b.id, label: b.name })), s.bassSoundId, 'bass-sound');
       this.$('.kit-panel').hidden = s.view === 'workshop';
       this._chips(this.$('.kit-chips'), DRUM_KITS.map((id) => ({ value: id, label: t(`lab.kit.${id}`) })), s.drumKit, 'drum-kit');
+      this._chips(this.$('.fill-chips'), FILL_LENGTHS.map((n) => ({ value: n, label: t(`lab.fill.${n}`) })), s.fills, 'fills');
       this._renderKit();
     }
 
@@ -7285,6 +7318,7 @@
         }
         case 'kit-reset': this._pushHistory(); s.kit = { ...KIT_DEFAULTS }; this._renderKit(); if (!this.playing) this._preview('kick', 1); break;
         case 'drum-kit': this._pushHistory(); s.drumKit = DRUM_KITS.includes(value) ? value : 'auto'; this._renderBeat(); if (!this.playing) this._preview('snare', 1); break;
+        case 'fills': this._pushHistory(); s.fills = FILL_LENGTHS.includes(Number(value)) ? Number(value) : 0; this._renderBeat(); break;
         case 'bass-sound': s.bassSoundId = value; this._renderBeat(); if (!this.playing) this._preview('bass', 0); break;
 
         // Harmonie
@@ -7747,6 +7781,7 @@
   .step-cell.is-soft { background: rgba(var(--accent-rgb), .45); }
   .step-cell[data-label]::after { content: attr(data-label); }
   .step-cell.is-now { outline: 2px solid var(--text); outline-offset: 1px; }
+  .step-cell.is-fill { opacity: .4; box-shadow: inset 0 0 0 1px var(--accent); }
 
   /* Lupe (Beat-Editor bildschirmfüllend, _setBeatZoom) */
   .zoom-btn {
@@ -8613,6 +8648,9 @@
       <div class="panel-head"><h2>${t('lab.drumKit')}</h2>${help('helpKit')}</div>
       ${helpText('helpKit')}
       <div class="chip-row kit-chips" role="group" aria-label="${t('lab.drumKit')}"></div>
+      <div class="panel-head"><h2>${t('lab.fills')}</h2>${help('helpFills')}</div>
+      ${helpText('helpFills')}
+      <div class="chip-row fill-chips" role="group" aria-label="${t('lab.fills')}"></div>
     </section>
     <section class="panel dc-bass-panel">
       <div class="panel-head"><h2>${t('lab.bassSound')}</h2>${help('helpBass')}</div>
@@ -8982,7 +9020,7 @@
   const TEST_EXPORT = {
     MODES, PROGRESSIONS, MELODIES, DRUM_PATTERNS, METERS, SATB_RANGES,
     voiceChord, voicePairs, voiceProgressionSatb, leadingToneOf, VOICING_STATS, chordPitchClasses, chordSteps, degreeSemis, progFitsMode, modeForProg, progsForRandom,
-    eighthsPerBeat, tempoSymbol, stepSecondsFor, hatAccent, resolveKit, pinLegacySound, LabSamples, DRUM_KITS, PERC_SOUNDS, percOf,
+    eighthsPerBeat, tempoSymbol, stepSecondsFor, hatAccent, fillAt, FILL_HITS, FILL_LENGTHS, resolveKit, pinLegacySound, LabSamples, DRUM_KITS, PERC_SOUNDS, percOf,
     melodyOffset, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree,
     spell, noteLabel, spellCheck, SPELL_CASES, romanNumeral, chordName, chordQuality,
     sanitizeProgLibrary, sanitizeState, defaultState, sanitizeMelodyLibrary, sanitizeMelodyBars, recNotesToBars, melodyMidi,

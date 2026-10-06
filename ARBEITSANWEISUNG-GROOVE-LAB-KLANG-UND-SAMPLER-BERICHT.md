@@ -53,3 +53,10 @@ pumpt nicht) steht aus, da hier nicht hörbar prüfbar. Die Messung belegt nur P
 - Tests (`runMusicSelfTests`, Block `GROOVE-LAB-KLANG-TESTS`): Kit-Auflösung, Akzente, Defaults/Alt-Stände/Müll, Pinning aller Aufgaben/Einheiten/Songs, Engine-Weiche je Spur mit Spionen. Lauf headless: grün.
 - `SW_VERSION` v519.
 - Offen: Hörprobe auf dem Gerät; `snap` fehlt (siehe Paket 2), „Halftime Pop“ nutzt dort Synthese.
+
+## Paket 4 – Automatische Fills (erledigt)
+
+- Zustand `fills: 0 | 4 | 8` (Default 8; Chor-Aufgaben, Workshop und de:construct über `pinLegacySound` auf 0; alte Chor-/Workshop-/de:construct-Stände ohne Feld → 0).
+- Reine Funktion `fillAt(g, barSteps, fills)` → `{ idx, crash, fillBar }`; `_playStep` schaltet in den letzten vier Schritten des Fill-Takts (4/4: 12–15, 3/4 und 6/8: 8–11) Snare/Clap/Hat/Open/Perc stumm und spielt `tom-hi` 1 / .7, `tom-lo` 1 / .85; Kick und Bass bleiben. Crash (Velocity .8) auf Schritt 0 des Folgetakts. Ohne Tom-Samples Synth-Tom (Sinus 200→120 bzw. 140→85 Hz, .25 s), ohne Crash-Sample ein kurzes Rauschen.
+- UI: Chips „Fills: Aus · Alle 4 Takte · Alle 8 Takte“ im Panel „Schlagzeug-Klang“; Fill-Schritte werden beim Abspielen mit `is-fill` dezent markiert (Raster bleibt unverändert).
+- Tests im Block `GROOVE-LAB-KLANG-TESTS`. `SW_VERSION` v520.
