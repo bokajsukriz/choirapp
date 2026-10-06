@@ -89,6 +89,9 @@
   /* ---- Rhythmus ---- */
   .head-tools { display: flex; align-items: center; gap: 6px; }
   .help-btn { width: 24px; height: 24px; flex: none; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: .72rem; font-weight: 800; line-height: 1; display: inline-grid; place-items: center; }
+  /* Nach der Auflösung: Nochmal-hören-Knöpfe in der Bühnenmitte. */
+  .replay-row { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .replay-row .k-btn { gap: 6px; }
   /* Merkhilfe Intervalle (Songanfänge) */
   .iv-songs { display: grid; gap: 10px; }
   .iv-song { border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 10px 12px; }
@@ -987,9 +990,10 @@
   .db-cell.is-ok i { background: var(--ok, #2f9e5b); border-color: var(--ok, #2f9e5b); }
   .db-cell.is-part i { background: var(--rep-bg, #FFF1D6); border-color: var(--rep-line, #e0a400); }
   .db-cell.is-miss i { border: 2px dashed var(--bad, #c62828); }
-  /* Töne in der Tonart: die Leiter liegt quer – links tief, rechts hoch, Halbtöne enger. */
+  /* Töne in der Tonart: die Leiter liegt quer – links tief, rechts hoch. Gleiche
+     Abstände (die engeren Halbtöne wirkten quer nur unregelmäßig). */
   .ear-page .answer-grid.is-ladder { display: flex; flex-direction: row; align-items: flex-start; gap: 0; }
-  .ear-page .rung, .ear-panel.ear-page:has(.slot-row.is-pattern) .rung:not(.is-top) { flex: 1 1 0; min-width: 0; margin: 0 calc(var(--gap, 10px) * .6) 0 0; display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
+  .ear-page .rung, .ear-panel.ear-page:has(.slot-row.is-pattern) .rung:not(.is-top) { flex: 1 1 0; min-width: 0; margin: 0 6px 0 0; display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
   .ear-page .rung.is-top { margin-right: 0; }
   .ear-page .rung.is-alt { margin-left: 0; }
   .ear-page .answer-grid.is-ladder { align-items: center; }
@@ -12149,6 +12153,9 @@
     fill.setAttribute('height', h.toFixed(2));
   }
 
+  /** Nach der Auflösung: zwei Knöpfe in der Bühnenmitte zum Nochmal-Hören. */
+  const singReplayHtml = (btns) => `<div class="replay-row">${btns.map(([act, label]) => `<button type="button" class="k-btn k-btn--hear" data-sing="${act}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>${label}</button>`).join('')}</div>`;
+
   function renderSing() {
     $('[data-exview="voice"] .mode-title').textContent = modeName('voice', sing.mode);
     const tuner = sing.mode === 'tuner';
@@ -12203,11 +12210,13 @@
       const ivPhase = sing.phase === 'sing' ? 'Jetzt singen und gut eine Sekunde ruhig halten' : phaseText[sing.phase] || '';
       sub.textContent = `${sing.showSolfa ? `${intervalSolfa(task.semis, task.dir)} · ` : ''}Grundton ${noteLabel(task.base)}${ivPhase ? ` · ${ivPhase}` : ''}`;
       if (sing.phase === 'inner') view.innerHTML = innerDotsHtml(task);
+      if (sing.phase === 'result') view.innerHTML = singReplayHtml([['replay', 'Grundton'], ['resolve', 'Auflösung']]);
     } else if (task.mode === 'findTone') {
       prompt.textContent = task.cue === 'a4' ? `Singe ${task.text}` : task.text;
       const findPhase = sing.phase === 'sing' ? 'Jetzt singen und gut eine Sekunde ruhig halten' : phaseText[sing.phase] || '';
       const cueText = { cadence: ' · nach der Kadenz', popIntro: ' · nach dem Intro', satb: ' · der Akkord erklingt, dann fehlt deine Stimme' }[task.cue] || '';
       sub.textContent = `${task.cue === 'a4' ? 'nur das a′ als Bezug' : `${keyName(task.key, task.kmode)}${cueText}`}${findPhase ? ` · ${findPhase}` : ''}`;
+      if (sing.phase === 'result') view.innerHTML = singReplayHtml([['replay', task.cue === 'a4' ? 'Das a′' : 'Bezug'], ['target', 'Zielton']]);
     } else if (task.mode === 'inTime') {
       const running = ['cue', 'sing'].includes(sing.phase);
       prompt.textContent = sing.phase === 'sing' ? 'Jetzt du – auf „da“' : running ? (task.variant === 'echo' ? 'Hör zu' : 'Lies mit – gleich bist du dran') : 'Im Takt';
@@ -14746,6 +14755,12 @@
         else echoHelp(action === 'replay' ? 'listen' : action);
       } else if (action === 'start' || action === 'begin') startSingTask();
       else if (action === 'target' && sing.task?.target != null && engine.ctx) engine.keys(sing.task.target, engine.ctx.currentTime + .05, 1.4, { velocity: .22, dest: singBus() });
+      else if (action === 'resolve' && sing.task?.mode === 'singInterval' && engine.ctx) {
+        // Auflösung: Grundton, dann der gesuchte Ton.
+        const t = engine.ctx.currentTime + .05;
+        engine.keys(sing.task.base, t, .8, { velocity: .22, dest: singBus() });
+        engine.keys(sing.task.target, t + .85, 1.3, { velocity: .22, dest: singBus() });
+      }
       else if (action === 'replay' && sing.task) {
         if (sing.phase !== 'result') sing.judge = null;
         // Ton halten: während die Vorgabe erneut klingt, nicht zuhören — sonst startet sie selbst den Balken.
