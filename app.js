@@ -21693,6 +21693,69 @@ async function runMusicSelfTests({ log = true } = {}) {
         }
       }
     }
+    // Paket 9: Sampler — Grenzen, Bereinigung, Tonziel, Quantisierung, Auto-Schnitt, Tonhöhe.
+    {
+      if (T.SAMPLER_MAX_SAMPLES !== 64 || T.SAMPLER_MAX_SEC.hit !== 2 || T.SAMPLER_MAX_SEC.tone !== 4 || T.SAMPLER_MAX_SEC.loop !== 10 || T.SAMPLER_MAX_LANES !== 4 || T.SAMPLER_PADS !== 8) failed.push('Sampler: Grenzen');
+      // Metadaten: ungültige Ids fallen weg, Längen/Bereiche werden begrenzt.
+      const good = { id: 's1', name: 'sehr langer Name über zwölf', kind: 'hit', trim: [0.5, 9], gainDb: 40, pitch: 30, decay: 99, reverb: 2, track: 'kick', toneRole: 'quinte', loopBars: 5, by: 'x'.repeat(50) };
+      const m1 = T.sanitizeSampleMeta(good);
+      if (!m1 || m1.name.length !== 12 || m1.trim[1] - m1.trim[0] > 2.0001 || m1.gainDb !== 6 || m1.pitch !== 12 || m1.reverb !== 1 || m1.toneRole !== 'auto' || m1.loopBars !== 1 || m1.by.length !== 24 || m1.track !== 'kick') failed.push(`Sampler: sanitizeSampleMeta ${JSON.stringify(m1)}`);
+      if (T.sanitizeSampleMeta({ ...good, id: '../x' }) || T.sanitizeSampleMeta({ ...good, id: 5 }) || T.sanitizeSampleMeta(null) || T.sanitizeSampleMeta({ ...good, id: 'a'.repeat(30) })) failed.push('Sampler: ungültige Sample-Id wird übernommen');
+      const tone = T.sanitizeSampleMeta({ id: 's2', name: 'ooh', kind: 'tone', trim: [0, 8], detectedMidi: 69.4, detectedCents: 80 });
+      if (tone.trim[1] > 4.0001 || tone.detectedMidi !== 69 || tone.detectedCents !== 50) failed.push(`Sampler: Ton-Sample ${JSON.stringify(tone)}`);
+      const loop = T.sanitizeSampleMeta({ id: 's3', name: 'hey', kind: 'loop', trim: [0, 30], loopBars: 2, bpmAtRec: 106, meterAtRec: '4/4' });
+      if (loop.trim[1] > 10.0001 || loop.loopBars !== 2 || loop.bpmAtRec !== 106) failed.push('Sampler: Loop-Sample');
+      // Kits und Spuren.
+      const sam = T.sanitizeSampler({ kits: [{ id: 'k1', name: 'A', pads: ['s1', 'f:kick', '../x', 5, null] }, { id: 'k1', name: 'doppelt' }, { id: 'k2', pads: [] }], kitId: 'f-electro' });
+      if (sam.kits.length !== 2 || sam.kits[0].pads.length !== 8 || sam.kits[0].pads.join() !== 's1,f:kick,,,,,,' || sam.kitId !== 'f-electro') failed.push(`Sampler: sanitizeSampler ${JSON.stringify(sam)}`);
+      if (T.sanitizeSampler(null).kits.length !== 1 || T.sanitizeSampler({ kits: [], kitId: 'zz' }).kitId !== 'k1') failed.push('Sampler: Standard-Kit');
+      if (T.sanitizeSampler({ kits: Array.from({ length: 12 }, (_, i) => ({ id: `k${i}` })) }).kits.length !== 8) failed.push('Sampler: mehr als acht Kits');
+      for (const kit of T.FACTORY_KITS) for (const id of kit.pads) if (!T.FACTORY_SAMPLES.some((x) => x.id === id)) failed.push(`Sampler: Werks-Kit ${kit.id} kennt ${id} nicht`);
+      const lanes = T.sanitizeSampleLanes([{ padId: 's1', steps: { 0: 1, 4: 0.6, 99: 1, x: 1, 8: 'laut', 12: 5 } }, { padId: 's1', steps: { 1: 1 } }, { padId: 'f:kick' }, { padId: 'a' }, { padId: 'b' }, { padId: 'c' }, { padId: '../x' }], 16);
+      if (lanes.length !== 4 || Object.keys(lanes[0].steps).join() !== '0,4,12' || lanes[0].steps[12] !== 1 || lanes[0].on !== true) failed.push(`Sampler: sanitizeSampleLanes ${JSON.stringify(lanes)}`);
+      // Zustand: fehlende/ungültige Sample-Ids sind kein Fehler, die Spur bleibt (stumm) stehen, alte Stände laden.
+      const withSamples = T.sanitizeState({ ...clone(T.defaultState()), sampler: { kits: [{ id: 'k1', name: 'Chor', pads: ['s9', null] }], kitId: 'k1' }, sampleLanes: [{ padId: 's9', steps: { 0: 1, 8: 1 } }] });
+      if (withSamples.sampler.kits[0].pads[0] !== 's9' || withSamples.sampleLanes[0].padId !== 's9') failed.push('Sampler: unbekannte Sample-Id geht beim Laden verloren');
+      const oldNoSampler = clone(T.defaultState()); delete oldNoSampler.sampler; delete oldNoSampler.sampleLanes;
+      const loadedOld = T.sanitizeState(oldNoSampler);
+      if (loadedOld.sampler.kits.length !== 1 || loadedOld.sampleLanes.length !== 0) failed.push('Sampler: alter Stand ohne Sampler lädt nicht');
+      const shortMeter = T.sanitizeState({ ...clone(T.defaultState()), patternIndex: T.patternIndexByName('Waltz Step'), sampleLanes: [{ padId: 's9', steps: { 3: 1, 14: 1 } }] });
+      if (Object.keys(shortMeter.sampleLanes[0].steps).join() !== '3') failed.push('Sampler: Schritte außerhalb des Takts bleiben stehen');
+      for (const pinned of [T.lessonState(T.defaultState(), T.WORKSHOP_LESSONS[0]), T.dcBuild(T.DC_SONGS[0].id).original]) if (pinned.sampleLanes.length) failed.push('Sampler: Workshop/de:construct starten mit Sample-Spuren');
+      // Tonziel: automatisch der Akkordton (Grundton/Terz/Quinte) mit dem kleinsten Abstand.
+      const cmaj = [0, 4, 7];
+      const gmaj = [7, 11, 2];
+      const targets = [[T.sampleToneTarget('auto', 69, cmaj), 67], [T.sampleToneTarget('auto', 66, cmaj), 67], [T.sampleToneTarget('auto', 62, cmaj), 60], [T.sampleToneTarget('auto', 70, gmaj), 71], [T.sampleToneTarget('root', 69, cmaj), 72], [T.sampleToneTarget('third', 69, cmaj), 64], [T.sampleToneTarget('fifth', 50, [2, 6, 9]), 45]];
+      for (const [got, want] of targets) if (got !== want) failed.push(`Sampler: Tonziel ${got} statt ${want}`);
+      for (let detected = 48; detected <= 80; detected++) for (const pcs of [cmaj, gmaj, [9, 0, 4]]) {
+        const target = T.sampleToneTarget('auto', detected, pcs);
+        if (Math.abs(target - detected) > 3) failed.push(`Sampler: Tonziel über ${pcs} von ${detected} springt ${target - detected}`);
+      }
+      for (const [target, detected, cents] of [[80, 60, 0], [40, 70, 0], [64, 69, 8], [72, 60, -30]]) {
+        const semis = 12 * Math.log2(T.sampleToneRate(target, detected, cents, 0));
+        if (Math.abs(semis) > 7.0001) failed.push(`Sampler: Umstimmung ${semis.toFixed(2)} über ±7 (${target}/${detected})`);
+      }
+      if (Math.abs(12 * Math.log2(T.sampleToneRate(64, 69, 8, 0)) - (-5 - .08)) > 1e-6 || Math.abs(12 * Math.log2(T.sampleToneRate(60, 60, 0, 2)) - 2) > 1e-6) failed.push('Sampler: Rate = 2^((Ziel − erkannt − Cent/100 + Feinstimmung)/12)');
+      // Quantisierung und Loop-Tempo.
+      if (T.quantizeTapStep(10.52, 10, 0, .125, .02) !== 4 || T.quantizeTapStep(10.49, 10, 3, .125, 0) !== 7 || T.quantizeTapStep(9.9, 10, 0, .125, 0) !== -1) failed.push('Sampler: Quantisierung');
+      if (T.loopRate(106, 106) !== 1 || T.loopRate(108, 106) === null || T.loopRate(120, 106) !== null || T.loopRate(100, null) !== 1) failed.push('Sampler: Loop-Tempo ±3 %');
+      // Auto-Schnitt und Tonhöhe an künstlichen Signalen.
+      const sr = 44100;
+      const burst = new Float32Array(sr);
+      for (let i = 10000; i < 20000; i++) burst[i] = Math.sin(i / 9) * Math.exp(-(i - 10000) / 3000);
+      const cut = T.autoTrimBounds(burst, sr);
+      if (!(cut.start > .2 && cut.start < .2268) || !(cut.end > .3 && cut.end < sr / sr)) failed.push(`Sampler: Auto-Schnitt ${JSON.stringify(cut)}`);
+      const sine = (hz, cents, noise = 0) => { const a = new Float32Array(Math.floor(sr * 1.5)); const f = hz * Math.pow(2, cents / 1200); for (let i = 0; i < a.length; i++) a[i] = (Math.sin(2 * Math.PI * f * i / sr) + .5 * Math.sin(4 * Math.PI * f * i / sr)) / 2 + (Math.random() * 2 - 1) * noise; return a; };
+      for (const [hz, cents, midi] of [[220, 0, 57], [220, -8, 57], [440, 12, 69], [130.81, 0, 48], [880, 0, 81]]) {
+        const found = T.detectPitch(sine(hz, cents, .03), sr);
+        if (!found || found.midi !== midi || Math.abs(found.cents - cents) > 6) failed.push(`Sampler: Tonhöhe ${hz} Hz ${cents} ¢ → ${JSON.stringify(found)}`);
+      }
+      const noise = new Float32Array(sr);
+      for (let i = 0; i < noise.length; i++) noise[i] = (Math.random() * 2 - 1) * Math.exp(-i / 3000);
+      if (T.detectPitch(noise, sr) !== null) failed.push('Sampler: Geräusch hat keine Tonhöhe');
+      const peaks = T.wavePeaks(burst, 14);
+      if (peaks.length !== 14 || Math.max(...peaks) !== 1) failed.push('Sampler: Mini-Wellenform');
+    }
     // Engine-Weiche je Spur (ohne AudioContext, mit Spionen).
     {
       const calls = [];
@@ -23824,6 +23887,34 @@ async function openGrooveLab(entry = 'egg') {
       storage: {
         load: () => DB.metaGet('grooveLab').then((record) => record?.data ?? null),
         save: (data) => DB.metaPut({ key: 'grooveLab', type: 'grooveLab', data, updatedAt: Date.now() }),
+        // Eigene Samples des Samplers (Paket 9): Audio unverändert (Blob des MediaRecorders, wie die REC-
+        // Aufnahmen) in `files`, Metadaten als meta-Typ `labSample`. „Alle Daten löschen“ (DB.wipe) leert
+        // beide Stores und nimmt sie damit mit; sie reisen nicht in GL1.-Codes.
+        samples: {
+          list: () => DB.metaByType('labSample').then((records) => records.map((r) => r.data)),
+          get: async (id) => {
+            const rec = await DB.fileGet(`labSample:${id}`);
+            return rec ? recordBlob(rec, rec.mime || 'audio/webm') : null;
+          },
+          // Mit Blob: Audio und Metadaten in einer Transaktion; ohne: nur die Metadaten ändern.
+          put: async (data, blob) => {
+            const meta = { key: `labSample:${data.id}`, type: 'labSample', data, updatedAt: Date.now() };
+            if (!blob) { await DB.metaPut(meta); return; }
+            await DB.putFileAndMeta({ ...(await fileRecord(`labSample:${data.id}`, blob, `${data.name}`)), mime: blob.type || 'audio/webm' }, meta);
+          },
+          remove: (id) => DB.deleteMetaAndFiles(`labSample:${id}`, [`labSample:${id}`]),
+        },
+      },
+      // Mikrofon für den Sampler: dieselben Aufnahme-Einstellungen wie der REC (Echo-Unterdrückung, Rauschfilter
+      // und Automatikpegel aus, siehe RECORDING_CONSTRAINTS) und derselbe Ausweichplan weg vom Bluetooth-Mikrofon.
+      mic: {
+        open: async () => {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: recordingAudioConstraints() });
+          return preferWideBandMic(stream);
+        },
+        close: (stream) => { for (const track of stream?.getTracks?.() || []) track.stop(); },
+        // 'ok' | Bluetooth/Schmalband — das Lab zeigt dann denselben Hinweis wie der Player.
+        quality: (stream) => recInputQuality(recStreamInfo(stream)),
       },
     });
     // Schließen per Zurück-Geste und Wischen vom linken Rand (siehe

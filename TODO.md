@@ -16,6 +16,20 @@ Planungsdokumente (siehe Git-Historie für deren Inhalt).
   Erfordert Tests auf echter Hardware und kann nicht aus einer
   Remote-Ausführungsumgebung heraus erledigt werden.
 
+- [ ] **Groove Lab: Hörprobe und Geräte-Test des Samplers und der neuen Klänge.**
+  Nicht aus der Remote-Umgebung möglich: iPhone Safari und Android Chrome —
+  Aufnahme mit Kabel-Kopfhörern, Bluetooth-Hinweis, Wiedergabe nach App-Neustart,
+  „Alle Daten löschen“ entfernt die Samples, Offline-Start; außerdem Hörprobe von
+  Limiter (Pumpen 0/hoch), Sample-Kit, Hi-Hat-Akzenten, Fills, Finger-Bass,
+  Pop-Satz, Chor/Klavier und den Umkehrungen/Zwischendominanten
+  (`ARBEITSANWEISUNG-GROOVE-LAB-KLANG-UND-SAMPLER`, im Bericht unter `docs/archiv/`).
+- [ ] **Sampler: Loops im Tempo strecken.** v1 spielt Loops nur im Aufnahmetempo
+  ±3 %. Mit `signalsmith-stretch.js` einmal je Tempo offline auf die neue Länge
+  rendern und cachen (Tonhöhe bleibt) — größerer Umbau, nicht auf Verdacht.
+- [ ] **Fingerschnipser-Sample (`snap`).** VCSL enthält keinen; „Halftime Pop“
+  klingt dort mit Synthese. Nur mit einer Quelle mit geklärter Lizenz ergänzen
+  (`samples/aufbereiten.sh`, `samples/LIZENZ.md`, `LAB_DRUM_FILES`).
+
 ## Optionaler Backlog
 
 Ausdrücklich außerhalb des obigen Auftrags — keine belegten Fehler, nur Ideen:

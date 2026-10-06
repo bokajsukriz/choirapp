@@ -105,3 +105,48 @@ pumpt nicht) steht aus, da hier nicht hörbar prüfbar. Die Messung belegt nur P
 - Neue Vorlagen (Kategorie `pop`, Namen/Infos de/en/pl): `descend` (C – G/H – Am – F), `gospelIv` (C – F – Fm – C), `mixFlat7` (C – B♭ – F – C), `secDom` (C – E – Am – F).
 - Tests: Akkordtöne aller sieben Fälle (C-Dur) und der beiden Moll-Fälle, Stufenzahlen und Namen, Zustand/Bibliothek laden (auch alte), `bassNoteMidi` und Bass-Umfang der neuen Vorlagen in allen 12 Tonarten, `spellCheck`. Der SATB-Test über alle Folgen × 12 Tonarten × 4 Modi (jetzt 5088 Akkordwechsel) bleibt ohne Parallelen, ohne verdoppelten Leitton, im Umfang, ohne Stimmkreuzung; die Basstöne (Umkehrung/verminderter Sextakkord) werden mitgeprüft. `SW_VERSION` v524.
 - Offen: Hörprobe der Umkehrungen/Zwischendominanten; im Pop-Satz zählt `VOICING_STATS` nicht mit (dort sind Parallelen weich vermieden).
+
+## Paket 9 – Sampler (erledigt, mit Abweichung bei Loops)
+
+Design-Vorlage (vier Screens) gelesen; Farben/Abstände aus den Lab-Variablen (`--accent`, `--bg`, `--line`, `--text`, `--muted`, `.panel`, Chips), die Pad-Farben je Art aus den vorhandenen Stimmfarben.
+
+- **9a Datenmodell:** `sanitizeSampleMeta` (Name ≤ 12, Art, Schnitt `trim`, `gainDb`, `pitch`, `reverse`, `decay`, `reverb`, `track`, `layerOriginal`, `toneRole`, `detectedMidi/Cents`, `loopBars`, `bpmAtRec`, `meterAtRec`, `by`, `createdAt`; Längen je Art begrenzt), `sanitizeSampler` (≤ 8 Kits à 8 Pads, Werks-Kits „Akustik“/„Elektro“ aus `samples/drums`), `sanitizeSampleLanes` (≤ 4 Spuren). Zustand `sampler`, `sampleLanes` (Undo, Speicherplätze und `GL1.`-Code schließen sie ein; unbekannte Sample-Ids bleiben stehen und schweigen mit „Sample fehlt auf diesem Gerät“). `app.js`: `options.storage.samples` (`list/get/put/remove` über `DB.metaByType('labSample')`, `fileGet`, `putFileAndMeta`, `deleteMetaAndFiles`) und `options.mic` (`open` mit `recordingAudioConstraints()` + `preferWideBandMic()`, `close`, `quality`). „Alle Daten löschen“ (`DB.wipe`) leert beide Stores und nimmt die Samples mit (geprüft: es ist eine Store-Leerung). Backups enthalten sie nicht (wie bisher den Lab-Stand nicht).
+- **9b Reiter „Sampler“** (nach „Melodie“; in Workshop/de:construct ausgeblendet): Kit-Chips (eigene + Werks-Kits, „+ Neues Kit“, Kit löschen), 4×2 Pads als echte `<button>` mit `aria-label` (Name, Art), Mini-Wellenform (14 Balken, gecacht), Tippen = abspielen (sofort beim Aufsetzen, auch ohne Loop), Halten (500 ms) = Editor, Info-Zeile mit „Bearbeiten“ und „Ins Raster legen“, Tasten 1–8 spielen die Pads, freies Pad → Aufnehmen, „Aufnehmen“ und „Bibliothek“ (Werks-Samples + eigene; ein Pad verweist nur).
+- **9c Aufnehmen:** Art Schlag/Ton/Phrase, Live-Wellenform und Pegelanzeige über einen `AnalyserNode` („Pegel gut“ −18…−3 dBFS), Einzählen (1 Takt Klicks; bei Phrase Pflicht), Klick, Auto-Schnitt (−45 dB rel. Spitze, 2 ms Vorlauf, 10 ms Ausblenden), Kopfhörer-Hinweis immer, Bluetooth-/Schmalband-Hinweis über `mic.quality`; Phrase ab Takt-Eins mit Versatz `outputLatency + baseLatency`; Ton: YIN auf den mittleren 50 % des Schnitts, ohne Tonhöhe als Schlag gespeichert (mit Hinweis).
+- **9d Editor:** Wellenform mit zwei ziehbaren Schnittmarken (Zeiger; Tastatur: Pfeile ±10 ms, Umschalt ±1 ms; Mindestabstand 20 ms), Anhören, Auto-Schnitt, Rückwärts, „Spielt als“ (Schlag: Spur + „Originalklang leise darunter“; Ton: erkannter Ton/Cent + Akkordton; Loop: 1/2 Takte), Regler Tonhöhe ±12, Ausklingen, Hall, Lautstärke −24…+6 dB, Name, „aufgenommen von“, Löschen mit Rückfrage. Änderungen gelten erst mit „Fertig“ (Zurück/„Abbrechen“ verwirft sie); ein frisch aufgenommenes Sample ist schon gespeichert und bleibt es.
+- **9e Wiedergabe:** `GrooveEngine.playPad` (Bereich, Pegel, Umstimmung, Rückwärts über gecachten Puffer, Ausklingen, Hall-Send). Schlag/Loop über den Drum-Bus (Kick-Spur löst `duckAt` aus), Ton über die Ebene `keys` mit Zielton je Akkord (`sampleToneTarget`/`sampleToneRate`: `auto` = nächster Akkordton, Umstimmung auf ±7 Halbtöne begrenzt, Dauer bis zum nächsten Treffer bzw. Akkordwechsel, 80 ms Release, überblendeter Loop bei kurzem Bereich). Loop nur auf einer Takt-Eins, taktweise. **Abweichung (laut Anweisung erlaubt, hier Variante „v1“):** Loops laufen nur im Aufnahmetempo ±3 % (per `playbackRate`); sonst schweigt der Loop und die Oberfläche zeigt „Tempo wie bei der Aufnahme (♩ x)“ — die Tonhöhe wird nie verschoben. Strecken mit `signalsmith-stretch.js` steht in `TODO.md`.
+- **9f Im Beat:** „Ins Raster legen“ (Zielspur stumm bzw. mit 35 %), Sample-Spuren unter der Zielspur im Raster (Zellen 1 → .6 → aus, bei Tönen der klingende Tonname, Vorhören, An/Aus), „Live einspielen“ mit vier Pads unter dem Raster und „Ins Raster schreiben“ (Quantisierung auf die nächste Sechzehntel: Tipp-Zeit − Ausgabe-Latenz gegen den zuletzt eingeplanten Schritt), alles über die Undo-Historie rücknehmbar; Feel gilt auch für Sample-Spuren (Velocity-Streuung, Hi-Hat-Akzent und ±3 ms bei Hat-Spuren).
+- **9g Tests:** `runMusicSelfTests` prüft Grenzen, `sanitizeSampleMeta/Sampler/SampleLanes`, Laden mit fehlenden/ungültigen Ids und alte Stände, Tonziel (auto/Rolle, ±7), Rate, Quantisierung, Loop-Tempo, Auto-Schnitt, Tonhöhe (YIN auf künstlichen Signalen, Geräusch ohne Tonhöhe) und Mini-Wellenform; headless mit der Browser-Fake-Mikrofonquelle durchgespielt (Aufnehmen → Editor → Fertig → Ins Raster → Live-Pad → Loop-Wiedergabe → Bibliothek → Kits → Halten/Löschen → ohne Fehler). `uebeLab.selfCheck()` und `selfCheckAudio()` grün. Manuelle Geräteprüfung (iPhone Safari, Android Chrome: Kabel-Kopfhörer, Bluetooth-Hinweis, Wiedergabe nach Neustart, „Alle Daten löschen“, Offline-Start) steht aus — **nicht abgehakt**, siehe `TODO.md`.
+- **CSP:** unverändert (`media-src blob:` und `connect-src 'self'` genügen; kein Worker/Worklet).
+- Noch offen: ein Sample-Pad „aufnehmen“ ohne `options.mic` (reine Test-/Embed-Umgebung) zeigt „Dieses Gerät kann hier nicht aufnehmen“. `README.md` (Abschnitt „Groove Lab: Samples und Sampler“) und `TODO.md` sind ergänzt, Anweisung und Bericht liegen jetzt in `docs/archiv/`. `SW_VERSION` v526.
+
+---
+
+# Gesamtbericht
+
+**Stand:** alle neun Pakete der Arbeitsanweisung sind umgesetzt und per Selbsttests (`chorApp.selfTest`, `selfTestAsync`, `selfTestMusic`, `selfTestProgress`, `uebeLab.selfCheck`/`selfCheckAudio`) im Headless-Chromium grün. Gehört auf *eine* Branch/PR (Auflage dieser Umgebung: nur ein Branch); die Pakete liegen als getrennte Commits vor.
+
+| Paket | Kern | `SW_VERSION` |
+|---|---|---|
+| 1 | Limiter statt Kompressor, Hall am Pumpen vorbei (Peak −1,1 dBFS gemessen) | v517 |
+| 2 | Samples: Chor/Bass/Gitarre tiefer, Ride/Ride-Bell/Tamb/Shaker (≈ +300 KB) | v518 |
+| 3 | Sample-Kit (Auto/Synth/Akustik/Hybrid), Feel, Percussion-Spur, Ride | v519 |
+| 4 | Automatische Fills (Toms, Crash) | v520 |
+| 5 | Bass: Notenlängen (Gate), Stimmführung, Finger-Bass-Samples | v521 |
+| 6 | Melodien: 7 Vorlagen mit Tonart-Bezug, Akkord-Anpassung, Oktavlage | v522 |
+| 7 | Popchor: Pop-Satz (+add9), 4 Grooves, Sample-Klänge, Studio-Standard, kuratierte Auswahl | v523 |
+| 8 | Geliehene Akkorde, Zwischendominanten, Umkehrungen (4 Vorlagen) | v524 |
+| 9 | Sampler (Aufnehmen, Editor, Wiedergabe, Raster, Live) | v525/v526 |
+
+**Abweichungen von der Anweisung (alle oben begründet):**
+1. Eine PR statt einer je Paket (nur ein Branch erlaubt).
+2. Paket 1: fester Vorpegel `.78` vor dem Limiter statt Änderung von `mix.master` (Nutzerwert in gespeicherten Ständen); Lautheit ≈ −0,7 dB gegenüber vorher, Peak < −1 dBFS.
+3. Paket 2: kein `snap`-Sample (VCSL hat keinen Fingerschnipser, keine Quelle ohne geklärte Lizenz); Gitarren-Dateien wegen neuer lauterer Töne mit etwas anderem Pegel neu kodiert; Chor-Dateien in Paket 7 mit 3,1 s neu aufbereitet.
+4. Paket 5: Bass-Grundtöne im Bereich 28–47 statt 33–47 — mit 33–47 ist die geforderte Prüfung („kein Sprung > 7 Halbtöne“) nicht erfüllbar.
+5. Paket 6: Oktavlage wird für die ganze Periode gelöst (nicht Takt für Takt „hängend“); „Synco Verse“ endet auf der Quinte statt der Oktave (sonst Sprung 12 > 9 Halbtöne).
+6. Paket 7: Pop-Satz darf bei Obergrenze 64 und fehlendem Akkordton bis 54 hinabgehen; `samples/choir` neu aufbereitet (Loop).
+7. Paket 9: Loops nur im Aufnahmetempo ±3 % (v1-Variante der Anweisung).
+
+**Nicht geprüft (kann diese Umgebung nicht):** alles Hörbare (Limiter-Pumpen, Klangbalance, Sample-Klänge, Fills, Umkehrungen) und die Geräteprüfungen von Paket 9 (iPhone/Android, Mikrofon mit Kabel/Bluetooth, Neustart, Offline). Die Pegel der Samples/Instrumente sind per Messung (RMS/Peak im Headless-Chromium) auf die Synthese abgestimmt, nicht nach Gehör.
+
+**Offene Punkte** stehen in `TODO.md`: Geräte-/Hörprobe, Loop-Strecken, `snap`-Sample.
