@@ -235,11 +235,14 @@ ein Dialog mit echter Wahl).
   selbst, nicht auf der Tools-Seite). Ablage
   `licks` (`window.parent.chorToolStorage`), Fortschrittsbereich `licks`.
   Prüfung: `licks.selfCheck()` in der Konsole des iframes.
-- `metronom.html` — Metronom (Taktarten, Unterteilung, Betonung je Schlag,
-  Klänge und Drumloops, Tempo-Trainer, Stummtakte, Übungs-Timer). Läuft beim
-  Schließen weiter, solange es spielt (das iframe wird nur ausgeblendet);
-  ein schwebender Knopf oben links (`#metronome-fab`, abschaltbar unter
-  Extras) öffnet es wieder oder stoppt es. Nachrichten laufen per
+- `metronom.html` — Metronom (Betonung je Schlag; Taktart, Unterteilung und
+  Klang als Dropdowns in einer Zeile — der Klang umfasst die Drumloops der
+  Taktart, `LOOPS`, mit echten Schlagzeug-Samples aus `samples/drums/`, Fill
+  jeden 4. Takt; Tools: Tempo-Trainer, Stummtakte, Sleeptimer mit
+  Ausblenden). Läuft beim Schließen weiter, solange es spielt (das iframe
+  wird nur ausgeblendet); ein schwebender Knopf oben links
+  (`#metronome-fab`, abschaltbar im Zahnrad oben rechts, dort auch
+  Bildschirm anlassen und Vibration) öffnet es wieder oder stoppt es. Nachrichten laufen per
   postMessage (`chor-metronome` / `chor-metronome-cmd`).
 - Die Tool-Seiten sind eigenständig, werden in der App über den
   Tools-Reiter als Vollbild-iframe geöffnet (`TOOL_PAGES` in `sw.js`, im Shell-Cache

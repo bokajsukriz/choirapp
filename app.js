@@ -23788,7 +23788,7 @@ function onMetronomeMessage(data) {
   metronomeBg.running = !!data.running;
   if (Number.isFinite(data.bpm)) metronomeBg.bpm = data.bpm;
   if (typeof data.showFab === 'boolean') metronomeBg.showFab = data.showFab;
-  // Im Hintergrund gestoppt (Übungs-Timer abgelaufen, Stopp am Knopf): aufräumen.
+  // Im Hintergrund gestoppt (Sleeptimer abgelaufen, Stopp am Knopf): aufräumen.
   if (!metronomeBg.running && metronomeInBackground()) {
     const hadFocus = $('#metronome-fab').contains(document.activeElement);
     removeMetronomeFrame();
