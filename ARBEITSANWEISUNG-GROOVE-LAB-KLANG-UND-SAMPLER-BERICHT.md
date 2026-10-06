@@ -30,3 +30,13 @@ aber Peak −0,7 dBFS und damit über der Vorgabe).
 
 **Offen:** Hörprobe der Akzeptanz (Pumpen 0 → keine Pegelbewegung; Pumpen hoch → Hallfahne
 pumpt nicht) steht aus, da hier nicht hörbar prüfbar. Die Messung belegt nur Pegel.
+
+## Paket 2 – Sample-Ergänzungen (erledigt, mit Lücke)
+
+- `samples/aufbereiten.sh`: ride, ride-bell, tamb, shaker ergänzt (VCSL `c1ea7bc`, CC0); Instrumente bleiben über `inst`.
+- Neu: `choir/` 45–63, `bass/` 30/33/36, `guitar/` 54/57/60, `drums/` ride, ride-bell, tamb, shaker.
+- **`snap` fehlt:** VCSL enthält keinen Fingerschnipser; keine Ersatzquelle mit geklärter Lizenz eingebaut. „Halftime Pop“ (Paket 7b) klingt dort mit Synthese.
+- Die Instrument-Ordner werden mit *einer* Verstärkung je Instrument normalisiert (lautester Ton → −1 dB). Die neuen tiefen Gitarrentöne sind lauter, deshalb sind die alten `guitar/*.mp3` leicht leiser neu kodiert (nur Pegel). `bass/` und `choir/` blieben unverändert.
+- `uebe-lab.html`: `SAMPLE_INST` um die neuen Töne erweitert; `uebeLab.selfCheckAudio()` liefert keine Fehler (headless geprüft).
+- `samples/LIZENZ.md` ergänzt; `SAMPLES_CACHE` v3 → v4; `SW_VERSION` v518.
+- Größe `samples/`: 2,9 → 3,2 MB (≈ +300 KB, unter dem Limit von ~400 KB).

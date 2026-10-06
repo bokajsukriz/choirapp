@@ -27,6 +27,14 @@ Volltext `LICENSE-VCSL-CC0.txt`), keine Namensnennung nötig.
 | tom-lo | …/Tom 2/Stick/TomL_HitS_v4_rr1_Mid.wav |
 | crash | Idiophones/Struck Idiophones/Suspended Cymbal 2/susCymb2_hit_stick_mf1.wav |
 | clap | Idiophones/Struck Idiophones/Claps/Clap_rr1.wav |
+| ride | Idiophones/Struck Idiophones/Suspended Cymbal 2/susCymb2_hit_stick_mp1.wav (1,2 s) |
+| ride-bell | …/Suspended Cymbal 2/susCymb2_hit_bell_f1.wav (1,2 s) |
+| tamb | Idiophones/Struck Idiophones/Tambourine 1/Tamb1_Hit_v2_rr1_Mid.wav (0,35 s) |
+| shaker | Idiophones/Struck Idiophones/Shaker, Small/Mid_ShakerDouble_Down_rr1.wav (0,2 s) |
+
+Ein Fingerschnipser (`snap`) fehlt: VCSL enthält keinen, eine andere Quelle ist
+nicht eingebunden (keine Quelle ohne geklärte Lizenz). Das Groove Lab klingt dort
+mit Synthese.
 
 ## Instrumente (`bass/`, `strings/`, `guitar/`, `choir/`, `brass/`) – FluidR3_GM, CC BY 3.0
 

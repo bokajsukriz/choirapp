@@ -30,6 +30,11 @@ d "Membranophones/Struck Membranophones/Tom 1/Stick/TomH_HitS_v4_rr1_Mid.wav" to
 d "Membranophones/Struck Membranophones/Tom 2/Stick/TomL_HitS_v4_rr1_Mid.wav" tom-lo 0.6
 d "Idiophones/Struck Idiophones/Suspended Cymbal 2/susCymb2_hit_stick_mf1.wav" crash 1.6
 d "Idiophones/Struck Idiophones/Claps/Clap_rr1.wav" clap 0.3
+d "Idiophones/Struck Idiophones/Suspended Cymbal 2/susCymb2_hit_stick_mp1.wav" ride 1.2
+d "Idiophones/Struck Idiophones/Suspended Cymbal 2/susCymb2_hit_bell_f1.wav" ride-bell 1.2
+d "Idiophones/Struck Idiophones/Tambourine 1/Tamb1_Hit_v2_rr1_Mid.wav" tamb 0.35
+d "Idiophones/Struck Idiophones/Shaker, Small/Mid_ShakerDouble_Down_rr1.wav" shaker 0.2
+# snap: in VCSL gibt es keinen Fingerschnipser – bewusst ausgelassen (keine Quelle ohne geklärte Lizenz).
 fi
 # Instrumente: eine Verstärkung je Instrument (lautester Ton → −1 dB), Verhältnis der Töne bleibt
 inst(){ local src=$1 dst=$2 L=$3 fd=$4; want $dst || return 0; rm -rf $OUT/$dst; mkdir -p $OUT/$dst; local mx=-99; for f in $FL/$src/*.mp3; do p=$(peak $f); mx=$(python3 -c "print(max($mx,$p))"); done
