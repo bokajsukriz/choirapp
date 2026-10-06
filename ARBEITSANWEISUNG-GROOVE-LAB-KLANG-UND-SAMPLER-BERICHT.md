@@ -40,3 +40,16 @@ pumpt nicht) steht aus, da hier nicht hörbar prüfbar. Die Messung belegt nur P
 - `uebe-lab.html`: `SAMPLE_INST` um die neuen Töne erweitert; `uebeLab.selfCheckAudio()` liefert keine Fehler (headless geprüft).
 - `samples/LIZENZ.md` ergänzt; `SAMPLES_CACHE` v3 → v4; `SW_VERSION` v518.
 - Größe `samples/`: 2,9 → 3,2 MB (≈ +300 KB, unter dem Limit von ~400 KB).
+
+## Paket 3 – Echte Drums und Dynamik (erledigt)
+
+- `LabSamples` (in `groove-lab.js`): lädt `samples/drums/*.mp3` nach `engine.start()` im Hintergrund (3 parallel, fehlende Datei → `null`), wird mit dem Kontext verworfen. `GrooveEngine.playSample`, `playTom`, erweitertes `hitTrack(track, time, velocity, kit, opts)`.
+- Zustand `drumKit` (`auto|synth|acoustic|hybrid`), `feel`, `percSound` in `defaultState()` und `sanitizeState()`. `auto`: dance → synth, breaks → hybrid, calm/funky → acoustic.
+- UI: Panel „Schlagzeug-Klang“ mit Kit-Chips im Beat-Reiter (im Workshop ausgeblendet, in de:construct per `dc-bass-panel`).
+- Feel (`_playStep`): Hi-Hat-Akzente (`hatAccent`), `hat-soft` bei Faktor < .7, Velocity ± 6 %, Hats ± 3 ms; Raster bleibt unverändert.
+- Percussion-Spur `perc` (hinter `open`), `CELL_CYCLE.perc = [1, .5]`, `percSound` folgt dem Loop-Wert; ohne Sample Rausch-Fallback. `hatSound: 'ride'` bei „Swing Ride“.
+- **Pinning** über `pinLegacySound(s)`: `lessonState`, `choirTaskState`, `dcBuild` (Original und Meine Version) setzen `drumKit: 'synth'`, `feel: false`, `trackOn.perc: false`; Challenges schalten `perc` ab. Alte gespeicherte Stände aus Chor/Workshop/de:construct ohne die neuen Felder laden ebenfalls gepinnt. Die Perc-Spur ist im Workshop und in de:construct ausgeblendet.
+- Pegel: Samples sind auf −1 dBFS normalisiert; Pegel je Sample (`LAB_DRUM_LEVEL`) per Messung (Headless, `AnalyserNode`) auf die Synthese abgestimmt: Kick/Snare ca. gleicher Peak, Hats/Perc/Clap liegen als echte Instrumente deutlich hörbarer als das Rauschen der Synthese.
+- Tests (`runMusicSelfTests`, Block `GROOVE-LAB-KLANG-TESTS`): Kit-Auflösung, Akzente, Defaults/Alt-Stände/Müll, Pinning aller Aufgaben/Einheiten/Songs, Engine-Weiche je Spur mit Spionen. Lauf headless: grün.
+- `SW_VERSION` v519.
+- Offen: Hörprobe auf dem Gerät; `snap` fehlt (siehe Paket 2), „Halftime Pop“ nutzt dort Synthese.
