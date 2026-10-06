@@ -89,6 +89,21 @@
   /* ---- Rhythmus ---- */
   .head-tools { display: flex; align-items: center; gap: 6px; }
   .help-btn { width: 24px; height: 24px; flex: none; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: .72rem; font-weight: 800; line-height: 1; display: inline-grid; place-items: center; }
+  /* Merkhilfe Intervalle (Songanfänge) */
+  .iv-songs { display: grid; gap: 10px; }
+  .iv-song { border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 10px 12px; }
+  .iv-song.is-off { opacity: .55; }
+  .iv-song.is-asked { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .25); }
+  .iv-song h3 { margin: 0 0 4px; font-size: .9rem; }
+  .iv-dir + .iv-dir { margin-top: 6px; }
+  .iv-dir-head { display: flex; align-items: center; justify-content: space-between; font-size: .7rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .iv-play { width: 34px; height: 34px; border-radius: 50%; background: rgba(var(--accent-rgb), .15); color: var(--accent-foreground, #db0a73); display: grid; place-items: center; }
+  .iv-play svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
+  .iv-dir ul { margin: 2px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+  .iv-dir li { font-size: .82rem; line-height: 1.3; }
+  .iv-dir li small { display: block; color: var(--muted); font-size: .7rem; font-weight: 600; }
+  .iv-cue { color: var(--accent-foreground, #db0a73); font-weight: 700; }
+  .iv-none { margin: 0; font-size: .76rem; color: var(--muted); }
   .help-btn[aria-expanded="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
   .help-text { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-size: .74rem; line-height: 1.45; }
   .help-text b { font-weight: 800; }
@@ -1174,7 +1189,7 @@
     <!-- Liste der Übungsarten (Start) und Übungsansicht (siehe renderArea). -->
     <div class="mode-list-wrap" data-list="ear"></div>
     <div data-exview="ear" hidden>
-    <div class="ex-head"><button class="back-btn" type="button" data-back="ear" data-own-back-btn aria-label="Zurück zu Hören" title="Zurück zu Hören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Hören</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="icon-btn" type="button" data-ear="settings" aria-label="Einstellungen: was geübt wird" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
+    <div class="ex-head"><button class="back-btn" type="button" data-back="ear" data-own-back-btn aria-label="Zurück zu Hören" title="Zurück zu Hören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Hören</span><h2 class="mode-title"></h2></div><div class="head-tools"><button class="icon-btn" type="button" data-ear="songs" hidden aria-label="Merkhilfe: bekannte Songanfänge je Intervall" title="Songanfänge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></button><button class="icon-btn" type="button" data-ear="settings" aria-label="Einstellungen: was geübt wird" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>
     <!-- Gerüst wie Singen (Anweisung Hören-UI): Stufen-Karte, Phasenleiste
          Hören · Du · Lösung, Bühne mit fester Höhe (Zähler oben rechts,
          Meldungszeile), Antwortfeld mit fester Höhe, Daumen-Dock. -->
@@ -8755,6 +8770,7 @@
 
   function renderEar() {
     $('[data-exview="ear"] .mode-title').textContent = modeName('ear', ear.mode);
+    $('[data-ear="songs"]').hidden = ear.mode !== 'interval';
     $('.ear-page').classList.toggle('is-downbeat', isRhythmEar(ear.mode));
     // Im Rhythmus-Bereich (Einsatz finden): Zurück führt zur Rhythmus-Übersicht.
     const home = downbeatInRhythm() ? 'rhythm' : 'ear';
@@ -9067,6 +9083,86 @@
     renderEarDock();
   }
 
+  /* ---- Merkhilfe Intervalle: bekannte Songanfänge (Noten-Knopf neben dem Zahnrad) ----
+     Mit einer Musikpädagogin für einen Popchor (20–40 Jahre) zusammengestellt:
+     nur Stellen, bei denen das Intervall sicher stimmt — lieber eine Lücke als
+     ein falsches Beispiel. [Halbtöne, Richtung, Titel, Herkunft, Stelle]. */
+  const INTERVAL_SONGS = [
+    [1, 'up', 'Der weiße Hai', 'John Williams, Filmmusik', 'die ersten zwei Töne'],
+    [1, 'up', 'Der rosarote Panther', 'Henry Mancini, Filmmusik', 'die ersten zwei Töne'],
+    [1, 'up', 'White Christmas', 'Bing Crosby', 'I’m – drea(ming)'],
+    [1, 'up', 'Ode an die Freude', 'Beethoven', '(Freu)de – schö(ner)'],
+    [1, 'down', 'Für Elise', 'Beethoven', 'die ersten zwei Töne'],
+    [1, 'down', 'Fly Me to the Moon', 'Frank Sinatra', 'Fly – me'],
+    [1, 'down', 'Joy to the World', 'Weihnachtslied', 'Joy – to'],
+    [2, 'up', 'Never Gonna Give You Up', 'Rick Astley', 'Ne – ver (Refrain)'],
+    [2, 'up', 'Happy Birthday', 'Geburtstagslied', '(Hap)py – birth(day)'],
+    [2, 'up', 'Stille Nacht', 'Weihnachtslied', 'Stil – le'],
+    [2, 'up', 'Bruder Jakob', 'Kanon', 'Bru – der'],
+    [2, 'down', 'Yesterday', 'The Beatles', 'Yes – ter(day)'],
+    [2, 'down', 'The Final Countdown', 'Europe', 'Synth-Riff, Ton 1 – 2'],
+    [2, 'down', 'Mary Had a Little Lamb', 'Kinderlied', 'Ma – ry'],
+    [3, 'up', 'Seven Nation Army', 'The White Stripes', 'Riff, Ton 2 – 3'],
+    [3, 'up', 'Smoke on the Water', 'Deep Purple', 'Riff, Ton 1 – 2'],
+    [3, 'up', 'He’s a Pirate (Fluch der Karibik)', 'Klaus Badelt / Hans Zimmer', 'Thema, Ton 1 – 2'],
+    [3, 'up', 'Game of Thrones', 'Ramin Djawadi, Serienmusik', 'Thema, Ton 2 – 3'],
+    [3, 'up', 'Guten Abend, gut’ Nacht', 'Brahms, Wiegenlied', '(Gu)ten – A(bend)'],
+    [3, 'down', 'Hey Jude', 'The Beatles', 'Hey – Jude'],
+    [3, 'down', 'Hänschen klein', 'Kinderlied', 'Hän – schen'],
+    [3, 'down', 'Kuckuck, Kuckuck', 'Kinderlied', 'Ku – ckuck'],
+    [4, 'up', 'Oh When the Saints', 'Spiritual', 'Oh – when'],
+    [4, 'up', 'An der schönen blauen Donau', 'Johann Strauss', 'Walzerthema, Ton 2 – 3'],
+    [4, 'down', 'Imperial March (Star Wars)', 'John Williams', 'Ton 3 – 4'],
+    [4, 'down', 'Swing Low, Sweet Chariot', 'Spiritual', 'Swing – low'],
+    [4, 'down', '5. Sinfonie', 'Beethoven', 'ta-ta-ta – taa'],
+    [5, 'up', 'Hedwig’s Theme (Harry Potter)', 'John Williams', 'Ton 1 – 2'],
+    [5, 'up', 'Game of Thrones', 'Ramin Djawadi, Serienmusik', 'Thema, Ton 1 – 2'],
+    [5, 'up', 'Amazing Grace', 'Gospel', 'A – ma(zing)'],
+    [5, 'up', 'Treulich geführt (Here Comes the Bride)', 'Wagner, Lohengrin', 'Treu – lich'],
+    [5, 'up', 'O Tannenbaum', 'Weihnachtslied', 'O – Tan(nenbaum)'],
+    [5, 'down', 'Tetris-Melodie', 'Videospiel (Korobeiniki)', 'Ton 1 – 2'],
+    [5, 'down', 'Eine kleine Nachtmusik', 'Mozart', 'Ton 1 – 2'],
+    [6, 'up', 'Maria', 'West Side Story', 'Ma – ri(a)'],
+    [7, 'up', 'Star Wars (Hauptthema)', 'John Williams', 'Fanfare, Ton 1 – 2'],
+    [7, 'up', 'Moon River', 'Frühstück bei Tiffany', 'Moon – Ri(ver)'],
+    [7, 'up', 'Morgen kommt der Weihnachtsmann', 'Kinderlied (Twinkle, Twinkle)', '(Mor)gen – kommt'],
+    [7, 'down', 'The Final Countdown', 'Europe', 'Synth-Riff, Ton 3 – 4'],
+    [7, 'down', 'Die Familie Feuerstein', 'Titelsong', 'Flint – stones'],
+    [9, 'up', 'My Bonnie Is Over the Ocean', 'Volkslied', 'My – Bon(nie)'],
+    [9, 'up', 'Jingle Bells (Strophe)', 'Weihnachtslied', 'Dash – ing'],
+    [10, 'up', 'Somewhere', 'West Side Story', 'There’s – a (place for us)'],
+    [10, 'up', 'Raumschiff Enterprise', 'Star Trek, Titelmusik', 'Fanfare, Ton 1 – 2'],
+    [12, 'up', 'Somewhere Over the Rainbow', 'Der Zauberer von Oz', 'Some – where'],
+    [12, 'down', 'Super Mario Bros.', 'Koji Kondo, Videospiel', 'Titelmelodie, hohes – tiefes G'],
+  ];
+  function renderIntervalSongs() {
+    const chosen = ear.settings.intervals;
+    const asked = ear.task?.kind === 'interval' && ear.revealed ? ear.task.semis : null;
+    const rows = INTERVALS.map(([n, name]) => {
+      const songs = INTERVAL_SONGS.filter(([iv]) => iv === n);
+      const dirs = [['up', '↑ aufwärts'], ['down', '↓ abwärts']].map(([dir, label]) => {
+        const list = songs.filter(([, d]) => d === dir);
+        if (!list.length) return '';
+        return `<div class="iv-dir"><div class="iv-dir-head"><span>${label}</span><button type="button" class="iv-play" data-iv-play="${n}:${dir}" aria-label="${esc(name)} ${dir === 'up' ? 'aufwärts' : 'abwärts'} anhören"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div>
+          <ul>${list.map(([, , title, who, cue]) => `<li><b>${esc(title)}</b> <span class="iv-cue">${esc(cue)}</span><small>${esc(who)}</small></li>`).join('')}</ul></div>`;
+      }).join('');
+      return `<section class="iv-song${chosen.includes(n) ? '' : ' is-off'}${asked === n ? ' is-asked' : ''}" data-iv="${n}"><h3>${esc(name)}</h3>${dirs || '<p class="iv-none">Kein sicheres Beispiel – hier hilft nur Hören und Vergleichen.</p>'}</section>`;
+    }).join('');
+    $('.sheet-body').innerHTML = `<p class="foot-note" style="text-align:left;margin-top:0">Ein bekannter Liedanfang hilft, ein Intervall wiederzuerkennen: Sing den Anfang innerlich und vergleiche. ▶ spielt das Intervall vor. Blasser = gerade nicht in deiner Auswahl.</p><div class="iv-songs">${rows}</div>`;
+    if (asked) $(`.iv-song[data-iv="${asked}"]`)?.scrollIntoView({ block: 'start' });
+  }
+  /** ▶ in der Merkhilfe: Intervall vom c′ aus (abwärts vom c″). */
+  async function playIntervalDemo(semis, dir) {
+    try { await engine.start(); } catch { return; }
+    clearEarTimers();
+    engine.fadeBus(ear.bus);
+    ear.bus = engine.newBus();
+    const t = engine.ctx.currentTime + .05;
+    const a = dir === 'down' ? 72 : 60, b = dir === 'down' ? 72 - semis : 60 + semis;
+    engine.keys(a, t, .75, { velocity: .22, dest: ear.bus });
+    engine.keys(b, t + .8, 1.1, { velocity: .22, dest: ear.bus });
+  }
+
   /* ---- Einstellungen (Zahnrad) — ein Blatt für Hören und Rhythmus ---- */
 
   let sheetKind = 'ear';
@@ -9078,7 +9174,7 @@
 
   function openSettings(kind) {
     sheetKind = kind;
-    $('#sheet-title').textContent = kind === 'course' ? `Alle Lektionen · ${courseCounts().done}/${courseCounts().total} geschafft` : kind === 'rhythm' ? 'Rhythmus-Einstellungen' : kind === 'singhelp' || kind === 'earhelp' || kind === 'handshelp' || kind === 'singtaphelp' ? 'Hilfen' : kind === 'hands' ? 'Zwei Hände' : kind === 'singtap' ? 'Singen und klopfen' : 'Einstellungen';
+    $('#sheet-title').textContent = kind === 'songs' ? 'Intervalle: Songanfänge' : kind === 'course' ? `Alle Lektionen · ${courseCounts().done}/${courseCounts().total} geschafft` : kind === 'rhythm' ? 'Rhythmus-Einstellungen' : kind === 'singhelp' || kind === 'earhelp' || kind === 'handshelp' || kind === 'singtaphelp' ? 'Hilfen' : kind === 'hands' ? 'Zwei Hände' : kind === 'singtap' ? 'Singen und klopfen' : 'Einstellungen';
     lastSettingsBtn = document.activeElement;
     $('.sheet').hidden = false;
     renderSettings();
@@ -9092,6 +9188,7 @@
     if (sheetKind === 'singhelp') { renderSing(); $('[data-sing="helps"]')?.focus(); return; }
     if (sheetKind === 'singtaphelp' || sheetKind === 'singtap') { singtap.topKey = ''; renderSingTap(); $(`[data-singtap="${sheetKind === 'singtap' ? 'settings' : 'helps'}"]`)?.focus(); return; }
     if (sheetKind === 'handshelp' || sheetKind === 'hands') { hands.topKey = ''; renderHands(); $(`[data-hands="${sheetKind === 'hands' ? 'settings' : 'helps'}"]`)?.focus(); return; }
+    if (sheetKind === 'songs') { $('[data-ear="songs"]')?.focus(); return; }
     if (sheetKind === 'earhelp') { renderEar(); $(downbeatInRhythm() ? '[data-ear="db-helps"]' : '[data-ear="helps"]')?.focus(); return; }
     if (sheetKind === 'sing') {
       renderSing();
@@ -9121,7 +9218,7 @@
   }
 
   function settingsProblem() {
-    if (sheetKind === 'rhythm' || sheetKind === 'sing' || sheetKind === 'singhelp' || sheetKind === 'earhelp' || sheetKind === 'course') return '';
+    if (sheetKind === 'rhythm' || sheetKind === 'sing' || sheetKind === 'singhelp' || sheetKind === 'earhelp' || sheetKind === 'songs' || sheetKind === 'course') return '';
     const s = ear.settings;
     if (ear.mode === 'interval') {
       if (s.intervals.length < 2) return 'Bitte mindestens zwei Intervalle auswählen.';
@@ -9246,6 +9343,7 @@
     if (sheetKind === 'singtap') { renderSingTapSettings(); return; }
     if (sheetKind === 'hands') { renderHandsSettings(); return; }
     if (sheetKind === 'earhelp') { renderEarHelps(); return; }
+    if (sheetKind === 'songs') { renderIntervalSongs(); return; }
     if (sheetKind === 'sing') {
       // Einstellungen der Übung (früher über der Bühne): nur, was für sie gilt.
       const ex = views.voice === 'list' ? '' : `${SOLFA_MODES.includes(sing.mode) ? '<span class="sub-label">Silben</span><div class="chip-row" data-chips="solfa"></div>' : ''}
@@ -14712,6 +14810,8 @@
     }
 
     // --- Hören
+    const ivPlay = e.target.closest('[data-iv-play]');
+    if (ivPlay) { const [n, dir] = ivPlay.dataset.ivPlay.split(':'); playIntervalDemo(Number(n), dir); return; }
     const earBtn = e.target.closest('[data-ear]');
     if (earBtn) {
       let action = earBtn.dataset.ear;
@@ -14723,6 +14823,7 @@
       if (action === 'db-skip') { skipDownbeat(); return; }
       if (!$('.sheet').hidden && sheetKind === 'earhelp') closeSettings();
       if (action === 'settings') openSettings('ear');
+      else if (action === 'songs') openSettings('songs');
       else if (action === 'close-settings') closeSettings();
       else if (action === 'play') { if (!ear.task) { nextEar(); } else playEar(); }
       else if (action === 'confirm-part') confirmPart();
