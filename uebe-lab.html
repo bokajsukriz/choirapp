@@ -1123,6 +1123,19 @@
   .th-pad[data-hand="R"] { border-color: var(--hand-r); color: var(--hand-r); background: var(--hand-r-bg); }
   .th-pad[data-hand="L"] { border-color: var(--hand-l); color: var(--hand-l); background: var(--hand-l-bg); }
   .th-pad.is-you { border-width: 5px; }
+  .th-pad.is-rest { opacity: .35; border-style: dashed; }
+  /* Aufbau: drei Schritte nebeneinander, der aktuelle gefüllt in der Farbe der Akzente */
+  .th-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .th-steps button { width: 100%; font: inherit; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px;
+    border-radius: 12px; border: 1px solid var(--tint-line); background: var(--surface); color: var(--muted); cursor: pointer; padding: 4px 6px; }
+  .th-steps button span { width: 20px; height: 20px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 12px; background: var(--tint); color: var(--text); }
+  .th-steps .is-done button { color: var(--text); }
+  .th-steps .is-done button span { background: var(--text); color: var(--bg); }
+  .th-steps .is-now button { border: 2px solid var(--accent); color: var(--text); }
+  .th-steps .is-now button span { background: var(--accent); color: var(--accent-ink); }
+  .th-steps button:disabled { cursor: default; }
+  .th-steps button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .th-step-text { margin: 0; font-size: 14px; font-weight: 600; }
   .th-pad.is-lit[data-hand="R"] { animation: th-lit-r .22s ease-out; } .th-pad.is-lit[data-hand="L"] { animation: th-lit-l .22s ease-out; }
   .th-pad.is-tap { animation: tap .16s ease-out; }
   @keyframes th-lit-r { from { background: var(--hand-r); color: #fff; } to { background: var(--hand-r-bg); } }
@@ -4423,7 +4436,7 @@
     // eingeschaltet (Vom Blatt: Noten an). Wiedergabe-Marke nicht in deinem Teil.
     if (mode === 'hands') {
       const notes = !!(ha?.notes || ha?.read);
-      return { mark: notes && phase !== 'you', timeline: false, liveTaps: false, padBeats: phase === 'count', realLayout: notes, notes, grid: !!ha?.grid, syl: !!ha?.syl };
+      return { mark: notes && phase !== 'you', timeline: false, liveTaps: false, padBeats: phase === 'count' || phase === 'gap', realLayout: notes, notes, grid: !!ha?.grid, syl: !!ha?.syl };
     }
     if (mode === 'duo') return all;
     const reading = mode === 'read' || mode === 'along' || (mode === 'echo' && showNotes && !course);
@@ -13444,7 +13457,10 @@
      ------------------------------------------------------------------------ */
   const freshFigProg = () => ({ sub: 'a', good: 0, again: 0, fpm: {}, gridOffered: {} });
   const hands = {
-    level: 1, bars: 2, bpm: 76, click: true, read: false, oneHand: '', // oneHand: '' | 'L' | 'R' (Hand, die die App beim Mitklopfen voll spielt)
+    level: 1, bars: 2, bpm: 60, click: true, read: false, oneHand: '', // oneHand: '' | 'L' | 'R' (Hand, die die App beim Mitklopfen voll spielt)
+    // Stufe 1–4: build = Hände einzeln aufbauen (Schritt 0 Stütze-Hand, 1 Rhythmus-Hand, 2 beide),
+    // gaps = ein Takt nur Klick zwischen Hören, Mitklopfen und Allein. step: Schritt der aktuellen Aufgabe.
+    build: true, gaps: true, step: 0, nextPhase: '',
     aids: { notes: false, grid: false, syl: false }, // Hilfen, standardmäßig aus (gespeichert)
     st: { starterNext: {}, count: {}, poolUsed: {}, recent: [] },
     fig: { 5: freshFigProg(), 6: freshFigProg() },
@@ -13457,23 +13473,28 @@
   const handsBpm = (task) => (task?.kind === 'figure' ? figBpm(task.fig, figFpm(hands.fig[task.level], task.fig)) : hands.bpm);
 
   /** Zeitplan einer Runde (rein, in Ticks): Einzähler (ein Takt), dann je
-   *  Teil die ganze Aufgabe. events: Klicks (Einzähler immer, sonst nur mit
-   *  `click`) und Schläge der App { tick, hand ('R' | 'L' | 'S' = ein Klang),
-   *  gain, phase }. */
-  function handsTimeline(task, { read = false, click = true, oneHand = '' } = {}) {
+   *  Teil die ganze Aufgabe; mit `gaps` vor jedem weiteren Teil ein Takt
+   *  Pause (nur Klick, zum Ankommen). events: Klicks (Einzähler und Pausen
+   *  immer, sonst nur mit `click`) und Schläge der App { tick, hand ('R' |
+   *  'L' | 'S' = ein Klang), gain, phase }. task.only (Aufbau-Schritt): nur
+   *  diese Hand klingt und wird geklopft. */
+  function handsTimeline(task, { read = false, click = true, oneHand = '', gaps = false } = {}) {
     const m = METERS[task.meter];
     const T = m.ticks, len = task.R.total;
     const phases = [{ phase: 'count', from: 0, to: T }];
     let t = T;
-    for (const phase of read ? ['you'] : ['listen', 'along', 'you']) { phases.push({ phase, from: t, to: t + len }); t += len; }
+    (read ? ['you'] : ['listen', 'along', 'you']).forEach((phase, i) => {
+      if (gaps && i) { phases.push({ phase: 'gap', from: t, to: t + T }); t += T; }
+      phases.push({ phase, from: t, to: t + len }); t += len;
+    });
     const events = [];
     for (const ph of phases) {
-      if (ph.phase === 'count' || click) for (let k = ph.from; k < ph.to; k += m.beat) events.push({ tick: k, type: 'click', level: beatLevel(m, mod(k - ph.from, T)), phase: ph.phase });
-      const voices = task.single ? [['S', task.single]] : [['R', task.R], ['L', task.L]];
+      if (ph.phase === 'count' || ph.phase === 'gap' || click) for (let k = ph.from; k < ph.to; k += m.beat) events.push({ tick: k, type: 'click', level: beatLevel(m, mod(k - ph.from, T)), phase: ph.phase });
+      const voices = task.single ? [['S', task.single]] : task.only ? [[task.only, task[task.only]]] : [['R', task.R], ['L', task.L]];
       for (const [hand, p] of voices) {
         let gain = 0;
         if (ph.phase === 'listen') gain = 1;
-        else if (ph.phase === 'along') gain = task.app ? (hand === task.app ? 1 : 0) : oneHand && !task.single ? (hand === oneHand ? 1 : 0) : .5;
+        else if (ph.phase === 'along') gain = task.app ? (hand === task.app ? 1 : 0) : task.only ? .8 : oneHand && !task.single ? (hand === oneHand ? 1 : 0) : .5;
         else if (ph.phase === 'you') gain = task.app && hand === task.app ? 1 : 0;
         if (gain) for (const o of p.onsets) events.push({ tick: ph.from + o, type: 'hit', hand, gain, phase: ph.phase });
       }
@@ -13481,6 +13502,36 @@
     events.sort((a, b) => a.tick - b.tick);
     const you = phases[phases.length - 1];
     return { phases, events, youFrom: you.from, end: you.to };
+  }
+
+  /* ---- Aufbau Schritt für Schritt (Stufe 1–4): erst die Stütze-Hand allein
+     (der Anker), dann die Rhythmus-Hand allein, dann beide. Jeder Schritt ist
+     eine eigene Runde mit Hören → Mitklopfen → Allein und eigener Auswertung;
+     nur Schritt 3 (beide) zählt für Serie und Fortschritt. ---- */
+  const HANDS_STEP_COUNT = 3;
+  const handsBuildOn = () => hands.build && hands.level <= 4 && !hands.read;
+  /** Hand eines Einzelschritts (0: Stütze, 1: Rhythmus), Schritt 2: null. */
+  const handsStepHand = (task, step) => (step === 0 ? task.support : step === 1 ? otherHand(task.support) : null);
+  /** Aufgabe für einen Schritt: Einzelschritt = nur diese Hand hören, klopfen, auswerten. */
+  function handsStepTask(task, step) {
+    const h = handsStepHand(task, step);
+    return h ? { ...task, only: h, you: h, step } : task;
+  }
+  /** Was eine Hand klopft, in Worten (für die Anleitung je Schritt). */
+  function handsVoiceWord(task, h) {
+    if (h !== task.support) return task.kind === 'pool' ? 'den Rhythmus aus dem Kurs' : 'den Rhythmus';
+    const p = task[h], m = METERS[task.meter];
+    const every = (step) => p.onsets.length === p.total / step && p.onsets.every((t) => t % step === 0);
+    if (every(m.unit)) return 'den Puls, auf jeden Schlag';
+    if (m.unit === 12 && every(24)) return 'Halbe, auf jeden zweiten Schlag';
+    return task.level === 3 ? 'die ruhigere Stimme' : 'die Begleitung';
+  }
+  /** Anleitung zum aktuellen Schritt (vor dem Start und nach der Runde). */
+  function handsStepText(task, step) {
+    const sup = task ? task.support : HANDS_SUPPORT[hands.level];
+    const h = step === 0 ? sup : step === 1 ? otherHand(sup) : null;
+    if (h) return `Schritt ${step + 1}: nur die ${HAND_WORD[h]} Hand${task ? ` – sie klopft ${handsVoiceWord(task, h)}` : ''}. Die andere Hand ruht.`;
+    return `Schritt 3: beide Hände zusammen. Die ${HAND_WORD[sup]} Hand trägt, die ${HAND_WORD[otherHand(sup)]} spielt darüber.`;
   }
 
   /** Klang einer Hand: Samples der Song-Engine (R Tom hoch, L Tom tief, ein
@@ -13510,19 +13561,22 @@
     if (!samples.drums) await Promise.race([loadSampleGroup('drums').catch(() => {}), new Promise((ok) => setTimeout(ok, 3000))]);
     if (!again || !hands.task) {
       const lv = hands.level;
+      // Neue Aufgabe nach einer fertigen beginnt wieder bei Schritt 1; die erste
+      // Aufgabe übernimmt einen vorher angetippten Schritt.
+      if (hands.task) hands.step = 0;
       hands.task = lv <= 4 ? nextHandsTask(lv, hands.st, { bars: hands.bars })
         : nextFigTask(lv, hands.fig[lv], hands.st, { bars: hands.bars, prev: hands.task?.kind === 'figure' ? hands.task : null });
       hands.notesFor = null;
     }
-    const task = hands.task;
+    const task = handsBuildOn() ? handsStepTask(hands.task, hands.step) : hands.task;
     const bpm = handsBpm(task);
     const m = METERS[task.meter];
-    const tl = handsTimeline(task, { read: hands.read, click: hands.click, oneHand: hands.level <= 4 ? hands.oneHand : '' });
+    const tl = handsTimeline(task, { read: hands.read, click: hands.click, oneHand: hands.level <= 4 && !task.only ? hands.oneHand : '', gaps: hands.gaps && !hands.read });
     const ctx = engine.ctx;
     const r = { tl, task, bpm, tickSec: 60 / bpm / m.ref, t0: ctx.currentTime + .15, idx: 0, flashIdx: 0, taps: [], bus: engine.newBus({ reverb: false }), playing: true, judged: false };
     r.youStart = r.t0 + tl.youFrom * r.tickSec;
     r.endAt = r.t0 + tl.end * r.tickSec;
-    hands.run = r; hands.phase = 'count'; hands.msg = ''; hands.offerGrid = false; hands.last = null;
+    hands.run = r; hands.phase = 'count'; hands.nextPhase = tl.phases[1]?.phase || ''; hands.msg = ''; hands.offerGrid = false; hands.last = null;
     const click = engine.ctx.createGain();
     click.gain.value = .8;
     click.connect(r.bus);
@@ -13603,6 +13657,13 @@
     const msgs = [];
     if (res.swapped) { hands.msg = 'Hände vertauscht? Links ist L (tief), rechts ist R (hoch). Die Runde zählt nicht.'; return; }
     for (const h of ['R', 'L']) if (res.pull[h]) msgs.push(pullText(h));
+    if (task.only) { // Aufbau: eine Hand allein — Rückmeldung, aber keine Serie und kein Fortschritt
+      const ok = res.key === 'gut' || res.key === 'okay';
+      const next = task.step === 0 ? `die ${HAND_WORD[otherHand(task.only)]} Hand allein` : 'beide Hände zusammen';
+      msgs.unshift(ok ? `Sitzt. Als Nächstes: ${next}.` : `Die ${HAND_WORD[task.only]} Hand ruhig noch einmal – oder etwas langsamer.`);
+      hands.msg = msgs.join(' ');
+      return;
+    }
     if (res.smear) msgs.push(HANDS_SMEAR_TEXT[res.smear]);
     hands.goodRun = res.key === 'gut' ? hands.goodRun + 1 : 0;
     if (task.kind === 'figure') {
@@ -13637,12 +13698,16 @@
     hands.frame = requestAnimationFrame(handsFrame);
     const { tick, ph } = handsNow(r);
     const phase = ph ? ph.phase : tick < 0 ? 'count' : 'wait';
-    if (phase !== hands.phase) { hands.phase = phase; renderHands(); }
-    // Vorzähler: Punkte je Zählzeit
+    if (phase !== hands.phase) {
+      hands.phase = phase;
+      hands.nextPhase = ph ? r.tl.phases[r.tl.phases.indexOf(ph) + 1]?.phase || '' : '';
+      renderHands();
+    }
+    // Vorzähler und Pausentakte: Punkte je Zählzeit
     const m = METERS[r.task.meter];
     const dots = $('.th-count');
     if (dots) {
-      const beat = phase === 'count' ? Math.floor(Math.max(0, tick) / m.beat) : -1;
+      const beat = phase === 'count' || phase === 'gap' ? Math.floor(Math.max(0, tick - (ph?.from || 0)) / m.beat) : -1;
       if (dots.dataset.beat !== String(beat)) {
         dots.dataset.beat = String(beat);
         [...dots.children].forEach((d, i) => d.classList.toggle('is-on', i <= beat));
@@ -13682,7 +13747,7 @@
    *  übereinander (gemeinsames proportionales Layout), in der Farbe ihrer
    *  Fläche; Stufe 5/6 dazu die Zeile „Zusammen“ (auch bei Silben allein). */
   function handsNotesSvg(task, { heads = true, syl = false, together = false } = {}) {
-    const voices = task.single ? [['S', task.single]] : [['R', task.R], ['L', task.L]];
+    const voices = task.single ? [['S', task.single]] : task.only ? [[task.only, task[task.only]]] : [['R', task.R], ['L', task.L]];
     const merged = { ...task.R, notes: [...task.R.notes, ...task.L.notes, ...(task.single ? task.single.notes : [])].sort((a, b) => a.t - b.t) };
     const lines = phraseLines(merged);
     handsStageLines = lines;
@@ -13744,7 +13809,7 @@
       const cells = [];
       for (let t = b * m.ticks; t < (b + 1) * m.ticks; t += step) {
         const has = (p) => p.onsets.some((x) => x >= t && x < t + step);
-        const cls = task.single ? (has(task.single) ? 'has-S' : '') : [has(task.R) ? 'has-R' : '', has(task.L) ? 'has-L' : ''].filter(Boolean).join(' ');
+        const cls = task.single ? (has(task.single) ? 'has-S' : '') : task.only ? (has(task[task.only]) ? `has-${task.only}` : '') : [has(task.R) ? 'has-R' : '', has(task.L) ? 'has-L' : ''].filter(Boolean).join(' ');
         const beat = (t - b * m.ticks) % m.unit === 0 ? ' is-beat' : '';
         cells.push(`<i data-t="${t}" data-d="${step}" class="${cls}${beat}"></i>`);
       }
@@ -13762,7 +13827,7 @@
     const m = METERS[task.meter];
     const T = m.ticks, nBars = task.bars;
     const beats = task.meter === '6/8' ? 6 : T / m.beat;
-    const rows = task.single ? ['single'] : ['R', 'L'];
+    const rows = task.single ? ['single'] : task.only ? [task.only] : ['R', 'L'];
     const W = ST.W, XL = 34, X1 = W - 8, RH = 22, TOP = 14, GAP = 8;
     const X = (t) => XL + clamp(t / T, -.02, 1.04) * (X1 - XL);
     const barH = rows.length * RH + GAP;
@@ -13797,7 +13862,28 @@
     return `<svg class="db-bars th-bars" viewBox="0 0 ${W} ${H}" role="img" aria-label="Auflösung: ${label}">${out.join('')}</svg>`;
   }
 
-  const HANDS_PHASE_LABEL = { idle: '', count: 'Einzähler', listen: 'Hör zu', along: 'Klopf mit', you: 'Jetzt du – allein', wait: 'Gleich …', result: '' };
+  const HANDS_PHASE_LABEL = { idle: '', count: 'Einzähler', listen: 'Hör zu', along: 'Klopf mit', you: 'Jetzt du – allein', gap: 'Pause', wait: 'Gleich …', result: '' };
+  const HANDS_NEXT_LABEL = { listen: 'Hör zu', along: 'Klopf mit', you: 'allein' };
+  /** Beschriftung der laufenden Phase; im Aufbau mit der Hand, vor jedem Teil mit dem, was kommt. */
+  function handsPhaseLabel(phase, task) {
+    const who = task?.only ? `nur ${task.only === 'L' ? 'links' : 'rechts'}` : task && handsBuildOn() ? 'beide Hände' : '';
+    if (phase === 'count' || phase === 'gap') {
+      const next = HANDS_NEXT_LABEL[hands.nextPhase];
+      return `${HANDS_PHASE_LABEL[phase]}${next ? ` – gleich: ${next}` : ''}`;
+    }
+    const base = HANDS_PHASE_LABEL[phase] || '';
+    return base && who && ['listen', 'along', 'you'].includes(phase) ? `${base} (${who})` : base;
+  }
+  /** Schritte des Aufbaus: 1 eine Hand, 2 die andere, 3 beide; antippbar, solange nichts läuft. */
+  function handsStepsHtml(running) {
+    if (!handsBuildOn()) return '';
+    const sup = hands.task ? hands.task.support : HANDS_SUPPORT[hands.level];
+    const side = { L: 'Links', R: 'Rechts' };
+    const names = [side[sup], side[otherHand(sup)], 'Beide'];
+    const items = names.map((n, i) => `<li class="${i < hands.step ? 'is-done' : i === hands.step ? 'is-now' : ''}"><button type="button" data-hands-step="${i}"${running ? ' disabled' : ''}${i === hands.step ? ' aria-current="step"' : ''}><span>${i + 1}</span>${n}</button></li>`).join('');
+    const text = running ? '' : `<p class="th-step-text">${esc(handsStepText(hands.task, hands.step))}</p>`;
+    return `<ol class="th-steps" aria-label="Schritte">${items}</ol>${text}`;
+  }
   /** Stand-Zeile: Stufe 5/6 Unterstufe und Tempo, Pool-Figur, Taktart. */
   function handsInfoHtml() {
     const lv = hands.level, task = hands.task;
@@ -13815,11 +13901,12 @@
   /** Steuerung: Nochmal · Start/Stopp/Weiter · Hilfen. */
   function handsCtlHtml() {
     const running = !!hands.run;
-    const main = running ? ['stop', 'Stopp'] : hands.task && hands.phase === 'result' ? ['next', 'Weiter'] : ['start', 'Start'];
-    const icon = { stop: SING_MAIN_ICONS.stop, next: SING_MAIN_ICONS.start, start: SING_MAIN_ICONS.begin }[main[0]];
+    const stepNext = hands.task && hands.phase === 'result' && handsBuildOn() && hands.last?.task.only && hands.step < HANDS_STEP_COUNT - 1;
+    const main = running ? ['stop', 'Stopp'] : stepNext ? ['step-next', 'Weiter', `Weiter mit Schritt ${hands.step + 2}`] : hands.task && hands.phase === 'result' ? ['next', 'Weiter', 'Weiter, neue Aufgabe'] : ['start', 'Start'];
+    const icon = { stop: SING_MAIN_ICONS.stop, next: SING_MAIN_ICONS.start, 'step-next': SING_MAIN_ICONS.start, start: SING_MAIN_ICONS.begin }[main[0]];
     return `<div class="th-ctl">
-      <button type="button" class="dock-slot" data-hands="again" aria-label="Nochmal, dieselbe Aufgabe"${!running && hands.task ? '' : ' disabled'}><span class="dock-c"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7"/><path d="M4 4v4.7h4.7"/></svg></span><span>Nochmal</span></button>
-      <button type="button" class="dock-main" data-hands="${main[0]}" aria-label="${main[1]}"><span class="dock-core"><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></span><span class="dock-cap">${main[1]}</span></button>
+      <button type="button" class="dock-slot" data-hands="again" aria-label="Nochmal, derselbe Schritt"${!running && hands.task ? '' : ' disabled'}><span class="dock-c"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7"/><path d="M4 4v4.7h4.7"/></svg></span><span>Nochmal</span></button>
+      <button type="button" class="dock-main" data-hands="${main[0]}" aria-label="${main[2] || main[1]}"><span class="dock-core"><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></span><span class="dock-cap">${main[1]}</span></button>
       <button type="button" class="dock-slot" data-hands="helps" aria-label="Hilfen: Noten, Raster, Silben" aria-haspopup="dialog"><span class="dock-c"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></span><span>Hilfen</span></button>
     </div>`;
   }
@@ -13831,7 +13918,10 @@
     const word = res.swapped ? 'Vertauscht?' : VERDICT_WORD[res.key];
     const per = res.swapped ? '' : Object.entries(res.hands).map(([h, x]) => `<span class="th-hv th-row-${h}">${h === 'single' ? 'Zusammen' : h}: ${VERDICT_WORD[x.verdict.key].replace('!', '')} · ${esc(x.verdict.line)}</span>`).join('');
     const worst = res.swapped ? null : Object.values(res.hands).map((x) => x.verdict).sort((a, b) => VERDICT_ORDER.indexOf(b.key) - VERDICT_ORDER.indexOf(a.key))[0];
-    const tip = !worst ? '' : worst.key === 'nochmal' ? 'Erst nur zuhören, dann beim Mitklopfen eine Hand nach der anderen dazunehmen.' : worst.tip.replace(/Klatscher/g, 'Schlag').replace(/klatsch/g, 'klopf');
+    const build = handsBuildOn();
+    const tip = !worst ? '' : worst.key === 'nochmal' ? (build && !last.task.only ? 'Geh einen Schritt zurück: tipp oben eine Hand an, übe sie allein und nimm dann die andere wieder dazu.' : build ? 'Hör beim Vorspielen nur auf diese eine Hand und zähl leise mit.' : 'Erst nur zuhören, dann beim Mitklopfen eine Hand nach der anderen dazunehmen.') : worst.tip.replace(/Klatscher/g, 'Schlag').replace(/klatsch/g, 'klopf');
+    const slower = worst && ['fast', 'nochmal'].includes(worst.key) && last.task.level <= 4 && hands.bpm > HANDS_TEMPO[0]
+      ? `<button type="button" class="k-btn k-btn--ghost" data-hands="slower">Langsamer: ${tempoSymbol(last.task.meter)} = ${Math.max(HANDS_TEMPO[0], hands.bpm - 8)}</button>` : '';
     const notesBtn = hands.notesFor === last.task.key || hands.aids.notes || hands.read ? '' : '<button type="button" class="k-btn k-btn--ghost" data-hands="notes">Noten zeigen</button>';
     const grid = hands.offerGrid ? '<button type="button" class="k-btn k-btn--ghost" data-hands="grid-on">Raster einblenden?</button>' : '';
     return `<div class="th-result" data-verdict="${res.swapped ? 'nochmal' : res.key}">
@@ -13839,7 +13929,7 @@
       ${hands.msg ? `<p class="th-msg" role="status">${esc(hands.msg)}</p>` : ''}
       ${handsBarsSvg(last)}${DUO_LEGEND}
       ${tip && !hands.msg ? `<p class="round-tip">${esc(tip)}</p>` : ''}
-      <div class="th-after">${notesBtn}${grid}</div>
+      <div class="th-after">${slower}${notesBtn}${grid}</div>
     </div>`;
   }
   /** Oberer Streifen neu zeichnen (die Flächen bleiben stehen). */
@@ -13864,23 +13954,30 @@
       ? `<button class="icon-btn" type="button" data-hands="fullscreen" aria-pressed="${!!document.fullscreenElement}" aria-label="${document.fullscreenElement ? 'Vollbild beenden' : 'Vollbild'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>` : '';
     const head = `<div class="ex-head"><button class="back-btn" type="button" data-hands="back" data-own-back-btn aria-label="Zurück zu Rhythmus" title="Zurück zu Rhythmus"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><div class="ex-title"><span class="ex-area" aria-hidden="true">Rhythmus</span><h2 class="mode-title">Zwei Hände</h2></div><div class="head-tools">${fs}<button class="icon-btn" type="button" data-hands="settings" aria-label="Einstellungen: Takte, Tempo, Klick, Vom Blatt" title="Einstellungen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button></div></div>`;
     const level = running ? '' : levelControlHtml('hands', HANDS_LEVELS, hands.level, hands.goodRun >= 3 && hands.level < 5 ? { level: hands.level, hint: 'up' } : null);
-    const count = running ? `<div class="th-phase"><span class="th-count" aria-hidden="true">${Array.from({ length: Math.round(m.ticks / m.beat) }, (_, i) => `<i${beatLevel(m, i * m.beat) >= 1 ? ' class="is-strong"' : ''}></i>`).join('')}</span><b>${HANDS_PHASE_LABEL[phase] || ''}</b></div>` : '';
+    // Was gerade gespielt wird bzw. als Nächstes: im Aufbau die Aufgabe des Schritts.
+    const cur = hands.run?.task || (phase === 'result' ? hands.last?.task : null) || (task && handsBuildOn() ? handsStepTask(task, hands.step) : task);
+    const count = running ? `<div class="th-phase"><span class="th-count" aria-hidden="true">${Array.from({ length: Math.round(m.ticks / m.beat) }, (_, i) => `<i${beatLevel(m, i * m.beat) >= 1 ? ' class="is-strong"' : ''}></i>`).join('')}</span><b>${esc(handsPhaseLabel(phase, cur))}</b></div>` : '';
     // Hilfen in der Runde (nur eingeschaltet), danach die Auflösung.
     let aidHtml = '';
-    if (task && (running || phase === 'result')) {
-      const showNotes = aids.notes || (phase === 'result' && hands.notesFor === task.key);
-      const together = task.kind === 'figure' && (aids.notes || aids.syl || showNotes);
-      if (showNotes || aids.syl) aidHtml += `<div class="th-notes">${handsNotesSvg(task, { heads: showNotes, syl: aids.syl, together })}</div>`;
-      if (aids.grid) aidHtml += handsGridHtml(task);
+    if (cur && (running || phase === 'result')) {
+      const showNotes = aids.notes || (phase === 'result' && hands.notesFor === cur.key);
+      const together = cur.kind === 'figure' && (aids.notes || aids.syl || showNotes);
+      if (showNotes || aids.syl) aidHtml += `<div class="th-notes">${handsNotesSvg(cur, { heads: showNotes, syl: aids.syl, together })}</div>`;
+      if (aids.grid) aidHtml += handsGridHtml(cur);
     }
-    const intro = !task && !running ? `<p class="th-intro">Links klopft die linke Hand (tiefer Klang), rechts die rechte (hoher Klang). Erst hören, dann mitklopfen, dann allein. Noten, Raster und Silben gibt es unter „Hilfen“.</p>` : '';
-    const key = [phase, running, task?.key, hands.level, hands.msg, hands.notesFor, hands.offerGrid, JSON.stringify(hands.aids), hands.read, hands.bpm, hands.goodRun, !!document.fullscreenElement, hands.last ? 1 : 0].join('|');
+    const intro = task || running ? '' : handsBuildOn()
+      ? `<p class="th-intro">Linke Fläche = linke Hand (tief), rechte Fläche = rechte Hand (hoch). Jede Aufgabe in drei Schritten: erst eine Hand, dann die andere, dann beide. Jeder Schritt: hören, mitklopfen, allein${hands.gaps ? ' – dazwischen ein Takt Pause' : ''}. Schon sicher? Tipp oben direkt „Beide“ an.</p>`
+      : `<p class="th-intro">Links klopft die linke Hand (tiefer Klang), rechts die rechte (hoher Klang). Erst hören, dann mitklopfen, dann allein. Noten, Raster und Silben gibt es unter „Hilfen“.</p>`;
+    const key = [phase, hands.nextPhase, running, task?.key, hands.level, hands.step, hands.build, hands.gaps, hands.msg, hands.notesFor, hands.offerGrid, JSON.stringify(hands.aids), hands.read, hands.bpm, hands.goodRun, !!document.fullscreenElement, hands.last ? 1 : 0].join('|');
     if (key === hands.topKey && host.querySelector('.th-top').childElementCount) return;
     hands.topKey = key;
-    host.querySelector('.th-top').innerHTML = `${head}${level}${handsInfoHtml()}${intro}${count}${aidHtml}${phase === 'result' ? handsResultHtml() : ''}${handsCtlHtml()}<p class="th-rotate">Quer drehen geht leichter.</p>`;
+    host.querySelector('.th-top').innerHTML = `${head}${level}${handsInfoHtml()}${handsStepsHtml(running)}${intro}${count}${aidHtml}${phase === 'result' ? handsResultHtml() : ''}${handsCtlHtml()}<p class="th-rotate">Quer drehen geht leichter.</p>`;
     host.dataset.phase = phase;
     if (phase === 'result') host.querySelector('.th-result')?.scrollIntoView({ block: 'nearest' });
-    $$('.th-pad').forEach((p) => p.classList.toggle('is-you', running && phase === 'you' && (!task.you || p.dataset.hand === task.you)));
+    $$('.th-pad').forEach((p) => {
+      p.classList.toggle('is-you', running && phase === 'you' && (!cur?.you || p.dataset.hand === cur.you));
+      p.classList.toggle('is-rest', !!cur?.only && p.dataset.hand !== cur.only); // im Einzelschritt ruht die andere Hand
+    });
   }
 
   function openHands() {
@@ -13921,6 +14018,10 @@
       : '<p class="foot-note" style="text-align:left">Tempo in Stufe 5/6: je Figur, es passt sich an (3× Gut in Folge in der letzten Unterstufe schneller, 2× Nochmal in Folge langsamer).</p>';
     $('.sheet-body').innerHTML = `<span class="sub-label" style="margin-top:0">Takte</span><div class="chip-row">${[2, 4].map((n) => `<button class="chip" type="button" data-hands-bars="${n}" aria-pressed="${hands.bars === n}">${n}</button>`).join('')}</div>
       ${tempo}
+      ${lv <= 4 ? `<label class="switch" style="margin-top:10px"><input type="checkbox" role="switch" data-hands-opt="build"${hands.build ? ' checked' : ''}><span class="switch-track"></span>Hände einzeln aufbauen</label>
+      <p class="foot-note" style="text-align:left;margin-top:0">Erst eine Hand allein, dann die andere, dann beide zusammen.</p>` : ''}
+      <label class="switch"><input type="checkbox" role="switch" data-hands-opt="gaps"${hands.gaps ? ' checked' : ''}><span class="switch-track"></span>Pause zwischen den Teilen</label>
+      <p class="foot-note" style="text-align:left;margin-top:0">Ein Takt nur Klick zwischen Hören, Mitklopfen und Allein – Zeit, um anzukommen.</p>
       <label class="switch"><input type="checkbox" role="switch" data-hands-opt="click"${hands.click ? ' checked' : ''}><span class="switch-track"></span>Puls-Klick</label>
       <label class="switch"><input type="checkbox" role="switch" data-hands-opt="read"${hands.read ? ' checked' : ''}><span class="switch-track"></span>Vom Blatt</label>
       <p class="foot-note" style="text-align:left">Vom Blatt: Noten an, ohne Vorspielen und Mitklopfen. Am Computer: F = links, J = rechts. Tipp-Verzögerung wie in den anderen Rhythmus-Übungen (Rhythmus → Zahnrad → Einmessen).</p>`;
@@ -13932,7 +14033,7 @@
     const pad = e.target.closest?.('.th-pad');
     if (!pad || views.rhythm !== 'hands') return;
     e.preventDefault();
-    if (!hands.run) { if (hands.phase !== 'result' || !hands.task) handsStart(); return; }
+    if (!hands.run) { if (hands.phase !== 'result' || !hands.task) handsStart(!!hands.task); return; }
     handsTap(pad.dataset.hand);
   });
   document.addEventListener('keydown', (e) => {
@@ -13946,8 +14047,18 @@
     const b = e.target.closest('[data-hands]');
     const act = b?.dataset.hands;
     if (act === 'back') { leaveHands(); views.rhythm = 'list'; renderAll(); renderArea(); return; }
-    if (act === 'start' || act === 'next') { handsStart(false); return; }
+    if (act === 'start') { handsStart(!!hands.task); return; } // nach Stopp oder Schrittwahl: dieselbe Aufgabe
+    if (act === 'next') { handsStart(false); return; }
+    if (act === 'step-next') { hands.step = Math.min(HANDS_STEP_COUNT - 1, hands.step + 1); handsStart(true); return; }
     if (act === 'again') { handsStart(true); return; }
+    if (act === 'slower') { hands.bpm = Math.max(HANDS_TEMPO[0], hands.bpm - 8); persist(); renderHands(); return; }
+    const stepBtn = e.target.closest('[data-hands-step]');
+    if (stepBtn && !hands.run) {
+      hands.step = clamp(Number(stepBtn.dataset.handsStep), 0, HANDS_STEP_COUNT - 1);
+      hands.phase = 'idle'; hands.last = null; hands.msg = ''; hands.offerGrid = false;
+      renderHands();
+      return;
+    }
     if (act === 'stop') { handsStop(); return; }
     if (act === 'helps') { openSettings('handshelp'); return; }
     if (act === 'settings') { openSettings('hands'); return; }
@@ -13958,7 +14069,7 @@
     if (lvl) {
       handsStop(false);
       hands.level = Number(lvl.dataset.levelN);
-      hands.task = null; hands.last = null; hands.phase = 'idle'; hands.goodRun = 0; hands.msg = '';
+      hands.task = null; hands.last = null; hands.phase = 'idle'; hands.goodRun = 0; hands.msg = ''; hands.step = 0;
       persist(); renderHands();
       return;
     }
@@ -13973,7 +14084,11 @@
     const aid = e.target.closest?.('[data-hands-aid]');
     if (aid) { hands.aids[aid.dataset.handsAid] = aid.checked; hands.offerGrid = false; persist(); renderHands(); return; }
     const opt = e.target.closest?.('[data-hands-opt]');
-    if (opt) { hands[opt.dataset.handsOpt] = opt.checked; persist(); renderHands(); }
+    if (opt) {
+      hands[opt.dataset.handsOpt] = opt.checked;
+      if (opt.dataset.handsOpt === 'build' && !hands.run) { hands.step = 0; if (hands.phase === 'result') { hands.phase = 'idle'; hands.last = null; hands.msg = ''; } }
+      persist(); renderHands();
+    }
   });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && hands.run) handsStop(); });
 
@@ -13985,6 +14100,8 @@
     if (Number.isFinite(h.bpm)) hands.bpm = clamp(Math.round(h.bpm), HANDS_TEMPO[0], HANDS_TEMPO[1]);
     if (typeof h.click === 'boolean') hands.click = h.click;
     if (typeof h.read === 'boolean') hands.read = h.read;
+    if (typeof h.build === 'boolean') hands.build = h.build;
+    if (typeof h.gaps === 'boolean') hands.gaps = h.gaps;
     if (['', 'L', 'R'].includes(h.oneHand)) hands.oneHand = h.oneHand;
     if (h.aids && typeof h.aids === 'object') for (const k of Object.keys(hands.aids)) if (typeof h.aids[k] === 'boolean') hands.aids[k] = h.aids[k];
     const st = h.st && typeof h.st === 'object' ? h.st : {};
@@ -14006,7 +14123,7 @@
       };
     }
   }
-  const handsSnapshot = () => ({ level: hands.level, bars: hands.bars, bpm: hands.bpm, click: hands.click, read: hands.read, oneHand: hands.oneHand, aids: hands.aids, st: hands.st, fig: hands.fig });
+  const handsSnapshot = () => ({ level: hands.level, bars: hands.bars, bpm: hands.bpm, click: hands.click, read: hands.read, build: hands.build, gaps: hands.gaps, oneHand: hands.oneHand, aids: hands.aids, st: hands.st, fig: hands.fig });
 
 
   /* ------------------------------------------------------------------------
@@ -15697,6 +15814,31 @@
       const one = handsTimeline(t, { oneHand: 'L' });
       if (one.events.some((e) => e.phase === 'along' && e.type === 'hit' && (e.hand !== 'L' || e.gain !== 1))) errors.push('Zwei Hände: „Eine Hand“');
       if (handsTimeline(t, { read: true }).phases.map((p) => p.phase).join() !== 'count,you') errors.push('Zwei Hände: Vom Blatt');
+      // Pausentakte: je ein Takt zwischen den Teilen, Klick auch bei „Klick aus“, keine Schläge der App.
+      const gp = handsTimeline(t, { click: false, gaps: true });
+      if (gp.phases.map((p) => p.phase).join() !== 'count,listen,gap,along,gap,you' || gp.youFrom !== 24 + 2 * 48 + 2 * 24) errors.push('Zwei Hände: Ablauf mit Pausen');
+      if (!gp.events.some((e) => e.type === 'click' && e.phase === 'gap') || gp.events.some((e) => e.type === 'hit' && e.phase === 'gap')) errors.push('Zwei Hände: Pausentakt');
+      if (handsTimeline(t, { read: true, gaps: true }).phases.map((p) => p.phase).join() !== 'count,you') errors.push('Zwei Hände: Vom Blatt mit Pausen');
+      // Aufbau: Schritt 1 Stütze-Hand, Schritt 2 Rhythmus-Hand, Schritt 3 beide; im Einzelschritt klingt nur diese Hand.
+      const s0 = handsStepTask(t, 0), s1 = handsStepTask(t, 1), s2 = handsStepTask(t, 2);
+      if (s0.only !== t.support || s0.you !== t.support || s1.only !== otherHand(t.support) || s2 !== t) errors.push('Zwei Hände: Schritte des Aufbaus');
+      for (const st of [s0, s1]) {
+        const tl0 = handsTimeline(st, { oneHand: otherHand(st.only), gaps: true });
+        const hits = tl0.events.filter((e) => e.type === 'hit');
+        if (hits.some((e) => e.hand !== st.only) || !hits.some((e) => e.phase === 'along') || hits.some((e) => e.phase === 'you')) errors.push(`Zwei Hände: Einzelschritt ${st.only}`);
+      }
+      if (!/Puls/.test(handsVoiceWord(t, t.support)) || handsVoiceWord(t, otherHand(t.support)) !== 'den Rhythmus') errors.push('Zwei Hände: Anleitung je Hand');
+      if (!/Halbe/.test(handsVoiceWord(starterTask(2, 1), 'R'))) errors.push('Zwei Hände: Anleitung Halbe');
+    }
+    // Einzelschritt auswerten: nur die geklopfte Hand, Urteil aus ihr allein.
+    {
+      const tick = .02;
+      const t = starterTask(1, 1);
+      const s1 = handsStepTask(t, 1), h = s1.only;
+      const r1 = judgeHands(s1, t[h].onsets.map((x) => ({ hand: h, at: x * tick })), tick, { you: s1.you });
+      if (r1.key !== 'gut' || Object.keys(r1.hands).join() !== h || r1.swapped) errors.push('Zwei Hände: Einzelschritt auswerten');
+      const r0 = judgeHands(s1, [], tick, { you: s1.you });
+      if (r0.key !== 'nochmal') errors.push('Zwei Hände: Einzelschritt ohne Anschläge');
     }
     // Auswertung mit konstruierten Anschlägen.
     {
@@ -15747,18 +15889,18 @@
     {
       const before = JSON.stringify(handsSnapshot());
       const keep = JSON.parse(before);
-      const probe = { ...keep, level: 5, bars: 4, bpm: 88, aids: { notes: true, grid: false, syl: true }, oneHand: 'R', st: { starterNext: { 1: 3 }, count: { 3: 7 }, poolUsed: { 3: ['walzer'] }, recent: ['a', 'b'] }, fig: { 5: { sub: 'e', good: 1, again: 0, fpm: { F23b: 44 }, gridOffered: { F23a: true } } } };
+      const probe = { ...keep, level: 5, bars: 4, bpm: 88, build: false, gaps: false, aids: { notes: true, grid: false, syl: true }, oneHand: 'R', st: { starterNext: { 1: 3 }, count: { 3: 7 }, poolUsed: { 3: ['walzer'] }, recent: ['a', 'b'] }, fig: { 5: { sub: 'e', good: 1, again: 0, fpm: { F23b: 44 }, gridOffered: { F23a: true } } } };
       restoreHands(JSON.parse(JSON.stringify(probe)));
       const got = handsSnapshot();
-      if (got.level !== 5 || got.bars !== 4 || got.bpm !== 88 || !got.aids.notes || got.aids.grid || got.oneHand !== 'R' || got.st.count[3] !== 7 || got.st.poolUsed[3][0] !== 'walzer' || got.fig[5].sub !== 'e' || got.fig[5].fpm.F23b !== 44) errors.push('Zwei Hände: Speichern/Laden');
-      restoreHands({ level: 9, bars: 3, bpm: 'x', aids: { notes: 'ja' }, oneHand: 'X', st: { poolUsed: { 3: ['nope'] }, recent: [1, 'ok'] }, fig: { 5: { sub: 'z', fpm: { F23b: 999, F34a: 30 } } } });
+      if (got.level !== 5 || got.bars !== 4 || got.bpm !== 88 || got.build !== false || got.gaps !== false || !got.aids.notes || got.aids.grid || got.oneHand !== 'R' || got.st.count[3] !== 7 || got.st.poolUsed[3][0] !== 'walzer' || got.fig[5].sub !== 'e' || got.fig[5].fpm.F23b !== 44) errors.push('Zwei Hände: Speichern/Laden');
+      restoreHands({ level: 9, bars: 3, bpm: 'x', build: 'ja', gaps: 1, aids: { notes: 'ja' }, oneHand: 'X', st: { poolUsed: { 3: ['nope'] }, recent: [1, 'ok'] }, fig: { 5: { sub: 'z', fpm: { F23b: 999, F34a: 30 } } } });
       const bad = handsSnapshot();
-      if (bad.level !== 5 || bad.bars !== 4 || bad.oneHand !== 'R' || bad.st.poolUsed[3].length || bad.st.recent.join() !== 'ok' || bad.fig[5].sub !== 'a' || bad.fig[5].fpm.F23b !== fpmRange('F23b')[1] || 'F34a' in bad.fig[5].fpm) errors.push('Zwei Hände: kaputter Stand nicht bereinigt');
+      if (bad.level !== 5 || bad.bars !== 4 || bad.build !== false || bad.gaps !== false || bad.oneHand !== 'R' || bad.st.poolUsed[3].length || bad.st.recent.join() !== 'ok' || bad.fig[5].sub !== 'a' || bad.fig[5].fpm.F23b !== fpmRange('F23b')[1] || 'F34a' in bad.fig[5].fpm) errors.push('Zwei Hände: kaputter Stand nicht bereinigt');
       restoreHands(keep);
       if (JSON.stringify(handsSnapshot()) !== before) errors.push('Zwei Hände: Stand nach dem Test nicht wiederhergestellt');
     }
     // Hören zuerst: ohne Hilfen zeigt keine Phase vor der Auflösung Noten, Raster oder Silben.
-    for (const phase of ['count', 'listen', 'along', 'you']) {
+    for (const phase of ['count', 'listen', 'gap', 'along', 'you']) {
       const v = visibleAids({ mode: 'hands', phase, hands: { notes: false, grid: false, syl: false } });
       if (v.notes || v.grid || v.syl || v.realLayout || v.mark || v.timeline) errors.push(`Zwei Hände: Hilfe sichtbar ohne Einschalten (${phase})`);
       const on = visibleAids({ mode: 'hands', phase, hands: { notes: true, grid: true, syl: true } });
