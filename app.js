@@ -15967,75 +15967,106 @@ function starIcon(filled) {
   return `<svg viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6.6 7.1.7-5.4 4.8 1.6 7-6.2-3.8-6.2 3.8 1.6-7-5.4-4.8 7.1-.7z"/></svg>`;
 }
 
-/** Zeigt die favorisierte Playlist vollständig als „Nächster Gig" oben an. */
-function renderCurrentSetlist(favorite, songs, recsBySong) {
+/** Menüknopf einer Setliste (schwebendes Menü wie bei Loops und RECs). */
+function playlistMenuButton(pl, cls = 'icon-btn') {
+  const menu = el('button', {
+    class: cls, type: 'button', 'aria-label': t('playlists.menuAria').replace('{name}', pl.name),
+    onclick: async () => {
+      const choice = await floatingMenu(menu, [
+        { value: 'practice', label: t('playlists.menuPractice'), icon: practiceIcon() },
+        { value: 'text', label: t('common.export'), icon: ICON_EXPORT },
+        { value: 'edit', label: t('common.edit'), icon: ICON_EDIT },
+        { value: 'delete', label: t('common.delete'), icon: ICON_DELETE, danger: true },
+      ]);
+      if (choice === 'practice') await openRoutineDialogForSetlist(pl);
+      else if (choice === 'text') openPlaylistTextDialog(pl);
+      else if (choice === 'edit') navigate(`#playlist/${pl.id}`);
+      else if (choice === 'delete') {
+        const ok = await confirmDialog({
+          title: t('playlists.deleteTitle'),
+          text: t('playlists.deleteText').replace('{name}', pl.name),
+          okLabel: t('common.delete'), danger: true,
+        });
+        if (!ok) return;
+        await DB.metaDelete(pl.key);
+        if (plDraft?.id === pl.id) { plDraft = null; plDirty = false; }
+        await renderPlaylists();
+      }
+    },
+  });
+  menu.innerHTML = hamburgerIcon();
+  return menu;
+}
+
+/** Stern: als nächsten Gig markieren bzw. die Markierung zurücknehmen. */
+function playlistStarButton(pl, lists, cls = 'icon-btn') {
+  const fav = el('button', {
+    class: cls, type: 'button',
+    'aria-label': t(pl.favorite ? 'playlists.unsetCurrentAria' : 'playlists.setCurrentAria').replace('{name}', pl.name),
+    'aria-pressed': pl.favorite ? 'true' : 'false',
+    onclick: () => toggleFavoritePlaylist(pl, lists),
+  });
+  fav.innerHTML = starIcon(!!pl.favorite);
+  return fav;
+}
+
+/**
+ * „Nächster Gig“ (Entwurf A „Bühne“): eine kräftige Karte in der
+ * Akzentfarbe — Name, Abspielen und Üben als beschriftete Knöpfe, darunter
+ * alle Titel auf einmal (ohne „mehr zeigen“, ohne Titelzahl und Dauer) mit
+ * den Stimmen des Songs als Farbpunkten. Ein Titel antippen spielt die
+ * Setliste ab dort.
+ */
+function renderCurrentSetlist(favorite, songs, recsBySong, lists) {
   const host = $('#current-setlist-host');
   host.textContent = '';
   if (!favorite) return;
 
   const play = el('button', {
-    class: 'icon-btn icon-btn--ring', type: 'button', 'aria-label': t('playlists.playAria').replace('{name}', favorite.name),
+    class: 'gig-btn gig-btn--play', type: 'button', 'aria-label': t('playlists.playAria').replace('{name}', favorite.name),
     onclick: () => startPlaylist(favorite),
   });
   play.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
+  play.append(el('span', { text: t('player.playAria') }));
 
   const practice = el('button', {
-    class: 'icon-btn icon-btn--ring', type: 'button', 'aria-label': 'Choirgym',
+    class: 'gig-btn', type: 'button', 'aria-label': `${t('routine.openLabel')} – Choirgym`,
     onclick: () => openRoutineDialogForSetlist(favorite),
   });
   practice.innerHTML = practiceIcon();
+  practice.append(el('span', { text: t('routine.openLabel') }));
 
   const titles = favorite.songTitles || [];
-  const list = el('ol', { class: 'gig-list small' });
+  const list = el('ol', { class: 'gig-list' });
   titles.forEach((title, i) => {
     const found = findSongByTitle(songs, title);
-    // Zwei verschiedene Gründe für "kein Ton", beide mit demselben
-    // Verbotssymbol wie in Bibliothek und Player (iconUnavailable()), aber
-    // mit unterschiedlichem Label: der Titel steht gar nicht in der
-    // Bibliothek (found ist null), oder er steht drin, hat aber weder Spur
-    // noch REC (songHasAudio() liefert false).
+    // Zwei Gründe für „kein Ton“, beide mit dem Verbotssymbol wie in
+    // Bibliothek und Player: der Titel steht gar nicht in der Bibliothek
+    // (found ist null), oder er hat weder Spur noch REC.
     const noAudio = !found || !songHasAudio(found, recsBySong);
-    // display:flex direkt auf dem <li> würde in manchen Browsern die
-    // ::marker-Nummerierung des <ol> abschalten (nur list-item generiert
-    // einen Marker) — deshalb Flex nur auf einem inneren Wrapper, der Marker
-    // bleibt am unveränderten <li> erhalten. Dieser Wrapper trägt in der
-    // letzten Zeile zusätzlich das Übe-Programm-Icon rechtsbündig, statt es
-    // (wie zuvor) in eine eigene Zeile unter der Liste zu setzen.
-    const li = el('li', { class: found ? '' : 'muted' });
-    const lineWrap = el('div', { class: 'row', style: 'align-items:center; gap:8px' });
-    if (noAudio) {
-      const label = found ? t('songs.placeholderBadge') : t('songs.setlistMissingBadge');
-      // Titel ganz ohne Song: zusätzlich zur grauen Farbe kursiv und in
-      // eckigen Klammern — macht "existiert nicht" schon im Text sichtbar,
-      // nicht erst über den Tooltip am Symbol (der auf Touch nicht greift).
-      const titleNode = found ? title : el('em', {}, `[${title}]`);
-      lineWrap.append(el('span', { class: 'gig-list-line' },
-        titleNode,
-        el('span', {
-          class: 'placeholder-badge', role: 'img',
-          'aria-label': label, title: label,
-        }, iconUnavailable()),
-      ));
-    } else {
-      lineWrap.append(title);
-    }
-    // Letzte Zeile: rechts Platz für den Üben-Knopf (liegt absolut unten
-    // rechts in der Karte) — in der Zeile selbst machte er sie höher als die
-    // übrigen, die letzte Nummer stand dann mit Abstand abgesetzt.
-    if (i === titles.length - 1) lineWrap.style.paddingRight = '56px';
-    li.append(lineWrap);
-    list.append(li);
+    const label = found ? t('songs.placeholderBadge') : t('songs.setlistMissingBadge');
+    const voices = found ? VOICE_ORDER.filter((v) => v !== 'FULL' && (found.tracks || []).some((tr) => tr.voice === v)) : [];
+    const dots = el('span', { class: 'gig-voices', 'aria-hidden': 'true' },
+      voices.map((v) => { const d = el('i'); d.style.background = VOICE_COLOR[v] || VOICE_COLOR.OTHER; return d; }));
+    const row = el('button', {
+      class: `gig-row${noAudio ? ' is-missing' : ''}`, type: 'button', disabled: noAudio ? true : null,
+      'aria-label': noAudio ? `${title} – ${label}` : t('playlists.playFromAria').replace('{title}', title),
+      onclick: () => startPlaylist(favorite, i),
+    },
+      el('span', { class: 'gig-num', text: String(i + 1) }),
+      el('span', { class: 'gig-title' }, found ? title : el('em', {}, `[${title}]`)),
+      noAudio ? el('span', { class: 'placeholder-badge', role: 'img', 'aria-label': label, title: label }, iconUnavailable()) : dots);
+    list.append(el('li', {}, row));
   });
-  if (titles.length) practice.classList.add('gig-practice');
-  else list.append(el('li', { style: 'display:flex; justify-content:flex-end' }, practice));
 
-  host.append(el('div', { class: 'card', style: 'position:relative' },
-    el('div', { class: 'row', style: 'align-items:flex-start' },
-      el('div', { style: 'flex:1; min-width:0' },
-        el('p', { class: 'small muted', style: 'margin:0' }, t('playlists.nextGig')),
-        el('strong', { text: favorite.name })),
-      play),
-    list, titles.length ? practice : null));
+  host.append(el('section', { class: 'gig-hero', 'aria-label': t('playlists.nextGig') },
+    el('div', { class: 'gig-head' },
+      el('span', { class: 'gig-label', text: t('playlists.nextGig') }),
+      playlistStarButton(favorite, lists, 'gig-icon'),
+      playlistMenuButton(favorite, 'gig-icon')),
+    el('h2', { class: 'gig-name', text: favorite.name }),
+    el('div', { class: 'gig-actions' }, play, practice),
+    titles.length ? list : null));
 }
 
 async function renderPlaylists() {
@@ -16060,10 +16091,15 @@ async function renderPlaylists() {
   lists.sort((a, b) => collator.compare(a.name || '', b.name || ''));
   const recsBySong = groupRecordingsBySongId(recordings);
 
-  renderCurrentSetlist(lists.find((pl) => pl.favorite) || null, songs, recsBySong);
+  const favorite = lists.find((pl) => pl.favorite) || null;
+  renderCurrentSetlist(favorite, songs, recsBySong, lists);
 
+  // Darunter die übrigen Setlisten als schlanke Zeilen (der nächste Gig steht oben).
+  const others = lists.filter((pl) => pl !== favorite);
+  if (!others.length) return;
+  if (favorite) host.append(el('h2', { class: 'pl-section-title', text: t('playlists.others') }));
   const ul = el('ul', { class: 'list' });
-  for (const pl of lists) {
+  for (const pl of others) {
     const titles = pl.songTitles || [];
     const missing = titles.filter((t) => !findSongByTitle(songs, t)).length;
     const playable = titles.length > missing;
@@ -16080,53 +16116,16 @@ async function renderPlaylists() {
           text: `${tPlural(titles.length, 'count.titleOne', 'count.titleMany')}${missing ? ` · ${t('playlists.notImportedCount').replace('{n}', missing)}` : ''}` })));
     if (!playable) open.style.opacity = '.6';
 
-    const fav = el('button', {
-      class: 'icon-btn', type: 'button',
-      'aria-label': t(pl.favorite ? 'playlists.unsetCurrentAria' : 'playlists.setCurrentAria')
-        .replace('{name}', pl.name),
-      'aria-pressed': pl.favorite ? 'true' : 'false',
-      style: pl.favorite ? 'color: var(--warn)' : null,
-      onclick: () => toggleFavoritePlaylist(pl, lists),
-    });
-    fav.innerHTML = starIcon(!!pl.favorite);
-
-    const menu = el('button', {
-      class: 'icon-btn', type: 'button', 'aria-label': t('playlists.menuAria').replace('{name}', pl.name),
-      onclick: async () => {
-        // Schwebendes Menü wie bei Loops und RECs.
-        const choice = await floatingMenu(menu, [
-          { value: 'practice', label: t('playlists.menuPractice'), icon: practiceIcon() },
-          { value: 'text', label: t('common.export'), icon: ICON_EXPORT },
-          { value: 'edit', label: t('common.edit'), icon: ICON_EDIT },
-          { value: 'delete', label: t('common.delete'), icon: ICON_DELETE, danger: true },
-        ]);
-        if (choice === 'practice') await openRoutineDialogForSetlist(pl);
-        else if (choice === 'text') openPlaylistTextDialog(pl);
-        else if (choice === 'edit') navigate(`#playlist/${pl.id}`);
-        else if (choice === 'delete') {
-          const ok = await confirmDialog({
-            title: t('playlists.deleteTitle'),
-            text: t('playlists.deleteText').replace('{name}', pl.name),
-            okLabel: t('common.delete'), danger: true,
-          });
-          if (!ok) return;
-          await DB.metaDelete(pl.key);
-          if (plDraft?.id === pl.id) { plDraft = null; plDirty = false; }
-          await renderPlaylists();
-        }
-      },
-    });
-    menu.innerHTML = hamburgerIcon();
-
-    const actions = el('div', { style: 'display:flex; gap:2px' }, fav, menu);
+    const actions = el('div', { style: 'display:flex; gap:2px' }, playlistStarButton(pl, lists), playlistMenuButton(pl));
     ul.append(el('li', { style: 'display:flex; gap:8px; align-items:stretch; margin-bottom:8px' },
       open, actions));
   }
   host.append(ul);
 }
 
-/** Startet eine Playlist von vorn. Fehlende Titel bleiben als Platzhalter drin. */
-async function startPlaylist(pl) {
+/** Startet eine Playlist von vorn (oder ab `startAt`, wenn dort etwas abspielbar
+ *  ist). Fehlende Titel bleiben als Platzhalter drin. */
+async function startPlaylist(pl, startAt = null) {
   const songs = await DB.metaByType('song').catch(() => []);
   const recordings = await DB.metaByType('recording').catch(() => []);
   const recsBySong = groupRecordingsBySongId(recordings);
@@ -16134,7 +16133,7 @@ async function startPlaylist(pl) {
     const song = findSongByTitle(songs, t);
     return { title: t, id: song ? song.id : null, playable: songHasAudio(song, recsBySong) };
   });
-  const firstIndex = items.findIndex((it) => it.playable);
+  const firstIndex = startAt !== null && items[startAt]?.playable ? startAt : items.findIndex((it) => it.playable);
 
   if (firstIndex === -1) {
     if (!items.some((it) => it.id)) {

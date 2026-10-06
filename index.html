@@ -558,11 +558,44 @@ button.card-row:focus-visible {
 /* „Nächster Gig"-Liste (renderCurrentSetlist): einzeilige Songtitel, keine
    eigenständigen Zeilen wie im .stack — 10px Zeilenabstand wirkte hier viel
    zu luftig, deshalb eine engere eigene Regel statt eines Inline-Styles. */
-.gig-list { margin: 8px 0 0; padding-left: 20px; line-height: 1.35; }
-.gig-list > li + li { margin-top: 3px; }
-.gig-practice { position: absolute; right: 16px; bottom: 14px; }
-.gig-list-line { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
-.gig-list-line .placeholder-badge svg { width: 15px; height: 15px; }
+/* „Nächster Gig“ (Entwurf A „Bühne“): Karte in der Akzentfarbe, knapp oben,
+   alle Titel auf einer weißen Liste mit den Stimmen als Farbpunkten. */
+.gig-hero {
+  background: var(--accent); color: var(--accent-ink); border-radius: 28px;
+  padding: 12px 14px 14px 18px; margin-bottom: 18px;
+  display: flex; flex-direction: column; gap: 8px;
+  box-shadow: 0 10px 28px -14px rgba(var(--accent-rgb), .9);
+}
+.gig-head { display: flex; align-items: center; gap: 2px; margin-bottom: -8px; }
+.gig-label { flex: 1; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.gig-icon {
+  width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; color: inherit;
+  display: grid; place-items: center; padding: 0;
+}
+.gig-icon svg { width: 22px; height: 22px; }
+.gig-icon:active { background: rgba(255,255,255,.35); }
+.gig-name { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 28px; line-height: 1.05; overflow-wrap: anywhere; }
+.gig-actions { display: flex; gap: 10px; }
+.gig-btn {
+  flex: 1; min-height: 46px; border: 0; border-radius: 999px; background: #fff; color: #241b3d;
+  font: inherit; font-weight: 750; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.gig-btn svg { width: 18px; height: 18px; flex: 0 0 auto; }
+.gig-btn--play { background: #241b3d; color: #fff; }
+.gig-list { margin: 2px 0 0; padding: 4px 0; list-style: none; background: var(--surface); border-radius: 18px; color: var(--text); }
+.gig-list > li + li { border-top: 1px solid var(--line); }
+.gig-row {
+  width: 100%; min-height: 40px; display: flex; align-items: center; gap: 10px; padding: 6px 14px;
+  border: 0; background: transparent; color: inherit; font: inherit; text-align: left;
+}
+.gig-row:disabled { cursor: default; }
+.gig-row.is-missing .gig-title { color: var(--muted); }
+.gig-num { width: 20px; flex: 0 0 auto; text-align: right; font-weight: 800; font-size: 13px; color: var(--accent-foreground); font-variant-numeric: tabular-nums; }
+.gig-title { flex: 1; min-width: 0; font-weight: 650; font-size: 15px; line-height: 1.3; overflow-wrap: anywhere; }
+.gig-voices { display: flex; gap: 3px; flex: 0 0 auto; }
+.gig-voices i { width: 8px; height: 8px; border-radius: 50%; }
+.gig-row .placeholder-badge svg { width: 15px; height: 15px; }
+.pl-section-title { margin: 0 0 8px 4px; font-family: var(--font); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 
 .btn {
   min-height: var(--tap);
