@@ -11502,6 +11502,12 @@ function setRecorderState() {
     }
 
     rnOf(host, 'countin')?.setAttribute('aria-pressed', settings.recCountIn ? 'true' : 'false');
+    // Player: ab dem Start bis zum Speichern/Verwerfen bildschirmfüllend.
+    if (host === 'player') {
+      const full = mine && (state !== 'idle' || !!pendingTake);
+      if (full) $('#rec-full-song').textContent = playerSong ? songLabel(playerSong) : '';
+      view.classList.toggle('rc-host--full', full);
+    }
     if (state === 'idle' && !(mine && pendingTake)) rnOf(host, 'timer').textContent = fmtTime(0);
   }
 }
