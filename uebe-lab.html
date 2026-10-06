@@ -2833,6 +2833,16 @@
   const TUNING_WANDER_CENTS = 1;
   const SOFT_GAIN = .74; // engine.soft: so laut wie engine.keys bei gleicher velocity (selfCheckAudio)
   const CLAP_WITH_ACCOMP = 3;
+  /* Echte Samples (samples/drums/, VCSL) für Vorklatschen und Begleit-Groove,
+     sobald geladen (loadSampleGroup('drums') beim Start der Engine); bis dahin
+     bzw. offline die Synthese. Musikpädagogische Empfehlung: in der Begleitung
+     snare-soft und rim statt Clap/voller Snare (sonst klingt sie wie das
+     Vorklatschen), leise Hi-Hat. Klick, Holzblock, Zwei Hände, Intonation und
+     Halteton bleiben bewusst synthetisch (punktgenau, ohne Ausklang). Die
+     Pegel sind so gewählt, dass die Samples nach Hochpass (300 Hz) so laut
+     wie die Synthese sind — selfCheckAudio prüft beide Wege. */
+  const CLAP_SAMPLE_GAIN = .076;
+  const DRUM_SAMPLE = { kick: ['kick', .4], snare: ['snare-soft', .15], rim: ['rim', .11], hat: ['hat-soft', .066], open: ['open', .065] };
   /** Hi-Hat-Raster (nur Stufe 'full'): Ticks `at` innerhalb jeder Periode. */
   function hatGridFor({ shuffle = false, triplets = false, sixteenths = false }) {
     if (shuffle) return { period: 12, at: [0, 8] };
@@ -3017,6 +3027,8 @@
       const ctx = new Ctx({ latencyHint: hint });
       this.ctx = ctx;
       this.hint = hint;
+      // Schlagzeug-Samples (≈ 100 kB) für Vorklatschen und Begleitung vorladen.
+      loadSampleGroup('drums').catch(() => {});
       this.master = ctx.createGain();
       this.master.gain.value = .8;
       const limiter = ctx.createDynamicsCompressor();
@@ -3089,6 +3101,8 @@
     /** kind: 'kick' | 'snare' | 'rim' | 'hat'. */
     drum(kind, time, vel = 1, dest) {
       const v = vel * ACCOMP_GAIN;
+      const smp = !this.synthOnly && DRUM_SAMPLE[kind] && samples.drums?.[DRUM_SAMPLE[kind][0]];
+      if (smp) { this.sampleHit(smp, time, v * DRUM_SAMPLE[kind][1], dest); return; }
       switch (kind) {
         case 'kick': {
           const ctx = this.ctx;
@@ -3132,7 +3146,20 @@
       src.start(time); src.stop(time + length + .02);
     },
 
+    /** Ein Schlagzeug-Sample; rate leicht verstimmt (Vorklatschen: lebendiger). */
+    sampleHit(buf, time, gain, dest, rate = 1) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf; src.playbackRate.value = rate;
+      const g = this.ctx.createGain();
+      g.gain.value = gain;
+      src.connect(g).connect(dest || this.master);
+      src.start(time);
+    },
+
     clap(time, dest, gain = 1) {
+      const smp = !this.synthOnly && samples.drums?.clap;
+      // Echtes Klatschen: je Schlag Tonhöhe ±3 % und Pegel ±2 dB, sonst klingt es mechanisch.
+      if (smp) { this.sampleHit(smp, time, CLAP_SAMPLE_GAIN * gain * 10 ** ((Math.random() * 4 - 2) / 20), dest, 1 + (Math.random() * .06 - .03)); return; }
       [0, .012, .026].forEach((o, i) => this.burst(time + o, { cutoff: 1500, q: 3.2, length: i === 2 ? .11 : .04, volume: (i === 2 ? .3 : .18) * gain }, dest));
     },
 
@@ -7900,6 +7927,11 @@
    *  Becken und die Klatscher der Band (bandclap, leiser als das Vorklatschen). */
   function playDownbeatEvent(ev, time, bus) {
     if (bus.sampled && samples.buf && playSampledEvent(ev, time, bus)) return;
+    // Klang „Einfach“ bleibt ganz Synthese (auch Klatscher und Schlagzeug).
+    engine.synthOnly = !bus.sampled;
+    try { playDownbeatSynth(ev, time, bus); } finally { engine.synthOnly = false; }
+  }
+  function playDownbeatSynth(ev, time, bus) {
     const A = ACCOMP_GAIN;
     switch (ev.kind) {
       case 'bass': engine.drumTone(time, { freq: noteHz(ev.midi), type: 'triangle', gain: .2, decay: ev.long ? 1.2 : ev.dur ? clamp(ev.dur * .9, .12, 1.2) : .45, filter: { type: 'lowpass', freq: 900 } }, bus); break;
@@ -19618,6 +19650,32 @@
     } finally { pianoKeys.set = bank; playSampleHook = null; }
     return errors;
   }
+  /** Pegel (Effektivwert nach Hochpass 300 Hz, ×1000) von Klatscher und
+   *  Begleitung, Synthese gegen Samples — zum Einstellen von CLAP_SAMPLE_GAIN
+   *  und DRUM_SAMPLE (Konsole: `await uebeLab.drumLevels()`). */
+  async function drumLevels() {
+    await loadSampleGroup('drums');
+    const sr = 48000, out = {};
+    const hp = (x) => { const rc = 1 / (2 * Math.PI * 300), a = rc / (rc + 1 / sr); let y = 0, e = 0; for (let i = 1; i < x.length; i++) { y = a * (y + x[i] - x[i - 1]); e += y * y; } return Math.sqrt(e / x.length) * 1000; };
+    const level = async (fn) => {
+      const ctx = new OfflineAudioContext(1, sr * 2, sr);
+      const save = { ctx: engine.ctx, master: engine.master, noise: engine.noise };
+      engine.ctx = ctx; engine.master = ctx.destination;
+      engine.noise = ctx.createBuffer(1, Math.round(sr * .3), sr);
+      const d = engine.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      try { fn(); } finally { Object.assign(engine, save); }
+      return hp((await ctx.startRendering()).getChannelData(0));
+    };
+    for (const synth of [true, false]) {
+      engine.synthOnly = synth;
+      const k = synth ? 'synth' : 'sample';
+      out[`clap:${k}`] = await level(() => engine.clap(.1, null, 1));
+      for (const kind of ['kick', 'snare', 'rim', 'hat', 'open']) out[`${kind}:${k}`] = await level(() => engine.drum(kind, .1, 1, null));
+    }
+    engine.synthOnly = false;
+    return out;
+  }
+
   async function selfCheckAudio() {
     const errors = [];
     const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
@@ -19664,13 +19722,22 @@
       const d = engine.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       try { fn(); } finally { Object.assign(engine, save); }
     });
-    const clapLevel = hpRms(await withEngine(() => engine.clap(.1, null, CLAP_WITH_ACCOMP)));
-    for (const kind of ['kick', 'snare', 'rim', 'hat']) {
-      const x = await withEngine(() => engine.drum(kind, .1, 1, null));
-      const level = hpRms(x);
-      if (!(x.reduce((a, b) => Math.max(a, Math.abs(b)), 0) > .01)) errors.push(`Begleitung ${kind}: kein Ton`);
-      // Bassdrum: nur „nicht lauter“; Snare, Rim, Hi-Hat: deutlich leiser als der Klatscher.
-      if (!(clapLevel > (kind === 'kick' ? 1 : 1.5) * level)) errors.push(`Begleitung ${kind}: Pegel ${(level * 1000).toFixed(2)} gegen Klatscher ${(clapLevel * 1000).toFixed(2)}`);
+    // Beide Wege prüfen: Synthese und (falls geladen) Samples.
+    try { await loadSampleGroup('drums'); } catch { errors.push('Schlagzeug-Samples nicht geladen'); }
+    for (const synth of [true, false]) {
+      if (!synth && !samples.drums) continue;
+      const way = synth ? 'Synthese' : 'Samples';
+      engine.synthOnly = synth;
+      try {
+        const clapLevel = hpRms(await withEngine(() => engine.clap(.1, null, CLAP_WITH_ACCOMP)));
+        for (const kind of ['kick', 'snare', 'rim', 'hat']) {
+          const x = await withEngine(() => engine.drum(kind, .1, 1, null));
+          const level = hpRms(x);
+          if (!(x.reduce((a, b) => Math.max(a, Math.abs(b)), 0) > .01)) errors.push(`Begleitung ${kind} (${way}): kein Ton`);
+          // Bassdrum: nur „nicht lauter“; Snare, Rim, Hi-Hat: deutlich leiser als der Klatscher.
+          if (!(clapLevel > (kind === 'kick' ? 1 : 1.5) * level)) errors.push(`Begleitung ${kind} (${way}): Pegel ${(level * 1000).toFixed(2)} gegen Klatscher ${(clapLevel * 1000).toFixed(2)}`);
+        }
+      } finally { engine.synthOnly = false; }
     }
     return errors;
   }
@@ -19680,7 +19747,7 @@
     EAR_PROGRESSIONS, CHORD_SYMBOLS, VOICE_RANGES,
     chordPcs, voiceProgression, voiceClose, keyName, spell, noteLabel,
     segmentNotes, globalOffset, align, scoreEcho, makeRhythmMelody, melodySpec, rhythmMelodyCheck,
-    selfCheck, selfCheckAudio, roundVerdict, roundDots, rhythmSylCollisions, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml, accompCheck, accompFor, freeAccomp, accompHits, ACCOMP, ACCOMP_LEVELS,
+    selfCheck, selfCheckAudio, drumLevels, roundVerdict, roundDots, rhythmSylCollisions, inKeyCheck, markCheck, aidsCheck, visibleAids, stageSvgHtml, accompCheck, accompFor, freeAccomp, accompHits, ACCOMP, ACCOMP_LEVELS,
     // Klatsch-Grooves (Licks & Grooves)
     courseResult, game, renderStrip,
     sing, renderSing, // Prüfhilfen (Screenshots der Sing-Phasen)

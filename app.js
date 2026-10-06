@@ -15525,8 +15525,9 @@ $('#btn-routine-stop').addEventListener('click', () => routineStop());
 
 /* ---------- Dialog (Abschnitt 4) ------------------------------------------ */
 
-function dumbbellIcon() {
-  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12h2M20 12h2M5 9v6M19 9v6M7 12h10"/><path d="M4 8v8M20 8v8"/></svg>';
+/** „Üben“-Symbol (Kreispfeil mit Play) — wie im Loop-Knopf „Üben“. */
+function practiceIcon() {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4h-4"/><path d="M10 9.5v5l4-2.5z" fill="currentColor"/></svg>';
 }
 
 /** SVG-Markup in ein echtes Element wandeln (per innerHTML, damit der Browser
@@ -15957,7 +15958,7 @@ function renderCurrentSetlist(favorite, songs, recsBySong) {
     class: 'icon-btn icon-btn--ring', type: 'button', 'aria-label': 'Choirgym',
     onclick: () => openRoutineDialogForSetlist(favorite),
   });
-  practice.innerHTML = dumbbellIcon();
+  practice.innerHTML = practiceIcon();
 
   const titles = favorite.songTitles || [];
   const list = el('ol', { class: 'gig-list small' });

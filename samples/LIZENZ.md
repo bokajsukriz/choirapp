@@ -1,4 +1,4 @@
-# Samples: echte Instrumente („Einsatz finden“) und Klavier (`engine.keys`, `piano.html`, `einsingen.html`)
+# Samples: echte Instrumente („Einsatz finden“), Klavier (`engine.keys`, `piano.html`, `einsingen.html`) und Schlagzeug (Vorklatschen und Begleit-Groove in `uebe-lab.html`, Drumloops in `metronom.html`)
 
 Aufbereitet für `uebe-lab.html` (alle Songs von „Einsatz finden“; das Klavier
 zusätzlich für alle Vorgabetöne und Akkorde in Hören und Singen über
