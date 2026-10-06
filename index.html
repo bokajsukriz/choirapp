@@ -213,10 +213,10 @@ h1, h2, h3 { margin: 0; font-weight: 650; line-height: 1.25; font-family: var(--
 .view { display: none; }
 .view.is-active { display: block; animation: fade .18s ease-out; }
 
-/* Die Bibliothek hat einen schwebenden +-Knopf (siehe .fab-add) und braucht
-   unten Luft: sonst liegt der letzte Listeneintrag am Ende der Liste
-   dauerhaft darunter und lässt sich nicht mehr antippen. */
-#view-songs { padding-bottom: 52px; }
+/* Bibliothek und Setlisten haben einen schwebenden +-Knopf (siehe .fab-add)
+   und brauchen unten Luft: sonst liegt der letzte Listeneintrag am Ende der
+   Liste dauerhaft darunter und lässt sich nicht mehr antippen. */
+#view-songs, #view-playlists { padding-bottom: 52px; }
 
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
@@ -1012,14 +1012,6 @@ button.card-row:focus-visible {
   min-height: calc(var(--empty-add-h) + var(--lyrics-toolbar-h));
 }
 
-/* Derselbe Knopf, aber im Textfluss (Setlisten: zwischen „Nächster Gig" und
-   der Liste). Ohne Beschriftung — an der Stelle ist ohnehin klar, was ein +
-   anlegt. */
-.add-inline {
-  display: flex;
-  justify-content: center;
-  margin: 18px 0 20px;
-}
 .empty-add-btn {
   width: 56px;
   height: 56px;
@@ -4342,19 +4334,16 @@ input[type="checkbox"] {
     <div id="current-setlist-host"></div>
     <input class="visually-hidden" id="pl-input" type="file" tabindex="-1" aria-hidden="true" accept=".txt,text/plain">
 
-    <!-- Statt einer Karte mit drei Knöpfen derselbe zurückhaltende +-Knopf
-         wie in den leeren Player-Reitern, hier im Fluss zwischen „Nächster
-         Gig" und der Liste. Er öffnet die drei Wege als Menü. -->
-    <div class="add-inline">
-      <button class="empty-add-btn" id="btn-playlist-add-fab" type="button"
-              aria-label="Setliste hinzufügen" data-i18n-aria="playlists.addFabAria" aria-haspopup="true" aria-expanded="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 5v14M5 12h14"/>
-        </svg>
-      </button>
-    </div>
-
     <div id="playlist-list-host"></div>
+
+    <!-- Derselbe schwebende +-Knopf unten rechts wie bei den Songs — immer am
+         selben Ort, gleiches Design. Er öffnet die drei Wege als Menü. -->
+    <button class="fab-add" id="btn-playlist-add-fab" type="button"
+            aria-label="Setliste hinzufügen" data-i18n-aria="playlists.addFabAria" aria-haspopup="true" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+    </button>
   </section>
 
   <!-- ===== Tools ======================================================= -->
@@ -5129,9 +5118,9 @@ input[type="checkbox"] {
   </div>
 </div>
 
-<!-- Dasselbe für die Setlisten (siehe btn-playlist-add-fab). „Eigene
-     erstellen" steht unten, also am dichtesten am Daumen: das ist der Weg,
-     den man am häufigsten nimmt. -->
+<!-- Dasselbe für die Setlisten (siehe btn-playlist-add-fab, unten rechts wie
+     bei den Songs). „Eigene erstellen" steht unten, also am dichtesten am
+     Daumen: das ist der Weg, den man am häufigsten nimmt. -->
 <div class="fab-menu-backdrop" id="playlists-fab-backdrop" hidden>
   <div class="fab-menu" role="menu" aria-label="Setliste hinzufügen" data-i18n-aria="playlists.addFabAria">
     <button class="fab-menu-item" type="button" role="menuitem" data-action="file">
