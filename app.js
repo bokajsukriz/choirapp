@@ -11213,6 +11213,7 @@ const RID = {
     take: 'rec-take', name: 'rec-take-name', duration: 'rec-take-duration', hint: 'rec-take-hint',
     voices: 'rec-voices', trim: 'rec-trim', trimStart: 'rec-trim-start', trimEnd: 'rec-trim-end',
     tail: 'btn-rec-tail', tailLabel: 'rec-tail-label',
+    songList: 'prec-song-list', songSearch: 'prec-song-search', songAll: 'btn-prec-song-all',
     wave: 'rec-take-wave', preview: 'btn-rec-preview', playIcon: 'icon-rec-play', pauseIcon: 'icon-rec-pause',
     shadeLeft: 'rec-take-shade-left', shadeRight: 'rec-take-shade-right',
     save: 'btn-rec-save', discard: 'btn-rec-discard',
@@ -11226,6 +11227,7 @@ const RID = {
     take: 'recorder-take', name: 'recorder-take-name', duration: 'recorder-take-duration', hint: 'recorder-take-hint',
     voices: 'recorder-voices', trim: 'recorder-trim', trimStart: 'recorder-trim-start', trimEnd: 'recorder-trim-end',
     tail: 'btn-recorder-tail', tailLabel: 'recorder-tail-label',
+    songList: 'rec-song-list', songSearch: 'rec-song-search', songAll: 'btn-rec-song-all',
     wave: 'recorder-take-wave', preview: 'btn-recorder-preview', playIcon: 'icon-recorder-play', pauseIcon: 'icon-recorder-pause',
     shadeLeft: 'recorder-take-shade-left', shadeRight: 'recorder-take-shade-right',
     save: 'btn-recorder-save', discard: 'btn-recorder-discard',
@@ -12171,20 +12173,21 @@ function renderPendingTake() {
   const isNew = !takeDraft;
   if (!takeDraft) {
     const suggestion = recHost === 'recorder' ? `REC ${dateStamp()}` : `REC ${songRecordings.length + 1}`;
-    takeDraft = { name: suggestion, voice: null, songId: null };
+    // Im Player ist der offene Song vorgewählt — per X abwählbar, um den
+    // Take unter einem anderen Song zu speichern.
+    takeDraft = { name: suggestion, voice: null, songId: recHost === 'player' ? playerSong?.id || null : null };
     rn('name').value = takeDraft.name;
     // Kein Fokus aufs Namensfeld: der Name steht unten im Blatt, die
     // Tastatur verdeckte sonst Wellenform und Song.
   }
-  if (recHost === 'player') $('#rec-take-song').textContent = playerSong ? songLabel(playerSong) : '';
   renderTakeTrim();
   renderTakeVoiceLabel();
   updateRecPreviewButton();
   updateRecTakePosition();
   updateRecSaveLocked();
-  // Kein Song ist vorausgewählt — die Liste erscheint erst mit dem Take.
-  if (recHost === 'recorder' && isNew) {
-    $('#rec-song-search').value = '';
+  // Songauswahl mit dem Take neu aufbauen (Recorder: nichts vorgewählt).
+  if (isNew) {
+    rn('songSearch').value = '';
     recSongShowAll = false;
     renderRecSongPicker();
   }
@@ -12321,13 +12324,12 @@ function renderTakeVoiceLabel() {
 }
 
 /**
- * Ob „Speichern" gesperrt ist — auf der Take-Karte im Player nie (der Song
- * steht schon fest), im allgemeinen Recorder erst mit gewähltem Song (siehe
- * renderRecSongPicker). aria-disabled statt disabled, damit der Klick weiter
+ * Ob „Speichern" gesperrt ist — erst mit gewähltem Song (siehe
+ * renderRecSongPicker; im Player ist der offene Song vorgewählt). aria-disabled statt disabled, damit der Klick weiter
  * feuert und der Hinweis erklären kann, was fehlt.
  */
 function updateRecSaveLocked() {
-  const locked = recHost === 'recorder' && !takeDraft?.songId;
+  const locked = !takeDraft?.songId;
   rn('save').setAttribute('aria-disabled', locked ? 'true' : 'false');
 }
 
@@ -12429,8 +12431,8 @@ const recSongPickerRuns = latestRuns();
  */
 async function renderRecSongPicker() {
   const run = recSongPickerRuns.begin();
-  const host = $('#rec-song-list');
-  const query = $('#rec-song-search').value;
+  const host = rn('songList');
+  const query = rn('songSearch').value;
 
   let songs = [];
   let recordings = [];
@@ -12445,7 +12447,7 @@ async function renderRecSongPicker() {
   const rawQuery = query.trim();
   const visible = filterSongsByQuery(songs, query).sort((a, b) => collator.compare(a.title || '', b.title || ''));
   host.textContent = '';
-  $('#btn-rec-song-all').setAttribute('aria-expanded', recSongShowAll ? 'true' : 'false');
+  rn('songAll').setAttribute('aria-expanded', recSongShowAll ? 'true' : 'false');
 
   const selectSong = (song) => {
     takeDraft.songId = song.id;
@@ -12455,7 +12457,7 @@ async function renderRecSongPicker() {
 
   // Gewählt: nur noch dieser Song, ohne Suche und ohne die übrigen Zeilen —
   // eindeutig, was gespeichert wird. Das X nimmt ihn wieder heraus.
-  const search = $('#rec-song-search');
+  const search = rn('songSearch');
   const picked = takeDraft?.songId ? songs.find((s) => s.id === takeDraft.songId) : null;
   search.closest('.rc-search-row').hidden = !!picked;
   if (picked) {
@@ -12531,19 +12533,23 @@ async function renderRecSongPicker() {
 const REC_SONG_SUGGESTIONS = 3;
 const REC_SONG_RESULTS = 8;
 let recSongShowAll = false;
-$('#btn-rec-song-all').addEventListener('click', () => {
-  recSongShowAll = !recSongShowAll;
-  if (recSongShowAll) $('#rec-song-search').value = '';
-  renderRecSongPicker();
-});
+for (const host of ['recorder', 'player']) {
+  rnOf(host, 'songAll').addEventListener('click', () => {
+    recSongShowAll = !recSongShowAll;
+    if (recSongShowAll) rnOf(host, 'songSearch').value = '';
+    renderRecSongPicker();
+  });
+}
 
 // Entprellt wie die Songsuche in der Bibliothek (siehe #search).
 let recSongSearchTimer = 0;
-$('#rec-song-search').addEventListener('input', () => {
-  recSongShowAll = false;
-  clearTimeout(recSongSearchTimer);
-  recSongSearchTimer = setTimeout(renderRecSongPicker, 120);
-});
+for (const host of ['recorder', 'player']) {
+  rnOf(host, 'songSearch').addEventListener('input', () => {
+    recSongShowAll = false;
+    clearTimeout(recSongSearchTimer);
+    recSongSearchTimer = setTimeout(renderRecSongPicker, 120);
+  });
+}
 
 /**
  * Voice-Auswahl beim Speichern oder nachträglich beim Bearbeiten.
@@ -12573,9 +12579,8 @@ async function pickRecordingVoice(current) {
 
 /**
  * Speichert ohne jeden Dialog — Name und Stimme stehen schon über die
- * Take-Karte fest (siehe takeDraft). Im Player ist der Song immer schon
- * bekannt; im allgemeinen Recorder kommt er aus takeDraft.songId (siehe
- * renderRecSongPicker) und wird hier zuerst geprüft — gesperrt, aber
+ * Take-Karte fest (siehe takeDraft). Der Song kommt aus takeDraft.songId
+ * (im Player vorgewählt, siehe renderRecSongPicker) und wird hier zuerst geprüft — gesperrt, aber
  * antippbar, damit der Tipp erklären kann, was fehlt.
  */
 async function onTakeSaveClick() {
@@ -12591,23 +12596,24 @@ async function onTakeSaveClick() {
   takeSaveInProgress = true;
   try {
     let song;
-    if (savingHost === 'recorder') {
-      if (!draft.songId) {
-        banner(t('msg.recPickSongFirst'));
-        $('#rec-song-search').scrollIntoView({ block: 'center', behavior: 'smooth' });
-        return;
-      }
-      try { song = await DB.metaGet(`song:${draft.songId}`); } catch (err) { console.error(err); }
-      if (!song) { banner(t('msg.songGone'), { kind: 'error' }); return; }
-    } else {
-      song = playerSong;
-      if (!song) return;
+    if (!draft.songId) {
+      banner(t('msg.recPickSongFirst'));
+      rn('songSearch').scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
     }
+    if (savingHost === 'player' && playerSong?.id === draft.songId) song = playerSong;
+    else {
+      try { song = await DB.metaGet(`song:${draft.songId}`); } catch (err) { console.error(err); }
+    }
+    if (!song) { banner(t('msg.songGone'), { kind: 'error' }); return; }
 
     const suggestion = savingHost === 'recorder' ? `REC ${dateStamp()}` : `REC ${songRecordings.length + 1}`;
     const name = draft.name.trim() || suggestion;
     const voice = draft.voice;
-    const { blob, mimeType, duration, anchor, trimStart, trimEnd } = take;
+    const { blob, mimeType, duration, trimStart, trimEnd } = take;
+    // Der Anker gehört zum Song, bei dem aufgenommen wurde — unter einem
+    // anderen Song gespeichert, passt er nicht (kein Mitlauf).
+    const anchor = savingHost === 'player' && playerSong?.id !== song.id ? null : take.anchor;
     const fileKey = newFileKey();
     const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
     const fileRec = await fileRecord(fileKey, blob, `${name}.${ext}`);

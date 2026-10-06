@@ -2676,7 +2676,6 @@ input[type="checkbox"] {
   flex: 1 0 auto; border: 0; border-radius: 28px 28px 0 0; box-shadow: 0 -8px 30px rgba(36,27,61,.10);
   padding: 18px calc(20px + var(--safe-right)) calc(26px + var(--safe-bottom)) calc(20px + var(--safe-left));
 }
-.rc-song-fixed { margin: 0; min-height: var(--tap); border-color: var(--accent); background: rgba(var(--accent-rgb),.09); cursor: default; }
 .rc-sheet-grip { align-self: center; width: 40px; height: 5px; border-radius: 3px; background: var(--line); }
 .rc-sheet-title { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 22px; line-height: 1.1; }
 .rc-field { display: flex; flex-direction: column; gap: 8px; }
@@ -2716,7 +2715,7 @@ input[type="checkbox"] {
 .rc-list-note { margin: 0; font-size: 12px; color: var(--muted); }
 .rc-song-list .list-item { margin: 0; min-height: var(--tap); }
 .rc-create small { display: block; }
-.rc-voices.voice-pill-picker { justify-content: flex-start; gap: 8px; }
+.rc-voices.voice-pill-picker { justify-content: center; gap: 8px; }
 .rc-input {
   width: 100%; min-height: var(--tap); padding: 0 14px; border-radius: 14px;
   border: 1px solid rgba(var(--accent-rgb), .32); background: var(--surface); color: var(--text);
@@ -3796,9 +3795,22 @@ input[type="checkbox"] {
 
           <section class="rc-sheet" aria-labelledby="rec-sheet-title">
             <h2 class="rc-sheet-title" id="rec-sheet-title" data-i18n="rec.saveSheetTitle">Speichern unter</h2>
+            <!-- Der offene Song ist vorgewählt; das X nimmt ihn heraus, dann
+                 dieselbe Suche wie im allgemeinen Recorder (renderRecSongPicker). -->
             <div class="rc-field">
-              <span class="rc-field-label" data-i18n="rec.songLabel">Song</span>
-              <div class="list-item is-picked rc-song-fixed"><strong id="rec-take-song"></strong></div>
+              <label class="rc-field-label" for="prec-song-search" data-i18n="rec.songLabel">Song</label>
+              <div class="rc-search-row">
+                <div class="rc-search">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+                  <input id="prec-song-search" type="search" inputmode="search"
+                         autocomplete="off" autocorrect="off" spellcheck="false"
+                         placeholder="Song suchen …" data-i18n-placeholder="songs.searchPlaceholder">
+                </div>
+                <button class="rc-all-btn" id="btn-prec-song-all" type="button" aria-expanded="false" aria-controls="prec-song-list" aria-label="Alle Songs zeigen" data-i18n-aria="rec.allSongsAria">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>
+                </button>
+              </div>
+              <div class="song-pick-list rc-song-list" id="prec-song-list"></div>
             </div>
             <div class="rc-field">
               <span class="rc-field-label" id="rec-voice-label"><span data-i18n="rec.voiceLabel">Stimme</span> <span class="rc-field-optional" data-i18n="rec.optional">(optional)</span></span>
