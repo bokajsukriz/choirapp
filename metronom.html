@@ -814,7 +814,7 @@
   function renderTransport() {
     const btn = $('.play');
     btn.innerHTML = run.playing
-      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>'
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/></svg>'
       : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/></svg>';
     btn.setAttribute('aria-label', run.playing ? 'Stoppen' : 'Starten');
   }
