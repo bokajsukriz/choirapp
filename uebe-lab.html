@@ -386,6 +386,7 @@
   .range-box span { display: block; font-size: .62rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
   .range-box strong { font-size: 1.3rem; }
   .mic-error { color: var(--bad); font-weight: 700; font-size: .78rem; text-align: center; margin: 10px 0 0; min-height: 0; }
+  .mic-error.is-hint { color: var(--muted); font-weight: 500; }
   .icon-btn { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); color: var(--muted); }
   .ear-stage { margin-top: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); padding: 16px 12px; text-align: center; }
   .ear-prompt { margin: 0; font-weight: 800; font-size: .95rem; }
@@ -3057,8 +3058,9 @@
       // gestoppt) wird der Kontext deshalb beim nächsten Start neu angelegt.
       // Einsatz finden (Hören) klatscht – dort ebenfalls Echtzeit.
       const hint = state.tab === 'ear' && ear.mode !== 'downbeat' ? 'balanced' : 'interactive';
+      cancelIdle();
       if (this.ctx && this.hint !== hint) { const old = this.ctx; this.ctx = null; old.close().catch(() => {}); }
-      if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); return; }
+      if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); noteIdle(); return; }
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) throw new Error('Web Audio API nicht verfügbar');
       const ctx = new Ctx({ latencyHint: hint });
@@ -3083,6 +3085,17 @@
       const nd = this.noise.getChannelData(0);
       for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
       await ctx.resume();
+      noteIdle();
+    },
+
+    /** Im Leerlauf anhalten (nie schließen — close() nur beim Pufferwechsel in
+     *  start()): ein laufender Kontext hält die Audio-Sitzung offen und stört
+     *  andere Apps und Bluetooth-Kopfhörer. start() weckt ihn wieder. */
+    idle() {
+      const ctx = this.ctx;
+      if (!ctx || ctx.state !== 'running' || engineBusy()) return false;
+      try { Promise.resolve(ctx.suspend()).catch(() => {}); } catch { return false; }
+      return true;
     },
 
     click(time, level, dest) {
@@ -3334,6 +3347,36 @@
       oscs.forEach((o) => { o.start(time); o.stop(time + duration + .7); });
     },
   };
+
+  /* Leerlauf: Der Wächter prüft 20 s nach dem letzten Start/Stopp (beim
+     Wegschalten der Seite nach kurzer Frist) und hält den Kontext an, sobald
+     nichts mehr klingt. Klingt noch etwas, prüft er später erneut — ein
+     vergessener Stopp-Pfad kann den Kontext also nicht dauerhaft offen halten.
+     Jeder Klangaufruf der Engine zählt als Aktivität, damit auch einzelne
+     Töne (Tippen, Klatschen, Vorspiel) und vorab Geplantes nie mittendrin
+     eingefroren werden. */
+  const ENGINE_IDLE_SUSPEND_MS = 20000;
+  let engineLastSoundAt = 0;
+  let idleTimer = null;
+  for (const name of ['voice', 'click', 'drumTone', 'drumNoise', 'drum', 'burst', 'sampleHit', 'clap', 'saw', 'soft', 'block', 'keys']) {
+    const fn = engine[name];
+    if (typeof fn !== 'function') continue;
+    engine[name] = function (...args) { engineLastSoundAt = performance.now(); return fn.apply(this, args); };
+  }
+  function engineBusy() {
+    return run.playing || !!gr.run || !!gr.replay || !!hands.run || !!singtap.run || !!dbRun
+      || ear.timers.length > 0 || ear.playing !== null || sing.timers.length > 0 || sing.phase !== 'idle'
+      || !!(voice.analyser || voice.stream || voice.pending) || calib.active || micTest.on
+      || performance.now() - engineLastSoundAt < ENGINE_IDLE_SUSPEND_MS;
+  }
+  function cancelIdle() { clearTimeout(idleTimer); idleTimer = null; }
+  function noteIdle(ms = ENGINE_IDLE_SUSPEND_MS) {
+    cancelIdle();
+    idleTimer = setTimeout(() => {
+      idleTimer = null;
+      if (!engine.idle() && engine.ctx?.state === 'running') noteIdle(document.hidden ? 1000 : ENGINE_IDLE_SUSPEND_MS);
+    }, ms);
+  }
 
   /* ------------------------------------------------------------------------
      ZUSTAND
@@ -5199,9 +5242,13 @@
     if (run.playing) stop();
     stopSing();
     if (dbRun) { clearEarTimers(); engine.fadeBus(ear.bus); renderEar(); } // Einsatz finden: Lauf abbrechen
-    if (voice.analyser) micOff();
+    micRelease();
     if (sing.mode !== 'tuner' && state.tab === 'voice') renderSing();
+    // Alles gestoppt: Kontext kurz ausklingen lassen, dann anhalten.
+    engineLastSoundAt = 0;
+    noteIdle(400);
   });
+  window.addEventListener('pagehide', () => { micRelease(); });
 
   function setTab(tab) {
     if (run.playing) stop();
@@ -5212,7 +5259,7 @@
     document.body.dataset.tab = tab;
     if (tab !== 'ear') { clearEarTimers(); if (engine.ctx) engine.fadeBus(ear.bus); }
     // Das Mikrofon läuft nie im Hintergrund weiter, wenn man den Reiter verlässt.
-    if (voice.analyser) micOff();
+    micRelease();
     if (tab !== 'voice') stopSing();
     if (tab === 'ear' || tab === 'voice') preloadPiano(); // Klavier-Samples für engine.keys
     renderAll();
@@ -9785,9 +9832,11 @@
     voice.pending = { consumer, promise };
     return promise;
   }
+  let headsetHintShown = false;
   async function micStart(consumer) {
     const err = $('.mic-error');
     err.textContent = '';
+    err.classList.remove('is-hint');
     voice.error = '';
     if (voice.analyser) { if (voice.consumer === consumer) return true; micOff(); }
     const gen = voice.micGen = (voice.micGen || 0) + 1;
@@ -9804,6 +9853,13 @@
       if (voice.micGen !== gen) { stream.getTracks().forEach((track) => track.stop()); return !!voice.analyser && voice.consumer === consumer; }
       voice.stream = stream;
       voice.consumer = consumer;
+      // Bleibt nur das Headset-Mikro (kein eingebautes gefunden), schaltet
+      // Bluetooth in den Telefonie-Modus: einmalig und dezent darauf hinweisen.
+      if (streamIsHeadset(stream) && !headsetHintShown) {
+        headsetHintShown = true;
+        err.textContent = 'Das Mikro des Kopfhörers wird benutzt – andere Apps klingen solange dumpfer.';
+        err.classList.add('is-hint');
+      }
       voice.source = engine.ctx.createMediaStreamSource(stream);
       voice.analyser = engine.ctx.createAnalyser();
       voice.analyser.fftSize = 2048;
@@ -9830,6 +9886,10 @@
   let singFrame = () => {};
   /** Merkt sich im Fortschritt, dass das Mikrofon verweigert wurde („Heute üben“ nimmt dann das Diktat). */
   function onMicDenied() { saveMemory('micDenied', true); }
+
+  /** Mikrofon freigeben, auch wenn der Start noch auf getUserMedia wartet
+   *  (micOff zählt micGen hoch, ein später eintreffender Stream wird verworfen). */
+  function micRelease() { if (voice.analyser || voice.stream || voice.pending) micOff(); }
 
   function micOff() {
     voice.micGen = (voice.micGen || 0) + 1;

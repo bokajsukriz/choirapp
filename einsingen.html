@@ -1058,7 +1058,18 @@
   const engine = {
     ctx: null, master: null, reverb: null,
 
+    /** Im Leerlauf anhalten (nie schließen): ein laufender Kontext hält die
+     *  Audio-Sitzung offen und stört andere Apps und Bluetooth-Kopfhörer.
+     *  start() weckt ihn wieder. `busy` liefert, ob gerade etwas klingt. */
+    idle(busy) {
+      const ctx = this.ctx;
+      if (!ctx || ctx.state !== 'running' || (busy && busy())) return false;
+      try { Promise.resolve(ctx.suspend()).catch(() => {}); } catch { return false; }
+      return true;
+    },
+
     async start() {
+      cancelIdle();
       if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); return; }
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) throw new Error('Web Audio API nicht verfügbar');
@@ -1723,6 +1734,17 @@
     run.frame = requestAnimationFrame(draw);
   }
 
+  /* Leerlauf: 20 s nach dem Stopp den Kontext anhalten, beim Wegschalten der
+     Seite sofort — nur wenn weder Lauf noch Liegeton klingen. */
+  const ENGINE_IDLE_SUSPEND_MS = 20000;
+  let idleTimer = null;
+  const engineBusy = () => run.playing || run.starting || !!droneVoice;
+  function cancelIdle() { clearTimeout(idleTimer); idleTimer = null; }
+  function noteIdle() {
+    cancelIdle();
+    idleTimer = setTimeout(() => { idleTimer = null; engine.idle(engineBusy); }, ENGINE_IDLE_SUSPEND_MS);
+  }
+
   async function start(fromStep = 0) {
     // Nie zweimal starten — auch nicht, solange der AudioContext noch auf
     // eine Nutzergeste wartet (dann hängt engine.start() bis dahin).
@@ -1783,6 +1805,7 @@
     renderTransport();
     renderStage();
     setStatus(message || 'Bereit — am besten mit Kopfhörern.');
+    noteIdle();
   }
 
   /* ---- Schnellstart aus der App:
@@ -2767,6 +2790,7 @@
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && run.playing && !run.wakeLock) requestWakeLock();
+    if (document.visibilityState === 'hidden') { cancelIdle(); engine.idle(engineBusy); }
   });
 
   // Für die Konsole und Selbstprüfungen: Plan und Töne ansehen, ohne zu spielen.

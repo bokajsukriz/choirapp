@@ -4841,6 +4841,7 @@ async function setupAudioGraph() {
     Audio.playing = false;
     updateWakeLock();
     updateHdLoadVisibility();
+    audioNoteIdle('ended');
     Audio.onEnded?.();
   });
 
@@ -4856,6 +4857,7 @@ async function setupAudioGraph() {
     setPlayIcon(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     updateHdLoadVisibility();
+    audioNoteIdle('interrupted');
     banner(t('msg.playbackInterrupted'));
   });
 
@@ -5088,6 +5090,9 @@ async function rebuildAudioGraph(reason) {
 
     await hdApplyTransition('rebuild');
     if (wasPlaying) await audioPlay();
+    // Der frische Kontext startet je nach Browser sofort im Zustand „running" —
+    // ohne Wiedergabe gleich wieder in den Leerlauf schicken.
+    if (!Audio.playing) audioNoteIdle('rebuild');
     dlog('audio:rebuild', { reason, done: true });
   })();
   try {
@@ -5235,6 +5240,7 @@ async function onAudioContextStateChange() {
     Audio.playing = false;
     setPlayIcon(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    audioNoteIdle('interrupted');
     banner(t('msg.playbackInterrupted'));
   }
 }
@@ -6648,6 +6654,19 @@ let audioPauseGeneration = 0;
  *   während es still blieb (LOG-3).
  */
 async function audioPlay() {
+  // Läuft der Start noch (el.play() + Context-Resume), darf kein Leerlauf-
+  // Suspend dazwischenfunken. Der Aufruf unten bleibt synchron — el.play()
+  // ist weiter der erste await (Safari-Geste).
+  audioPlayPending++;
+  audioCancelIdleTimers();
+  try {
+    return await audioPlayStart();
+  } finally {
+    audioPlayPending--;
+  }
+}
+
+async function audioPlayStart() {
   if (!Audio.ready || !Audio.currentKey) return false;
   const pauseGen = audioPauseGeneration;
 
@@ -6692,6 +6711,9 @@ async function audioPlay() {
   }
 
   Audio.playing = true;
+  // Nach einer Freigabe der Mediensteuerung (siehe mediaSessionRelease) alles
+  // wieder anmelden, bevor der Zustand „playing" gesetzt wird.
+  if (mediaSessionReleased) updateMediaSession();
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
   dlog('audio:play');
   lastPosLog = { wall: performance.now(), pos: Audio.position };
@@ -6727,6 +6749,100 @@ function audioPause() {
   updateWakeLock();
   updateHdLoadVisibility();
   startNormalizationWorker();
+  audioNoteIdle('pause');
+}
+
+/* ---------- Leerlauf: Audio-Sitzung und Mediensteuerung freigeben ---------
+   Ein laufender AudioContext hält (vor allem unter iOS) die Audio-Sitzung der
+   Seite offen und stört damit andere Apps und Bluetooth-Kopfhörer, auch wenn
+   nichts klingt. Deshalb wird er im Leerlauf nur ANGEHALTEN (suspend, nie
+   close — Neuaufbau ist teuer und auf iOS heikel); audioPlay() weckt ihn über
+   audioResumeContext() wieder. Die Mediensteuerung (Sperrbildschirm,
+   Kopfhörertasten) bleibt nach einer kurzen Pause erhalten und wird erst nach
+   längerer Pause freigegeben. */
+const AUDIO_IDLE_SUSPEND_MS = 3000;
+const MEDIA_SESSION_RELEASE_MS = 5 * 60 * 1000;
+const MEDIA_SESSION_HIDDEN_RELEASE_MS = 60 * 1000;
+let audioPlayPending = 0;
+let audioIdleSuspendTimer = null;
+let mediaSessionReleaseTimer = null;
+let mediaSessionReleased = false;
+
+function audioCancelIdleTimers() {
+  clearTimeout(audioIdleSuspendTimer); audioIdleSuspendTimer = null;
+  clearTimeout(mediaSessionReleaseTimer); mediaSessionReleaseTimer = null;
+}
+
+/** Nichts klingt mehr: Timer für Suspend und Medien-Freigabe (neu) setzen. */
+function audioNoteIdle(reason) {
+  audioCancelIdleTimers();
+  audioIdleSuspendTimer = setTimeout(() => {
+    audioIdleSuspendTimer = null;
+    audioSuspendContextIfIdle(reason);
+  }, AUDIO_IDLE_SUSPEND_MS);
+  mediaSessionScheduleRelease();
+}
+
+/** Warum der Kontext gerade nicht angehalten werden darf (null = darf). */
+function audioSuspendBlocker() {
+  if (!Audio.ctx) return 'no-ctx';
+  if (Audio.playing) return 'playing';
+  if (audioPlayPending) return 'play-pending';
+  if (audioRebuildInFlight) return 'rebuild';
+  if (recStarting || recStream || (recMediaRecorder && recMediaRecorder.state !== 'inactive')) return 'recording';
+  if (levelCtx === Audio.ctx && levelAnalyser) return 'level-meter';
+  if (Audio.bg && !Audio.bg.paused) return 'backing';
+  return null;
+}
+
+/**
+ * Hält Audio.ctx an, wenn nichts klingt. Tut sonst nichts. Fehler beim
+ * Anhalten sind nur Log-Einträge, nie eine Meldung an Nutzer:innen.
+ * @returns {boolean} ob suspend() angestoßen wurde
+ */
+function audioSuspendContextIfIdle(reason) {
+  const ctx = Audio.ctx;
+  const blocked = audioSuspendBlocker();
+  if (blocked || ctx.state !== 'running') {
+    dlog('audio:suspend', { reason, done: false, skipped: blocked || ctx.state });
+    return false;
+  }
+  try {
+    Promise.resolve(ctx.suspend()).catch((err) => dlog('audio:suspend:fail', { name: err?.name }));
+  } catch (err) {
+    dlog('audio:suspend:fail', { name: err?.name });
+    return false;
+  }
+  dlog('audio:suspend', { reason, done: true });
+  return true;
+}
+
+/** Gibt die Mediensteuerung ab: andere Apps bekommen Tasten/Sperrbildschirm. */
+function mediaSessionRelease(reason) {
+  if (!('mediaSession' in navigator)) return;
+  if (Audio.playing || audioPlayPending) return;
+  const ms = navigator.mediaSession;
+  try { ms.playbackState = 'none'; } catch { /* ignorieren */ }
+  try { ms.metadata = null; } catch { /* ignorieren */ }
+  for (const action of MEDIA_SESSION_ACTIONS) {
+    try { ms.setActionHandler(action, null); } catch { /* nicht unterstützt */ }
+  }
+  try { ms.setPositionState(); } catch { /* nicht unterstützt */ }
+  mediaSessionReleased = true;
+  dlog('mediasession:release', { reason });
+}
+
+/** Release nach 5 min Pause bzw. 60 s Pause bei unsichtbarer Seite einplanen. */
+function mediaSessionScheduleRelease() {
+  clearTimeout(mediaSessionReleaseTimer);
+  mediaSessionReleaseTimer = null;
+  if (mediaSessionReleased || Audio.playing || !playerSong) return;
+  const hidden = document.visibilityState === 'hidden';
+  const ms = hidden ? MEDIA_SESSION_HIDDEN_RELEASE_MS : MEDIA_SESSION_RELEASE_MS;
+  mediaSessionReleaseTimer = setTimeout(() => {
+    mediaSessionReleaseTimer = null;
+    mediaSessionRelease(hidden ? 'hidden' : 'paused');
+  }, ms);
 }
 
 function audioSeek(seconds) {
@@ -7240,8 +7356,15 @@ document.addEventListener('visibilitychange', () => {
     // Frischer Abschnitt: was im vorigen Hintergrund gemessen wurde, ist
     // beim Zurückkehren längst gemeldet und ausgewertet worden.
     hdResetBackgroundHealth();
+    // Unsichtbar und still: Audio-Sitzung sofort freigeben, Mediensteuerung
+    // nach kurzer Frist.
+    if (!Audio.playing) {
+      audioSuspendContextIfIdle('hidden');
+      mediaSessionScheduleRelease();
+    }
     return;
   }
+  if (!Audio.playing) mediaSessionScheduleRelease();
   startNormalizationWorker();
   if (settings.normalizationEnabled) scheduleNormalizationReconciliation();
   const backgroundMs = audioHiddenSince ? performance.now() - audioHiddenSince : 0;
@@ -14607,6 +14730,23 @@ function flushNote() {
 // Auf dem Handy endet eine Sitzung selten mit einem Klick: der Bildschirm geht
 // aus oder die App wird weggewischt. Beides ist die letzte Gelegenheit.
 window.addEventListener('pagehide', () => { flushNote(); flushLyricsNote(); });
+// Das Mikrofon darf eine verlassene Seite nicht überleben: ein offener Stream
+// hielte bei Bluetooth-Kopfhörern den Telefonie-Modus (dumpfer Mono-Klang,
+// auch in anderen Apps). Eine laufende Aufnahme wird regulär beendet (der
+// Take bleibt erhalten), ein noch ausstehender Start verworfen, übrige
+// Tracks gestoppt.
+window.addEventListener('pagehide', () => {
+  recStartGeneration++;
+  if (recMediaRecorder && recMediaRecorder.state !== 'inactive') {
+    try { stopRecording(); } catch (err) { dlog('rec:pagehide:fail', { name: err?.name }); }
+    return;
+  }
+  if (recStream) {
+    for (const track of recStream.getTracks()) track.stop();
+    recStream = null;
+  }
+  stopLevelMeter();
+});
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { flushNote(); flushLyricsNote(); }
 });
@@ -14952,9 +15092,12 @@ async function reconnectPendingByType(type) {
 
 /* ---------- Media Session (Sperrbildschirm) ------------------------------ */
 
+const MEDIA_SESSION_ACTIONS = ['play', 'pause', 'seekbackward', 'seekforward', 'seekto', 'previoustrack', 'nexttrack'];
+
 function updateMediaSession() {
   if (!('mediaSession' in navigator) || !playerSong) return;
   const ms = navigator.mediaSession;
+  mediaSessionReleased = false;
 
   try {
     const voiceTrack = playerVoice ? trackByVoiceKey(playerVoice) : null;
@@ -14991,6 +15134,9 @@ function updateMediaSession() {
   });
 
   updateMediaPosition();
+  // Wer nur den Song wechselt und nicht spielt, soll die Steuerung ebenfalls
+  // nach der Frist wieder loslassen.
+  if (!Audio.playing) mediaSessionScheduleRelease();
 }
 
 let lastReportedSecond = -1;
@@ -22192,6 +22338,103 @@ async function runAudioPathCharacterizationTests() {
       }
     } finally {
       audioRebuildInFlight = saved;
+    }
+  }
+
+  // 9) Leerlauf-Freigabe (ARBEITSANWEISUNG-AUDIO-FREIGABE): der Kontext wird
+  //    nur im Leerlauf angehalten, Play weckt ihn wieder, ein erneuter Start
+  //    verwirft die Timer, und die Mediensteuerung wird nach Ablauf freigegeben
+  //    und beim nächsten Play wiederhergestellt. Mit Spionen, ohne echten
+  //    AudioContext.
+  {
+    const savedCtx = Audio.ctx, savedPlaying = Audio.playing, savedBg = Audio.bg;
+    const savedRebuild = audioRebuildInFlight, savedPending = audioPlayPending;
+    const savedLevelCtx = levelCtx, savedLevelAnalyser = levelAnalyser;
+    const savedReleased = mediaSessionReleased, savedSong = playerSong;
+    const ms = ('mediaSession' in navigator) ? navigator.mediaSession : null;
+    const savedMeta = ms ? ms.metadata : null, savedState = ms ? ms.playbackState : null;
+    const makeCtx = () => ({
+      state: 'running', suspendCalls: 0, resumeCalls: 0,
+      suspend() { this.suspendCalls++; this.state = 'suspended'; return Promise.resolve(); },
+      resume() { this.resumeCalls++; this.state = 'running'; return Promise.resolve(); },
+    });
+    try {
+      audioCancelIdleTimers();
+      Audio.bg = null; audioRebuildInFlight = null; audioPlayPending = 0;
+      levelCtx = null; levelAnalyser = null;
+
+      // a) Leerlauf: angehalten.
+      let c = makeCtx(); Audio.ctx = c; Audio.playing = false;
+      if (!audioSuspendContextIfIdle('char') || c.suspendCalls !== 1) {
+        failed.push('audioSuspendContextIfIdle(): hält den Kontext im Leerlauf nicht an');
+      }
+      // b) Play weckt den angehaltenen Kontext wieder.
+      const resumed = await audioResumeContext();
+      if (!resumed || c.resumeCalls !== 1 || c.state !== 'running') {
+        failed.push('audioResumeContext(): weckt einen angehaltenen Kontext nicht');
+      }
+
+      // c) Nicht im Leerlauf: Wiedergabe, laufender Start, Neuaufbau, Aufnahme-
+      //    Pegelmesser am Wiedergabe-Kontext — jeweils kein suspend().
+      const blockers = [
+        ['Wiedergabe', () => { Audio.playing = true; }, () => { Audio.playing = false; }],
+        ['laufender Start', () => { audioPlayPending = 1; }, () => { audioPlayPending = 0; }],
+        ['Neuaufbau', () => { audioRebuildInFlight = Promise.resolve(); }, () => { audioRebuildInFlight = null; }],
+        ['Pegelmesser', () => { levelCtx = c; levelAnalyser = {}; }, () => { levelCtx = null; levelAnalyser = null; }],
+      ];
+      for (const [label, on, off] of blockers) {
+        c = makeCtx(); Audio.ctx = c; on();
+        if (audioSuspendContextIfIdle('char') || c.suspendCalls !== 0) {
+          failed.push(`audioSuspendContextIfIdle(): hält den Kontext trotz „${label}" an`);
+        }
+        off();
+      }
+
+      // d) Timer: audioNoteIdle() setzt ihn, ein erneuter Start verwirft ihn.
+      audioNoteIdle('char');
+      if (!audioIdleSuspendTimer) failed.push('audioNoteIdle(): setzt keinen Leerlauf-Timer');
+      await audioPlay(); // ohne geladene Spur false, räumt die Timer aber zuerst ab
+      if (audioIdleSuspendTimer || mediaSessionReleaseTimer) {
+        failed.push('audioPlay(): verwirft die Leerlauf-Timer nicht');
+      }
+
+      // e) Mediensteuerung: Freigabe nach Ablauf, Wiederherstellung bei Play.
+      if (ms) {
+        const nulled = [];
+        ms.setActionHandler = (action, handler) => { if (handler === null) nulled.push(action); };
+        try {
+          Audio.playing = false;
+          mediaSessionRelease('char');
+        } finally {
+          delete ms.setActionHandler;
+        }
+        if (!mediaSessionReleased || ms.playbackState !== 'none' || ms.metadata !== null) {
+          failed.push('mediaSessionRelease(): gibt Zustand/Metadaten nicht frei');
+        }
+        if (MEDIA_SESSION_ACTIONS.some((a) => !nulled.includes(a))) {
+          failed.push('mediaSessionRelease(): meldet nicht alle Action-Handler ab');
+        }
+        playerSong = { title: 'Selbsttest', collections: [] };
+        updateMediaSession();
+        if (mediaSessionReleased || !ms.metadata) {
+          failed.push('updateMediaSession(): stellt die Mediensteuerung nach der Freigabe nicht wieder her');
+        }
+        audioCancelIdleTimers();
+        // Spielt es, gibt die Mediensteuerung nichts frei.
+        Audio.playing = true;
+        mediaSessionReleased = false;
+        mediaSessionRelease('char-playing');
+        if (mediaSessionReleased) failed.push('mediaSessionRelease(): gibt während der Wiedergabe frei');
+      }
+    } finally {
+      audioCancelIdleTimers();
+      Audio.ctx = savedCtx; Audio.playing = savedPlaying; Audio.bg = savedBg;
+      audioRebuildInFlight = savedRebuild; audioPlayPending = savedPending;
+      levelCtx = savedLevelCtx; levelAnalyser = savedLevelAnalyser;
+      mediaSessionReleased = savedReleased; playerSong = savedSong;
+      if (ms) {
+        try { ms.metadata = savedMeta; ms.playbackState = savedState; } catch { /* ignorieren */ }
+      }
     }
   }
 
