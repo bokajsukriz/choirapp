@@ -143,7 +143,8 @@ ein Dialog mit echter Wahl).
   Rhythmus-Training mit Stufen, Phrasen,
   Auftakt, Rhythmussprache, Eingabe per Tippen oder Mikrofon;
   Hören: Intervalle (Noten-Knopf neben dem Zahnrad: Merkhilfe mit bekannten
-  Songanfängen je Intervall, `INTERVAL_SONGS`), Klänge, Schlüsse, Töne in der Tonart, Akkorde in der
+  Songanfängen je Intervall, `INTERVAL_SONGS`; je Richtung eine Zeile, der Stift oben im Blatt
+  öffnet die Auswahl eines anderen oder eigenen Songs, gespeichert in `memory.intervalSongs`), Klänge, Schlüsse, Töne in der Tonart, Akkorde in der
   Tonart, Akkordfolgen, Stimmen heraushören, Intonation; Singen: Ton halten, Intervalle singen, Ton im Akkord finden (intern `findTone`; eigene Auswahl „Nur das a′“ oder „a′, dann Akkord“),
   Nachsingen, Im Takt, Blattsingen, Diktat; der Tuner – Zielton per Klaviatur,
   Kammerton, dauerhaft gemerkter Tonumfang – ist eine eigene Tools-Kachel,

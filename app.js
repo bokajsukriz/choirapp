@@ -24332,7 +24332,8 @@ const PROGRESS_GROUPS = {
 const PROGRESS_RECENT = 40;       // je Bereich die letzten Aufgaben (für levelHint)
 // sightShown: Blattsingen ist in der Ausbildung eingeblendet (Pop-Didaktik:
 // standardmäßig aus) — nur dann zählt es im Mittel der Kachel „Singen“.
-const PROGRESS_MEMORY_KEYS = ['intervalLog', 'singLog', 'micDenied', 'sightShown'];
+// intervalSongs: eigene Wahl der Songanfänge je Intervall und Richtung (Hören → Intervalle).
+const PROGRESS_MEMORY_KEYS = ['intervalLog', 'singLog', 'micDenied', 'sightShown', 'intervalSongs'];
 
 /** Datum als JJJJ-MM-TT (lokale Zeit). */
 function progressDate(d = new Date()) {
