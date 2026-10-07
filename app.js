@@ -21390,6 +21390,41 @@ async function runMusicSelfTests({ log = true } = {}) {
     } catch (err) {
       failed.push(`Überlastung (Knopf): ${err?.message || err}`);
     }
+    // Überlastungsanzeige, Paket C: Diagnose (Spion-Kontext mit renderCapacity), Zähler je Grund, Lasttest-Einstufung.
+    try {
+      for (const [pct, level] of [[0, 'ok'], [39, 'ok'], [40, 'mid'], [69, 'mid'], [70, 'high'], [250, 'high']]) {
+        if (T.loadLevel(pct) !== level) failed.push(`Lasttest: ${pct} % → ${T.loadLevel(pct)} statt ${level}`);
+      }
+      const view = document.createElement('chor-groove-lab');
+      view._ovl.visibleSince = 0;
+      for (const reason of ['gap', 'gap', 'ratio', 'underrun', 'load', 'unbekannt']) { view._ovl.lastEvent = 0; view._noteOverload(reason); }
+      if (JSON.stringify(view._ovl.counts) !== '{"gap":2,"ratio":1,"underrun":1,"load":1}') failed.push(`Überlastung: Zähler je Grund ${JSON.stringify(view._ovl.counts)}`);
+      // Ohne Kontext und ohne APIs: Zeilen vorhanden, kein Fehler, kein Platzhalter-Schlüssel.
+      const plain = view._diagLines();
+      if (plain.length < 5 || plain.some(([k, v]) => !k || !v)) failed.push('Überlastung: Diagnosezeilen unvollständig');
+      if (!view._diagText().includes('User-Agent: ')) failed.push('Überlastung: „Werte kopieren“ ohne User-Agent');
+      // renderCapacity: start({ updateInterval: 1 }) beim Öffnen, stop() beim Schließen, Werte in %.
+      const rc = { started: null, stopped: 0, on: {},
+        addEventListener(name, fn) { this.on[name] = fn; }, removeEventListener(name) { delete this.on[name]; },
+        start(options) { this.started = options; }, stop() { this.stopped++; } };
+      view.engine.ctx = { state: 'running', currentTime: 0, sampleRate: 48000, renderCapacity: rc };
+      view._toggleOverloadPop(true, { focus: false });
+      if (rc.started?.updateInterval !== 1) failed.push('Überlastung: renderCapacity.start({ updateInterval: 1 }) fehlt');
+      rc.on.update?.({ averageLoad: .234, peakLoad: .51, underrunRatio: 0 });
+      // (t() ist ohne open() nur ein Platzhalter — geprüft werden darum die Rohwerte, nicht der Wortlaut.)
+      const rcs = view._ovl.rcStats;
+      if (!rcs || Math.abs(rcs.avg - .234) > 1e-9 || Math.abs(rcs.peak - .51) > 1e-9 || rcs.ratio !== 0) failed.push(`Überlastung: renderCapacity-Werte ${JSON.stringify(rcs)}`);
+      view._renderDiag();
+      if (view.$('.ovl-diag').children.length < 10) failed.push('Überlastung: Diagnose im Panel nicht gezeichnet');
+      view._toggleOverloadPop(false, { focus: false });
+      if (rc.stopped !== 1 || view._ovl.timer) failed.push('Überlastung: renderCapacity.stop() / Sekundentakt beim Schließen fehlt');
+      // Eine API, die wirft, darf nichts kaputt machen.
+      view.engine.ctx = { state: 'running', sampleRate: 44100, get renderCapacity() { throw new Error('nein'); } };
+      view._toggleOverloadPop(true, { focus: false });
+      view._toggleOverloadPop(false, { focus: false });
+    } catch (err) {
+      failed.push(`Überlastung (Diagnose): ${err?.message || err}`);
+    }
     // Beat-Lupe und Rückfrage vor „Raster leeren“/„Original“ (echte, nicht eingehängte Ansicht).
     try {
       const z = document.createElement('chor-groove-lab');
