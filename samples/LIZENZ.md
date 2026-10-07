@@ -28,7 +28,6 @@ Volltext `LICENSE-VCSL-CC0.txt`), keine Namensnennung nötig.
 | crash | Idiophones/Struck Idiophones/Suspended Cymbal 2/susCymb2_hit_stick_mf1.wav |
 | clap | Idiophones/Struck Idiophones/Claps/Clap_rr1.wav |
 | ride | Idiophones/Struck Idiophones/Suspended Cymbal 2/susCymb2_hit_stick_mp1.wav (1,2 s) |
-| ride-bell | …/Suspended Cymbal 2/susCymb2_hit_bell_f1.wav (1,2 s) |
 | tamb | Idiophones/Struck Idiophones/Tambourine 1/Tamb1_Hit_v2_rr1_Mid.wav (0,35 s) |
 | shaker | Idiophones/Struck Idiophones/Shaker, Small/Mid_ShakerDouble_Down_rr1.wav (0,2 s) |
 

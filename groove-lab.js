@@ -204,10 +204,12 @@
   const AUTO_KIT = { dance: 'synth', breaks: 'hybrid', calm: 'acoustic', funky: 'acoustic' };
   const resolveKit = (drumKit, pattern) => (drumKit === 'auto' ? AUTO_KIT[pattern.cat] || 'acoustic' : drumKit);
   /** Akzentfaktor einer Hi-Hat nach Position im Schlag (Feel): 4/4 voll auf
-   *  der Zählzeit, .72 auf dem Achtel, .55 auf den Sechzehnteln; in 3/4 und
-   *  6/8 voll auf dem Schlagbeginn (METERS.beats), sonst .6. */
+   *  der Zählzeit, .72 auf dem Achtel, .55 auf den Sechzehnteln; in 6/8 ebenso
+   *  mit der punktierten Viertel als Zählzeit (alle 6 Schritte); in 3/4 voll auf
+   *  dem Schlagbeginn (METERS.beats), sonst .6. */
   function hatAccent(step, meter) {
     if (meter === '4/4') return step % 4 === 0 ? 1 : step % 2 === 0 ? .72 : .55;
+    if (meter === '6/8') return step % 6 === 0 ? 1 : step % 2 === 0 ? .72 : .55;
     return METERS[meter].beats.includes(step) ? 1 : .6;
   }
   /** Fill: im letzten Takt jedes `fills`-Takte-Blocks spielen die letzten vier
@@ -1805,6 +1807,7 @@
     const level = dcLevel(song.level);
     const has = (el) => level.elements.includes(el);
     const o = pinLegacyStudio(pinLegacySound(defaultState()));
+    o.bassSoundId = 'round'; // hält Noten (Gate), „Bass halbe Noten“ klingt so; Workshop/Chor bleiben bei 'pluck'
     o.patternIndex = DRUM_PATTERNS.findIndex((p) => p.meter === song.meter);
     o.beat = dcBeat(song);
     o.beatEdited = true;
@@ -1833,6 +1836,7 @@
     // „Meine Version“: Vorgegebenes wie im Original, Gesuchtes neutral —
     // leeres Raster, Tempo 100, ein einziger Akkord, Melodie aus.
     const m = pinLegacySound(defaultState());
+    m.bassSoundId = 'round';
     m.view = 'deconstruct';
     m.keyRoot = o.keyRoot;
     m.patternIndex = 0;
@@ -2286,7 +2290,7 @@
     s.beat = sanitizeBeat(raw.beat, pattern);
     s.beatEdited = bool(raw.beatEdited, false);
     for (const track of TRACK_IDS) s.trackOn[track] = bool(obj(raw.trackOn)[track], true);
-    s.bassSoundId = oneOf(raw.bassSoundId, BASS_SOUNDS.map((b) => b.id), s.bassSoundId);
+    s.bassSoundId = oneOf(raw.bassSoundId, BASS_SOUNDS.map((b) => b.id), raw.view === 'deconstruct' ? 'round' : ['choir', 'workshop'].includes(raw.view) || raw.choirTask || raw.lessonId ? 'pluck' : s.bassSoundId);
     // Alte Stände aus Chor-Aufgaben, Workshop und de:construct (ohne die
     // neuen Felder) klingen weiter wie damals.
     const legacy = ['choir', 'workshop', 'deconstruct'].includes(raw.view) || !!raw.choirTask || !!raw.lessonId;
@@ -3149,14 +3153,21 @@
     }
 
     /** Ein Sample über den Drum-Bus (oder `bus`) spielen. */
-    playSample(buffer, time, velocity = 1, { bus = this.buses.drums, rate = 1, level = 1 } = {}) {
+    playSample(buffer, time, velocity = 1, { bus = this.buses.drums, rate = 1, level = 1, highpass = 0 } = {}) {
       const source = this.ctx.createBufferSource();
       const gain = this.ctx.createGain();
       source.buffer = buffer;
       source.playbackRate.value = rate;
       gain.gain.value = level * velocity;
-      source.connect(gain).connect(bus);
+      let node = source;
+      if (highpass) {
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'highpass'; filter.frequency.value = highpass; filter.Q.value = .7;
+        node = source.connect(filter);
+      }
+      node.connect(gain).connect(bus);
       source.start(time);
+      return gain;
     }
 
     /** Rückwärts abspielbarer Puffer (je Puffer einmal gerechnet). */
@@ -3263,7 +3274,13 @@
         if (mode === 'synth' || (mode === 'hybrid' && track === 'kick')) return false;
         const buffer = this.labSamples?.get(id);
         if (!buffer) return false;
-        this.playSample(buffer, time, Math.min(1, v), { level: LAB_DRUM_LEVEL[id] ?? .3 });
+        const gain = this.playSample(buffer, time, Math.min(1, v), { level: LAB_DRUM_LEVEL[id] ?? .3 });
+        if (id === 'ride') {
+          // Choke: der vorige Ride-Treffer blendet beim nächsten Schlag in 80 ms auf 30 % ab, das Becken staut sich nicht auf.
+          const prev = this._lastRide;
+          if (prev) { prev.gain.gain.setValueAtTime(prev.level, time); prev.gain.gain.linearRampToValueAtTime(prev.level * .3, time + .08); }
+          this._lastRide = { gain, level: gain.gain.value };
+        }
         return true;
       };
       if (track === 'kick') { if (!sample('kick')) this.playKick(time, velocity, kit); }
@@ -3272,7 +3289,12 @@
         if (!sample(ghost ? 'snare-soft' : 'snare', ghost ? velocity * 1.8 : velocity)) this.playSnare(time, velocity);
       } else if (track === 'clap') { if (!sample('clap')) this.playClap(time, velocity); }
       else if (track === 'perc') {
-        if (!sample(o.perc || 'tamb')) this.playNoise(time, { cutoff: 5000, length: .08, volume: .08 * velocity, type: 'bandpass', q: 1 });
+        const perc = o.perc || 'tamb';
+        if (sample(perc)) return;
+        // Ohne Fingerschnipser-Sample: das Clap-Sample, ab 1,5 kHz (heller, trockener), Pegel .5; Rauschen nur, wenn auch das fehlt.
+        const clap = perc === 'snap' && mode !== 'synth' ? this.labSamples?.get('clap') : null;
+        if (clap) this.playSample(clap, time, Math.min(1, velocity), { level: .5, highpass: 1500 });
+        else this.playNoise(time, { cutoff: 5000, length: .08, volume: .08 * velocity, type: 'bandpass', q: 1 });
       } else if (track === 'tom-hi' || track === 'tom-lo') { if (!sample(track)) this.playTom(time, velocity, track === 'tom-lo'); }
       else if (track === 'crash') { if (!sample('crash')) this.playNoise(time, { cutoff: 5500, length: .7, volume: .06 * velocity, type: 'highpass', q: .8 }); }
       else {

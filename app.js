@@ -21423,7 +21423,7 @@ async function runMusicSelfTests({ log = true } = {}) {
     if (T.resolveKit('synth', { cat: 'calm' }) !== 'synth' || T.resolveKit('hybrid', { cat: 'dance' }) !== 'hybrid') failed.push('Groove Lab: festes Kit wird überschrieben');
     const accents = [0, 1, 2, 3, 4, 6].map((st) => T.hatAccent(st, '4/4'));
     if (accents.join() !== '1,0.55,0.72,0.55,1,0.72') failed.push(`Groove Lab: Hi-Hat-Akzente 4/4 = ${accents}`);
-    if (T.hatAccent(4, '3/4') !== 1 || T.hatAccent(2, '3/4') !== .6 || T.hatAccent(2, '6/8') !== 1 || T.hatAccent(1, '6/8') !== .6) failed.push('Groove Lab: Hi-Hat-Akzente 3/4 und 6/8');
+    if (T.hatAccent(4, '3/4') !== 1 || T.hatAccent(2, '3/4') !== .6 || [0, 1, 2, 3, 4, 5, 6, 8].map((st) => T.hatAccent(st, '6/8')).join() !== '1,0.55,0.72,0.55,0.72,0.55,1,0.72') failed.push('Groove Lab: Hi-Hat-Akzente 3/4 und 6/8 (punktierte Viertel)');
     const fresh = T.defaultState();
     if (fresh.drumKit !== 'auto' || fresh.feel !== true || fresh.percSound !== 'tamb' || fresh.trackOn.perc !== true) failed.push('Groove Lab: Standard für Kit/Feel/Percussion');
     const old = clone(fresh); delete old.drumKit; delete old.feel; delete old.percSound; delete old.trackOn.perc; delete old.beat.perc;
@@ -21440,6 +21440,24 @@ async function runMusicSelfTests({ log = true } = {}) {
     for (const task of T.CHOIR_TASKS) pinned(T.choirTaskState(clone(fresh), task, 'S'), `Chor-Aufgabe ${task.id}`);
     for (const lesson of T.WORKSHOP_LESSONS) pinned(T.lessonState(clone(fresh), lesson), `Workshop ${lesson.id}`);
     for (const song of T.DC_SONGS) { const b = T.dcBuild(song.id); pinned(b.original, `de:construct ${song.id} Original`); pinned(b.mine, `de:construct ${song.id} Meine`); }
+    // Nachträge: de:construct hält den Bass (Round Finger), Workshop/Chor bleiben bei Square Pluck; Ride-Choke.
+    {
+      const dc = T.dcBuild('e1');
+      if (dc.original.bassSoundId !== 'round' || dc.mine.bassSoundId !== 'round') failed.push('Groove Lab: de:construct nicht auf Round Finger');
+      if (T.lessonState(T.defaultState(), T.WORKSHOP_LESSONS[0]).bassSoundId !== 'pluck' || T.choirTaskState(T.defaultState(), T.CHOIR_TASKS[0], 'S').bassSoundId !== 'pluck') failed.push('Groove Lab: Workshop/Chor nicht bei Square Pluck');
+      const sustain = T.BASS_SOUNDS.find((b) => b.id === 'round').sustain;
+      const lh = T.DC_SONGS.find((x) => x.id === 'e1');
+      const hits = Object.keys(T.dcBeat(lh).bass);
+      if (!(sustain > 0) || hits.join() !== '0,8' || T.bassNoteSteps(T.dcBeat(lh).bass, 0, 16) !== 8) failed.push('Groove Lab: Lighthouse Hands hält den Bass nicht als halbe Noten');
+      const engine = Object.create(T.GrooveEngine.prototype);
+      const ramps = [];
+      const node = () => ({ gain: { value: .16, setValueAtTime: (v, t) => ramps.push(['set', v, t]), linearRampToValueAtTime: (v, t) => ramps.push(['ramp', Math.round(v * 1000) / 1000, t]) } });
+      engine.labSamples = { get: () => ({ id: 'ride' }) };
+      engine.playSample = () => node();
+      engine.hitTrack('hat', 1, 1, undefined, { mode: 'acoustic', hat: 'ride' });
+      engine.hitTrack('hat', 2, 1, undefined, { mode: 'acoustic', hat: 'ride' });
+      if (ramps.length !== 2 || ramps[1][1] !== Math.round(.16 * .3 * 1000) / 1000 || Math.abs(ramps[1][2] - 2.08) > 1e-9) failed.push(`Groove Lab: Ride-Choke ${JSON.stringify(ramps)}`);
+    }
     // Paket 4: Fills.
     {
       const f = (g, steps, n) => T.fillAt(g, steps, n);
@@ -21762,7 +21780,7 @@ async function runMusicSelfTests({ log = true } = {}) {
       const engine = Object.create(T.GrooveEngine.prototype);
       const have = new Set(['kick', 'snare', 'snare-soft', 'hat', 'hat-soft', 'open', 'clap', 'ride', 'tamb']);
       engine.labSamples = { get: (id) => (have.has(id) ? { id } : null) };
-      engine.playSample = (buffer) => calls.push(`sample:${buffer.id}`);
+      engine.playSample = (buffer) => { calls.push(`sample:${buffer.id}`); return { gain: { value: 1, setValueAtTime() {}, linearRampToValueAtTime() {} } }; };
       for (const fn of ['playKick', 'playSnare', 'playClap', 'playHat', 'playNoise', 'playTom']) engine[fn] = () => calls.push(`synth:${fn}`);
       const run = (track, v, o) => { calls.length = 0; engine.hitTrack(track, 0, v, undefined, o); return calls.join(); };
       const expect = (got, want, label) => { if (got !== want) failed.push(`Groove Lab: Engine ${label}: ${got} statt ${want}`); };
@@ -21775,7 +21793,10 @@ async function runMusicSelfTests({ log = true } = {}) {
       expect(run('hat', 1, { mode: 'acoustic', hat: 'ride' }), 'sample:ride', 'Ride');
       expect(run('hat', 1, { mode: 'synth', hat: 'ride' }), 'synth:playHat', 'Ride ohne Kit');
       expect(run('perc', 1, { mode: 'acoustic', perc: 'tamb' }), 'sample:tamb', 'Percussion');
-      expect(run('perc', 1, { mode: 'acoustic', perc: 'snap' }), 'synth:playNoise', 'Percussion ohne Sample');
+      expect(run('perc', 1, { mode: 'acoustic', perc: 'snap' }), 'sample:clap', 'Snap ohne Sample → Clap-Sample');
+      have.delete('clap');
+      expect(run('perc', 1, { mode: 'acoustic', perc: 'snap' }), 'synth:playNoise', 'Snap ohne Sample und ohne Clap → Rauschen');
+      have.add('clap');
       expect(run('tom-hi', 1, { mode: 'acoustic' }), 'synth:playTom', 'Tom ohne Sample');
       engine.labSamples = null;
       expect(run('snare', 1, { mode: 'acoustic' }), 'synth:playSnare', 'Snare ohne Samples');

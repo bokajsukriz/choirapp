@@ -150,3 +150,12 @@ Design-Vorlage (vier Screens) gelesen; Farben/Abstände aus den Lab-Variablen (`
 **Nicht geprüft (kann diese Umgebung nicht):** alles Hörbare (Limiter-Pumpen, Klangbalance, Sample-Klänge, Fills, Umkehrungen) und die Geräteprüfungen von Paket 9 (iPhone/Android, Mikrofon mit Kabel/Bluetooth, Neustart, Offline). Die Pegel der Samples/Instrumente sind per Messung (RMS/Peak im Headless-Chromium) auf die Synthese abgestimmt, nicht nach Gehör.
 
 **Offene Punkte** stehen in `TODO.md`: Geräte-/Hörprobe, Loop-Strecken, `snap`-Sample.
+
+## Nachträge zu PR 177
+
+1. `hatAccent`: 6/8 mit der punktierten Viertel als Zählzeit (`step % 6 === 0` → 1, `% 2` → .72, sonst .55); `METERS['6/8'].beats` unverändert; Test ergänzt.
+2. de:construct (`dcBuild`, Original und „Meine Version“) nutzt `bassSoundId: 'round'`, Workshop und Chor-Aufgaben bleiben bei `'pluck'`; alte de:construct-Stände ohne Feld laden mit `'round'`. Test: „Lighthouse Hands“ (Bass auf 0 und 8) hält als halbe Noten (`bassNoteSteps` = 8, Round Finger mit Sustain).
+3. `percSound: 'snap'` ohne Snap-Sample: Clap-Sample mit Hochpass 1,5 kHz, Pegel .5; Rauschen nur, wenn auch `clap` fehlt oder das Kit auf Synth steht.
+4. `ride-bell` entfernt (Datei, `LIZENZ.md`, `aufbereiten.sh`); `SAMPLES_CACHE` v6.
+5. Ride-Choke: der vorige Ride-Treffer blendet beim nächsten Ride-Schlag in 80 ms auf 30 % ab (Test mit Spionen).
+`SW_VERSION` v528.
