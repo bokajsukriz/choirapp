@@ -2876,6 +2876,7 @@
       this.monoVoice = {};   // je Ebene: aktuelle Stimme im Mono-Modus
       this._reverbTimer = 0;
       this._reverbLength = 0;
+      this.latencyHint = 'interactive'; // Puffer: 'interactive' (klein) | 'balanced' | 'playback' (groß) — gilt ab dem nächsten Kontext
     }
 
     get ready() { return !!this.ctx; }
@@ -2887,7 +2888,7 @@
       }
       const AudioContextClass = global.AudioContext || global.webkitAudioContext;
       if (!AudioContextClass) throw new Error('Web Audio API nicht verfügbar');
-      const ctx = new AudioContextClass({ latencyHint: 'interactive' });
+      const ctx = new AudioContextClass({ latencyHint: this.latencyHint });
       this.ctx = ctx;
       const gain = (value, to) => { const g = ctx.createGain(); g.gain.value = value; if (to) g.connect(to); return g; };
 
@@ -3791,6 +3792,13 @@
      GrooveLabView — die Web Component.
      ------------------------------------------------------------------------ */
 
+  /* Überlastung: Puffergrößen (latencyHint) und Schwellen der Erkennung. */
+  const LATENCY_HINTS = ['interactive', 'balanced', 'playback'];
+  const OVERLOAD_WINDOW_MS = 10000;   // so viele Aussetzer ...
+  const OVERLOAD_EVENTS = 3;          // ... in diesem Fenster zeigen das Ausrufezeichen
+  const OVERLOAD_GAP_MS = 150;        // Scheduler-Lücke (erwartet 25 ms) = Hauptthread hängt
+  const OVERLOAD_RATIO = .9;          // Audiozeit pro Wanduhrzeit darunter = Audiothread kommt nicht hinterher
+
   class GrooveLabView extends HTMLElement {
     constructor() {
       super();
@@ -3811,6 +3819,11 @@
       this.autoRec = { phase: 'idle', bars: 2, startStep: 0, startTime: 0, stepSec: 0, barSteps: 16, events: [], last: null, base: null };
       this._soundLabels = {};
       this.rec = { phase: 'idle', bars: 2, startStep: 0, startTime: 0, stepSec: 0, barSteps: 16, notes: [], open: new Map(), take: null };
+
+      // Überlastungsanzeige: Zeitpunkte erkannter Aussetzer, letzter Scheduler-
+      // Tick, letzter Vergleich Audiozeit/Wanduhr, Zähler der Browser-Statistik.
+      this._ovl = { events: [], lastEvent: 0, lastTick: 0, ratioWall: 0, ratioAudio: 0, underruns: 0, visibleSince: performance.now() };
+      document.addEventListener('visibilitychange', () => { this._ovl.visibleSince = performance.now(); this._ovl.lastTick = 0; this._ovl.ratioWall = 0; });
 
       this.playing = false;
       this.globalStep = 0;
@@ -3836,7 +3849,7 @@
       this.sampler = { meta: new Map(), buffers: new Map(), blobs: new Map(), loading: new Map(), peaks: new Map(), peakCache: new Map(),
         decoder: null, loaded: false, view: 'pads', sel: 0, draft: null, draftBuffer: null, draftPeaks: null, draftNew: false, rec: null, live: true, bluetoothHint: false };
       this.stepClock = null;   // zuletzt eingeplanter Schritt { g, time } — für das Einrasten beim Live-Einspielen
-      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [], workshop: sanitizeWorkshopProgress(null), deconstruct: null };
+      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [], workshop: sanitizeWorkshopProgress(null), deconstruct: null, latency: 'interactive' };
       // de:construct: Solange die Ansicht offen ist, hält this.state „Meine
       // Version“ (_dcActive); der Studio-Stand wartet samt Undo in _dcStash.
       this._dcActive = false;
@@ -3936,6 +3949,10 @@
         this._saved.workshop = sanitizeWorkshopProgress(data.workshop);
         // Ablagen von vor de:construct haben kein Feld `deconstruct` → null.
         this._saved.deconstruct = sanitizeDeconstruct(data.deconstruct);
+        if (LATENCY_HINTS.includes(data.latency)) {
+          this._saved.latency = data.latency;
+          this.engine.latencyHint = data.latency;
+        }
         this._renderMelody();
         this._renderHarmony();
         // Den letzten Stand nur übernehmen, solange noch nichts gespielt oder
@@ -5560,6 +5577,7 @@
       this.globalStep = 0;
       this.scheduledSteps.length = 0;
       this.nextStepTime = this.engine.ctx.currentTime + .06;
+      this._ovl.lastTick = 0; this._ovl.ratioWall = 0; this._ovl.underruns = this._playoutUnderruns();
       this._renderTransport();
       this._setStatus(t('lab.statusRunning'));
       this._scheduleAhead();
@@ -5649,11 +5667,97 @@
       this._renderTransport();
     }
 
+    /* ---- Überlastung erkennen und anzeigen ----
+       Drei Anzeichen, jeweils nur bei sichtbarer Seite und laufendem Kontext:
+       (1) der Scheduler-Takt (25 ms) reißt ab — der Hauptthread hängt;
+       (2) die Audiozeit läuft langsamer als die Wanduhr — der Audiothread
+           kommt nicht hinterher;
+       (3) der Browser meldet selbst Unterläufe (playoutStats, nur Chromium).
+       Drei Aussetzer innerhalb von 10 s zeigen das rote Ausrufezeichen am Titel. */
+
+    _playoutUnderruns() {
+      try { return this.engine.ctx?.playoutStats?.underrunEvents || 0; } catch { return 0; }
+    }
+
+    _watchOverload(ctx) {
+      const o = this._ovl, now = performance.now();
+      if (document.visibilityState !== 'visible' || ctx.state !== 'running' || now - o.visibleSince < 1500) { o.lastTick = 0; o.ratioWall = 0; return; }
+      if (o.lastTick && now - o.lastTick > OVERLOAD_GAP_MS) this._noteOverload('gap');
+      o.lastTick = now;
+      if (o.ratioWall && now - o.ratioWall >= 1000) {
+        const ratio = (ctx.currentTime - o.ratioAudio) / ((now - o.ratioWall) / 1000);
+        if (ratio < OVERLOAD_RATIO) this._noteOverload('ratio');
+        o.ratioWall = now; o.ratioAudio = ctx.currentTime;
+      } else if (!o.ratioWall) { o.ratioWall = now; o.ratioAudio = ctx.currentTime; }
+      const underruns = this._playoutUnderruns();
+      if (underruns > o.underruns) this._noteOverload('underrun');
+      o.underruns = underruns;
+    }
+
+    _noteOverload() {
+      const o = this._ovl, now = performance.now();
+      if (now - o.lastEvent < 300) return; // ein Aussetzer löst oft mehrere Anzeichen zugleich aus
+      o.lastEvent = now;
+      o.events = o.events.filter((time) => now - time < OVERLOAD_WINDOW_MS);
+      o.events.push(now);
+      if (o.events.length >= OVERLOAD_EVENTS) this._renderOverload();
+    }
+
+    _renderOverload() {
+      this._ovl.cleared = false;
+      const btn = this.$('.ovl-btn');
+      if (btn) btn.hidden = false;
+      this._renderOverloadPop();
+    }
+
+    _renderOverloadPop() {
+      const pop = this.$('.ovl-pop');
+      if (!pop) return;
+      const current = this._saved.latency;
+      this.$all('.ovl-pop [data-action="latency"]').forEach((chip) => chip.setAttribute('aria-pressed', String(chip.dataset.value === current)));
+      const ctx = this.engine.ctx;
+      const ms = ctx ? Math.round(((ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000) : 0;
+      this.$('.ovl-measured').textContent = ms > 0 ? tf('lab.ovl.measured', { ms }) : '';
+      this.$('.ovl-max').hidden = current !== 'playback';
+    }
+
+    _toggleOverloadPop(open = this.$('.ovl-pop').hidden) {
+      this.$('.ovl-pop').hidden = !open;
+      this.$('.ovl-btn').setAttribute('aria-expanded', String(open));
+      if (open) { this._renderOverloadPop(); this.$('.ovl-pop [aria-pressed="true"]')?.focus(); }
+      else this.$('.ovl-btn').focus();
+    }
+
+    /** Puffer wechseln: die Latenz lässt sich nach dem Anlegen des Kontexts nicht
+     *  mehr ändern, also Audio sauber anhalten, Kontext schließen und neu
+     *  aufbauen (wie Schließen und Öffnen) — Transport und Liegeton laufen danach weiter. */
+    async _setLatency(hint) {
+      if (!LATENCY_HINTS.includes(hint)) return;
+      const wasPlaying = this.playing, droneWasOn = this.state.droneOn;
+      this._saved.latency = hint;
+      this._persist();
+      this.engine.latencyHint = hint;
+      this._ovl.events = []; this._ovl.cleared = true;
+      this.$('.ovl-btn').hidden = true;
+      if (this.engine.ready) {
+        this.stop();
+        this._releaseAllKeys();
+        this._stopDrone();
+        await this.engine.stop();
+        this._syncedCtx = null;
+        if (droneWasOn) await this._setDrone(true);
+        if (wasPlaying) await this.start();
+      }
+      this._setStatus(tf('lab.ovl.applied', { name: t(`lab.ovl.${hint}`) }));
+      this._renderOverloadPop();
+    }
+
     /* ---- Lookahead-Scheduler ---- */
 
     _scheduleAhead() {
       if (!this.playing) return;
       const ctx = this.engine.ctx;
+      this._watchOverload(ctx);
       while (this.nextStepTime < ctx.currentTime + .1) {
         const g = this.globalStep;
         const h = this._harmonyAt(g);
@@ -9357,6 +9461,9 @@
         case 'tab': this._setTab(target.dataset.tab); break;
         case 'lock': s.locks[target.dataset.lock] = !s.locks[target.dataset.lock]; this._renderLock(target.dataset.lock); break;
         case 'open-sheet': this._openSheet(); break;
+        case 'overload': this._toggleOverloadPop(); break;
+        case 'overload-close': this._toggleOverloadPop(false); break;
+        case 'latency': this._setLatency(value); break;
         case 'picker-open': this._openPicker(target.dataset.picker); break;
         case 'picker-close': this._closePicker(); break;
         case 'picker-step': this._stepPicker(target.dataset.picker, Number(value)); break;
@@ -9866,7 +9973,20 @@
     flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
     padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
   }
-  .lab-head-title { flex: 1; min-width: 0; }
+  .lab-head-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; position: relative; }
+  .ovl-btn {
+    width: 26px; height: 26px; flex: 0 0 auto; border-radius: 50%; background: var(--bad); color: #fff;
+    font-weight: 900; font-size: .95rem; line-height: 1; margin-top: .15em; box-shadow: 0 0 0 3px rgba(224, 68, 90, .25);
+  }
+  .ovl-pop {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; width: min(92vw, 340px);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px;
+    box-shadow: 0 10px 30px rgba(36, 27, 61, .22); display: flex; flex-direction: column; gap: 8px; font-size: .82rem; line-height: 1.4;
+  }
+  .ovl-pop p { margin: 0; }
+  .ovl-pop .ovl-effect, .ovl-pop .ovl-measured { color: var(--muted); }
+  .ovl-pop .ovl-max { color: var(--bad); font-weight: 700; }
+  .ovl-pop .chip-row { margin: 0; }
   .lab-head h1 { font-size: 1.32rem; margin: .15em 0 0; letter-spacing: -.02em; font-weight: 800; }
   .lab-head h1 span { color: var(--accent); }
   .icon-btn {
@@ -10747,6 +10867,19 @@
 <header class="lab-head">
   <div class="lab-head-title">
     <h1><span>Groove</span> Lab</h1>
+    <button class="ovl-btn" type="button" data-action="overload" hidden aria-expanded="false" aria-label="${t('lab.ovl.aria')}" title="${t('lab.ovl.aria')}">!</button>
+    <div class="ovl-pop" role="dialog" aria-label="${t('lab.ovl.title')}" hidden>
+      <strong>${t('lab.ovl.title')}</strong>
+      <p>${t('lab.ovl.text')}</p>
+      <span class="sub-label">${t('lab.ovl.buffer')}</span>
+      <div class="chip-row">
+        ${LATENCY_HINTS.map((hint) => `<button class="chip" type="button" data-action="latency" data-value="${hint}" aria-pressed="false">${t(`lab.ovl.${hint}`)}</button>`).join('')}
+      </div>
+      <p class="ovl-effect">${t('lab.ovl.effect')}</p>
+      <p class="ovl-measured"></p>
+      <p class="ovl-max" hidden>${t('lab.ovl.max')}</p>
+      <button class="chip" type="button" data-action="overload-close">${t('lab.ovl.close')}</button>
+    </div>
   </div>
   <div class="view-switch" role="group" aria-label="${t('lab.viewAria')}">
     <button class="chip" type="button" data-action="view" data-value="choir" aria-pressed="false">${t('lab.viewChoir')}</button>

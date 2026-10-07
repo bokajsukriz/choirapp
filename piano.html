@@ -211,6 +211,27 @@
 
   const audio = { ctx: null, master: null, dry: null, wet: null, noise: null, waves: new Map(), voices: new Map(), all: new Set() };
 
+  /* Leerlauf: 20 s nach dem letzten Anschlag (und sobald alle Stimmen
+     ausgeklungen sind) den Kontext anhalten — nie schließen. Ein laufender
+     Kontext hält die Audio-Sitzung offen und stört andere Apps und
+     Bluetooth-Kopfhörer. Töne werden in Kontextzeit geplant (currentTime
+     steht im Suspend still), der erste Anschlag nach dem Wecken klingt also
+     vollständig; ensureAudio() weckt den Kontext. */
+  const ENGINE_IDLE_SUSPEND_MS = 20000;
+  let idleTimer = null;
+  function noteIdle(ms = ENGINE_IDLE_SUSPEND_MS) {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { idleTimer = null; engineIdle(); }, ms);
+  }
+  /** Hält den Kontext an, wenn keine Stimme mehr klingt. */
+  function engineIdle() {
+    const ctx = audio.ctx;
+    if (!ctx || ctx.state !== 'running' || !ctx.suspend) return false;
+    if (audio.all.size || keysDown.size || pointers.size) { noteIdle(document.hidden ? 1000 : ENGINE_IDLE_SUSPEND_MS); return false; }
+    try { Promise.resolve(ctx.suspend()).catch(() => {}); } catch { return false; }
+    return true;
+  }
+
   function ensureAudio() {
     if (audio.ctx) {
       if (audio.ctx.state !== 'running' && audio.ctx.resume) Promise.resolve(audio.ctx.resume()).catch(() => {}); // (Offline-Kontext im Selbsttest)
@@ -311,6 +332,7 @@
   function noteOn(midi, velocity = .8) {
     const ctx = ensureAudio();
     if (!ctx) return;
+    noteIdle();
     // Gleiche Taste nochmal: alte Saite abdämpfen (wie beim echten Klavier).
     const old = audio.voices.get(midi);
     if (old) damp(old, .03);
@@ -398,6 +420,7 @@
     voice.held = false;
     // Sehr hohe Saiten haben beim Klavier keinen Dämpfer.
     if (!state.pedal && midi < 89) damp(voice);
+    noteIdle();
   }
 
   let pedalTouched = false;
@@ -623,7 +646,11 @@
   window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(build, 120); });
   // Beim Wegschalten alles abdämpfen, damit nichts hängen bleibt.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { pointers.clear(); keysDown.clear(); audio.all.forEach((v) => damp(v, .05)); paintDown(); }
+    if (document.hidden) {
+      pointers.clear(); keysDown.clear(); audio.all.forEach((v) => damp(v, .05)); paintDown();
+      // Erst die kurze Dämpfung ausklingen lassen, dann sofort anhalten.
+      noteIdle(400);
+    }
   });
 
   // Für Tests: Zugriff auf die Klangerzeugung.

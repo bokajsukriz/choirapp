@@ -1146,8 +1146,19 @@
   const engine = {
     ctx: null, master: null, noise: null, voices: new Set(), lastMidi: {}, monoVoice: {},
 
+    /** Im Leerlauf anhalten (nie schließen): ein laufender Kontext hält die
+     *  Audio-Sitzung offen und stört andere Apps und Bluetooth-Kopfhörer.
+     *  start() weckt ihn wieder. Liefert, ob suspend() angestoßen wurde. */
+    idle() {
+      const ctx = this.ctx;
+      if (!ctx || ctx.state !== 'running' || engineBusy()) return false;
+      try { Promise.resolve(ctx.suspend()).catch(() => {}); } catch { return false; }
+      return true;
+    },
+
     async start() {
-      if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); return; }
+      cancelIdle();
+      if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); noteIdle(); return; }
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) throw new Error('Web Audio API nicht verfügbar');
       const ctx = new Ctx({ latencyHint: 'interactive' });
@@ -1161,6 +1172,7 @@
       const d = this.noise.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       await ctx.resume();
+      noteIdle();
     },
 
     /** Eigener Bus für einen Lauf: ein Gain-Knoten, den man beim Stoppen ausblendet. */
@@ -1409,6 +1421,25 @@
     releaseVoice(voice) { this._release(voice, false); },
     releaseAll() { this.voices.forEach((v) => this._release(v, true)); },
   };
+  /* Leerlauf: Der Wächter prüft alle 20 s (beim Wegschalten der Seite nach
+     kurzer Frist) und hält den Kontext an, sobald nichts mehr klingt — kurzes
+     Weiterspielen hat so keine Anlaufverzögerung. Klingt noch etwas, prüft er
+     später erneut; ein vergessener Stopp-Pfad kann den Kontext also nicht
+     dauerhaft offen halten. */
+  const ENGINE_IDLE_SUSPEND_MS = 20000;
+  let idleTimer = null;
+  function engineBusy() {
+    return run.playing || !!mic.stream || !!ui.drone || own.voices.size > 0 || own.pending.size > 0
+      || !!holdReplayState || engine.voices.size > 0;
+  }
+  function cancelIdle() { clearTimeout(idleTimer); idleTimer = null; }
+  function noteIdle(ms = ENGINE_IDLE_SUSPEND_MS) {
+    cancelIdle();
+    idleTimer = setTimeout(() => {
+      idleTimer = null;
+      if (!engine.idle() && engine.ctx?.state === 'running') noteIdle(document.hidden ? 1000 : ENGINE_IDLE_SUSPEND_MS);
+    }, ms);
+  }
   // Schlagzeug: −8 dB gegenüber dem Metronom-Tool (0,4), Grundton-Liegeklang leise.
   const DRUM_GAIN = .4;
   const DRONE_GAIN = .05;
@@ -1576,14 +1607,24 @@
     close();
     return notes;
   }
+  /* Bleibt nur das Headset-Mikro (kein eingebautes gefunden), schaltet
+     Bluetooth in den Telefonie-Modus — einmalig und dezent darauf hinweisen. */
+  const HEADSET_HINT = 'Das Mikro des Kopfhörers wird benutzt – andere Apps klingen solange dumpfer.';
+  let headsetHintShown = false;
   /** Mikrofon für einen Lauf: nur geöffnet, solange der Lauf geht. */
-  const mic = { stream: null, source: null, analyser: null, buf: null, frames: [], raf: 0, error: '', lv: 0, hotUntil: 0, state: '' };
+  const mic = { stream: null, source: null, analyser: null, buf: null, frames: [], raf: 0, error: '', lv: 0, hotUntil: 0, state: '', gen: 0, headset: false };
   async function micStart() {
     mic.error = '';
+    mic.headset = false;
+    const gen = ++mic.gen;
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) { mic.error = 'Das Mikrofon ist hier nicht verfügbar — der Browser erlaubt es nur über HTTPS (oder localhost).'; return false; }
     try {
       await engine.start();
       const stream = await preferBuiltInMic(await navigator.mediaDevices.getUserMedia(RECORDING_CONSTRAINTS));
+      // Seite wurde währenddessen verdeckt/verlassen oder der Lauf abgebrochen
+      // (micStop zählt mic.gen hoch): das Mikrofon sofort wieder freigeben.
+      if (gen !== mic.gen) { stream.getTracks().forEach((track) => track.stop()); return false; }
+      mic.headset = streamIsHeadset(stream);
       mic.stream = stream;
       mic.source = engine.ctx.createMediaStreamSource(stream);
       mic.analyser = engine.ctx.createAnalyser();
@@ -1608,6 +1649,7 @@
     }
   }
   function micStop() {
+    mic.gen++;
     cancelAnimationFrame(mic.raf); mic.raf = 0;
     mic.stream?.getTracks().forEach((track) => track.stop());
     try { mic.source?.disconnect(); } catch { /* schon getrennt */ }
@@ -1655,6 +1697,7 @@
     try { await engine.start(); } catch { return false; }
     // Singen: Mikrofon nur für Läufe, in denen du dran bist (mit Soll-Punkten).
     if (state.input === 'sing' && tl.expected.length && !(await micStart())) setFeedback(mic.error, 'bad');
+    else if (mic.headset && !headsetHintShown) { headsetHintShown = true; setFeedback(HEADSET_HINT); }
     const ctx = engine.ctx;
     run.playing = true;
     run.tl = tl;
@@ -1687,6 +1730,7 @@
   /** Lauf abbrechen bzw. beenden; ohne Nachklingen (Bus blendet aus). */
   function stopRun(notify = true) {
     micStop(); // nie im Hintergrund
+    noteIdle();
     if (!run.playing && !run.timer) return;
     clearInterval(run.timer); run.timer = 0;
     const cb = run.onEnd;
@@ -1724,6 +1768,7 @@
     const v = own.voices.get(midi);
     own.voices.delete(midi);
     if (v) engine.releaseVoice(v);
+    noteIdle();
   }
 
   /* ------------------------------------------------------------------------
@@ -2437,6 +2482,7 @@
     holdReplayState = null;
     r.timers.forEach(clearTimeout);
     engine.fadeBus(r.bus);
+    noteIdle();
     if (render) renderLick();
   }
   function stepHold() {
@@ -2689,8 +2735,10 @@
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) return;
     stopRun(true); releaseDrone(); engine.releaseAll(); keysDown.clear(); own.voices.clear(); paintKeys();
+    // Kurz ausklingen lassen, dann den Kontext anhalten.
+    noteIdle(400);
   });
-  window.addEventListener('pagehide', () => { stopRun(false); releaseDrone(); });
+  window.addEventListener('pagehide', () => { stopRun(false); releaseDrone(); micStop(); });
 
   /* ------------------------------------------------------------------------
      SELBSTPRÜFUNG — Konsole des iframes: licks.selfCheck() → Liste der Fehler
