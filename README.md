@@ -284,7 +284,7 @@ Knacken, das erst in der Bluetooth-Strecke entsteht, sieht der Browser nicht.
 
 Antippen öffnet das Panel (auch im neutralen Zustand): Puffer-Wahl Klein/Mittel/
 Groß (`latencyHint` `interactive`/`balanced`/`playback`, gespeichert als
-`latency` im Lab-Stand; Standard „Mittel“, ein gespeicherter Wert bleibt; die Chips nennen
+`latency` im Lab-Stand; Standard „Klein“, ein gespeicherter Wert bleibt; die Chips nennen
 die Größe in Samples und ms), gemessene Verzögerung und ein Abschnitt „Diagnose“, der
 sich einmal pro Sekunde auffrischt, solange das Panel offen ist: Rechenlast
 (`renderCapacity`, sonst der Lasttest), Aussetzer und Latenz aus `playbackStats`,

@@ -2876,7 +2876,7 @@
       this.monoVoice = {};   // je Ebene: aktuelle Stimme im Mono-Modus
       this._reverbTimer = 0;
       this._reverbLength = 0;
-      this.latencyHint = 'balanced'; // Puffer: 'interactive' (klein) | 'balanced' | 'playback' (groß) — gilt ab dem nächsten Kontext
+      this.latencyHint = 'interactive'; // Puffer: 'interactive' (klein) | 'balanced' | 'playback' (groß) — gilt ab dem nächsten Kontext
     }
 
     get ready() { return !!this.ctx; }
@@ -3866,7 +3866,7 @@
       this.sampler = { meta: new Map(), buffers: new Map(), blobs: new Map(), loading: new Map(), peaks: new Map(), peakCache: new Map(),
         decoder: null, loaded: false, view: 'pads', sel: 0, draft: null, draftBuffer: null, draftPeaks: null, draftNew: false, rec: null, live: true, bluetoothHint: false };
       this.stepClock = null;   // zuletzt eingeplanter Schritt { g, time } — für das Einrasten beim Live-Einspielen
-      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [], workshop: sanitizeWorkshopProgress(null), deconstruct: null, latency: 'balanced' };
+      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [], workshop: sanitizeWorkshopProgress(null), deconstruct: null, latency: 'interactive' };
       // de:construct: Solange die Ansicht offen ist, hält this.state „Meine
       // Version“ (_dcActive); der Studio-Stand wartet samt Undo in _dcStash.
       this._dcActive = false;
