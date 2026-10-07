@@ -8477,7 +8477,7 @@
     log.push(ok);
     if (log.length > INTERVAL_MEMORY) log.shift();
     const dirLabel = { up: 'aufwärts', down: 'abwärts', harmonic: 'zusammen' }[task.dir];
-    setEarFeedback(ok ? `Richtig: ${intervalName(task.semis)}!` : `Noch nicht — das war: ${intervalName(task.semis)} (${dirLabel}).`, ok ? 'ok' : 'bad');
+    setEarFeedback((ok ? `Richtig: ${intervalName(task.semis)}!` : `Noch nicht — das war: ${intervalName(task.semis)} (${dirLabel}).`) + ivSongHint(task.semis, task.dir), ok ? 'ok' : 'bad');
     onEarResult(task, ok);
     renderEar();
     if (ok && ear.settings.autoNext) ear.timers.push(setTimeout(nextEar, 1100));
@@ -9281,6 +9281,15 @@
     const own = ivSongs.map[`${n}:${dir}`];
     if (own) return own.none ? null : own;
     return ivCandidates(n, dir)[0] || null;
+  }
+  /** Merkhilfe für die Auflösung: „ Merkhilfe: Hey Jude (Hey – Jude).“ — leer
+   *  bei Zusammenklang, ohne Beispiel oder außerhalb von 1–12 Halbtönen. Nimmt
+   *  die Auswahl aus der Merkhilfe-Liste (Notenknopf), nicht eine eigene. */
+  function ivSongHint(semis, dir) {
+    if (dir !== 'up' && dir !== 'down') return '';
+    const song = ivSongFor(semis, dir);
+    if (!song) return '';
+    return ` Merkhilfe: ${song.t}${song.c ? ` (${song.c})` : ''}.`;
   }
   /** Gespeicherte Auswahl übernehmen (nur gültige Schlüssel, Texte gekürzt). */
   function sanitizeIvSongs(raw) {
@@ -12098,7 +12107,7 @@
     return `Gefunden, aber noch ungenau (${Math.round(a)} Cent zu ${cents > 0 ? 'hoch' : 'tief'}).`;
   }
   function findToneResultText(task, res) {
-    const goal = `Gesucht: ${findToneTarget(task)}.`;
+    const goal = `Gesucht: ${findToneTarget(task)}.${task.mode === 'singInterval' ? ivSongHint(task.semis, task.dir) : ''}`;
     if (res.hit) {
       const oct = res.octaveOff ? ` (eine Oktave ${res.octaveOff < 0 ? 'tiefer' : 'höher'} – zählt)` : '';
       if (task.mode === 'findTone') return `${findToneHitWord(res.cents)}${oct} ${goal}`;
