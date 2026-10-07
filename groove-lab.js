@@ -2876,7 +2876,7 @@
       this.monoVoice = {};   // je Ebene: aktuelle Stimme im Mono-Modus
       this._reverbTimer = 0;
       this._reverbLength = 0;
-      this.latencyHint = 'interactive'; // Puffer: 'interactive' (klein) | 'balanced' | 'playback' (groß) — gilt ab dem nächsten Kontext
+      this.latencyHint = 'balanced'; // Puffer: 'interactive' (klein) | 'balanced' | 'playback' (groß) — gilt ab dem nächsten Kontext
     }
 
     get ready() { return !!this.ctx; }
@@ -3866,7 +3866,7 @@
       this.sampler = { meta: new Map(), buffers: new Map(), blobs: new Map(), loading: new Map(), peaks: new Map(), peakCache: new Map(),
         decoder: null, loaded: false, view: 'pads', sel: 0, draft: null, draftBuffer: null, draftPeaks: null, draftNew: false, rec: null, live: true, bluetoothHint: false };
       this.stepClock = null;   // zuletzt eingeplanter Schritt { g, time } — für das Einrasten beim Live-Einspielen
-      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [], workshop: sanitizeWorkshopProgress(null), deconstruct: null, latency: 'interactive' };
+      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [], workshop: sanitizeWorkshopProgress(null), deconstruct: null, latency: 'balanced' };
       // de:construct: Solange die Ansicht offen ist, hält this.state „Meine
       // Version“ (_dcActive); der Studio-Stand wartet samt Undo in _dcStash.
       this._dcActive = false;
@@ -5930,7 +5930,10 @@
       if (o.test?.failed) text = t('lab.ovl.testFail');
       else if (o.test) {
         level = loadLevel(o.test.pct);
-        text = tf('lab.ovl.testResult', { pct: o.test.pct }) + (level === 'ok' ? '' : ` ${t(`lab.ovl.test_${level}`)}`);
+        text = tf('lab.ovl.testResult', { pct: o.test.pct });
+        // Wenig Last, aber kleinster Puffer: Knacken kommt dann vom Puffer, nicht von der CPU.
+        if (level !== 'ok') text += ` ${t(`lab.ovl.test_${level}`)}`;
+        else if (this._saved.latency === 'interactive') text += ` ${tf('lab.ovl.test_okSmall', { name: t('lab.ovl.balanced') })}`;
       }
       if (res.textContent !== text) res.textContent = text; // Screenreader: nur bei Änderung
       res.className = `ovl-test${level ? ` is-${level}` : ''}`;
