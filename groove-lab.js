@@ -2876,7 +2876,7 @@
       this.monoVoice = {};   // je Ebene: aktuelle Stimme im Mono-Modus
       this._reverbTimer = 0;
       this._reverbLength = 0;
-      this.latencyHint = 'interactive'; // Puffer: 'interactive' (klein) | 'balanced' | 'playback' (groß) — gilt ab dem nächsten Kontext
+      this.latencyHint = 'balanced'; // Puffer: 'interactive' (klein) | 'balanced' | 'playback' (groß) — gilt ab dem nächsten Kontext
     }
 
     get ready() { return !!this.ctx; }
@@ -3866,7 +3866,7 @@
       this.sampler = { meta: new Map(), buffers: new Map(), blobs: new Map(), loading: new Map(), peaks: new Map(), peakCache: new Map(),
         decoder: null, loaded: false, view: 'pads', sel: 0, draft: null, draftBuffer: null, draftPeaks: null, draftNew: false, rec: null, live: true, bluetoothHint: false };
       this.stepClock = null;   // zuletzt eingeplanter Schritt { g, time } — für das Einrasten beim Live-Einspielen
-      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [], workshop: sanitizeWorkshopProgress(null), deconstruct: null, latency: 'interactive' };
+      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [], workshop: sanitizeWorkshopProgress(null), deconstruct: null, latency: 'balanced' };
       // de:construct: Solange die Ansicht offen ist, hält this.state „Meine
       // Version“ (_dcActive); der Studio-Stand wartet samt Undo in _dcStash.
       this._dcActive = false;
@@ -5764,7 +5764,12 @@
       this.$('.ovl-pop').setAttribute('aria-label', t(warn ? 'lab.ovl.title' : 'lab.ovl.titleIdle'));
       this.$('.ovl-title').textContent = t(warn ? 'lab.ovl.title' : 'lab.ovl.titleIdle');
       this.$('.ovl-text').textContent = t(warn ? 'lab.ovl.text' : 'lab.ovl.textIdle');
-      this.$all('.ovl-pop [data-action="latency"]').forEach((chip) => chip.setAttribute('aria-pressed', String(chip.dataset.value === current)));
+      this._rememberLatency();
+      this.$all('.ovl-pop [data-action="latency"]').forEach((chip) => {
+        chip.setAttribute('aria-pressed', String(chip.dataset.value === current));
+        const info = this._ovl.bufInfo?.[chip.dataset.value];
+        chip.querySelector('.lat-info').textContent = info ? tf('lab.ovl.chipInfo', info) : '';
+      });
       const ctx = this.engine.ctx;
       const ms = ctx ? Math.round(((ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000) : 0;
       this.$('.ovl-measured').textContent = ms > 0 ? tf('lab.ovl.measured', { ms }) : '';
@@ -5782,12 +5787,45 @@
         // Diagnose: einmal pro Sekunde auffrischen, solange das Panel offen ist.
         this._ovl.timer = global.setInterval(() => this._renderDiag(), 1000);
         this._readOutputDevice();
+        this._probeBuffers();
         if (focus) this.$('.ovl-pop [aria-pressed="true"]')?.focus();
       } else if (focus) this.$('.ovl-btn').focus();
       this._syncRenderCapacity();
     }
 
     /* ---- Diagnose ---- */
+
+    /** Puffergröße eines Kontexts: baseLatency (s) × Abtastrate = Samples je Callback. */
+    _bufferInfo(ctx) {
+      try {
+        const frames = Math.round(ctx.baseLatency * ctx.sampleRate);
+        return frames > 0 ? { frames, ms: Math.round(ctx.baseLatency * 1000) } : null;
+      } catch { return null; }
+    }
+
+    /** Wert des laufenden Kontexts für den gewählten Puffer merken. */
+    _rememberLatency() {
+      const info = this.engine.ctx && this._bufferInfo(this.engine.ctx);
+      if (info) (this._ovl.bufInfo ||= {})[this._saved.latency] = info;
+    }
+
+    /** Die anderen Puffer einmal je Sitzung kurz ausprobieren (Wegwerf-Kontext, sofort wieder zu),
+     *  damit die Chips ihre Größe nennen können. Nicht während der Wiedergabe: ein zusätzlicher
+     *  Kontext könnte dort knacken lassen. */
+    async _probeBuffers() {
+      const o = this._ovl, Ctx = global.AudioContext || global.webkitAudioContext;
+      if (!Ctx || this.playing || o.probing || o.probed) return;
+      o.probing = true;
+      try {
+        for (const hint of LATENCY_HINTS) {
+          if (o.bufInfo?.[hint]) continue;
+          let probe = null;
+          try { probe = new Ctx({ latencyHint: hint }); const info = this._bufferInfo(probe); if (info) (o.bufInfo ||= {})[hint] = info; } catch { /* nicht möglich */ }
+          try { await probe?.close(); } catch { /* schon zu */ }
+        }
+        o.probed = true;
+      } finally { o.probing = false; this._renderOverloadPop(); }
+    }
 
     /** Rechenlast des Audio-Threads laut Browser (AudioRenderCapacity, per
      *  Feature-Detection): läuft nur, solange der Transport spielt oder das
@@ -5892,7 +5930,10 @@
       if (o.test?.failed) text = t('lab.ovl.testFail');
       else if (o.test) {
         level = loadLevel(o.test.pct);
-        text = tf('lab.ovl.testResult', { pct: o.test.pct }) + (level === 'ok' ? '' : ` ${t(`lab.ovl.test_${level}`)}`);
+        text = tf('lab.ovl.testResult', { pct: o.test.pct });
+        // Wenig Last, aber kleinster Puffer: Knacken kommt dann vom Puffer, nicht von der CPU.
+        if (level !== 'ok') text += ` ${t(`lab.ovl.test_${level}`)}`;
+        else if (this._saved.latency === 'interactive') text += ` ${tf('lab.ovl.test_okSmall', { name: t('lab.ovl.balanced') })}`;
       }
       if (res.textContent !== text) res.textContent = text; // Screenreader: nur bei Änderung
       res.className = `ovl-test${level ? ` is-${level}` : ''}`;
@@ -10257,6 +10298,7 @@
   }
   .ovl-pop { max-height: calc(100vh - 90px); overflow-y: auto; }
   .ovl-pop p { margin: 0; }
+  .ovl-pop .chip small { display: block; font-size: .62rem; font-weight: 600; color: var(--muted); }
   .ovl-diag { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: .74rem; }
   .ovl-diag dt { color: var(--muted); }
   .ovl-diag dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
@@ -11153,7 +11195,7 @@
       <p class="ovl-text">${t('lab.ovl.textIdle')}</p>
       <span class="sub-label">${t('lab.ovl.buffer')}</span>
       <div class="chip-row">
-        ${LATENCY_HINTS.map((hint) => `<button class="chip" type="button" data-action="latency" data-value="${hint}" aria-pressed="false">${t(`lab.ovl.${hint}`)}</button>`).join('')}
+        ${LATENCY_HINTS.map((hint) => `<button class="chip" type="button" data-action="latency" data-value="${hint}" aria-pressed="false"><span>${t(`lab.ovl.${hint}`)}</span><small class="lat-info"></small></button>`).join('')}
       </div>
       <p class="ovl-effect">${t('lab.ovl.effect')}</p>
       <p class="ovl-measured"></p>
