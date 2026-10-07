@@ -21331,6 +21331,36 @@ async function runMusicSelfTests({ log = true } = {}) {
     } catch (err) {
       failed.push(`de:construct Ansicht: ${err?.message || err}`);
     }
+    // Überlastungsanzeige, Paket A: Wiedergabe-Statistik des Browsers (Spion-Kontext, kein echter AudioContext).
+    try {
+      const view = document.createElement('chor-groove-lab');
+      const reasons = [];
+      view._noteOverload = (reason) => reasons.push(reason);
+      if (view._playbackStats() !== null) failed.push('Überlastung: ohne Kontext keine Statistik erwartet');
+      view._pollPlaybackStats(); // ohne Kontext und ohne API: kein Fehler, kein Aussetzer
+      view.engine.ctx = { state: 'running', currentTime: 0 };
+      view._pollPlaybackStats();
+      if (reasons.length) failed.push('Überlastung: fehlende playbackStats lösen einen Aussetzer aus');
+      const stats = { underrunEvents: 0, underrunDuration: 0 };
+      view.engine.ctx = { state: 'running', currentTime: 0, playbackStats: stats };
+      view._pollPlaybackStats();
+      if (reasons.length) failed.push('Überlastung: Zähler 0 löst einen Aussetzer aus');
+      stats.underrunEvents = 2; stats.underrunDuration = .04;
+      view._pollPlaybackStats();
+      if (reasons.join() !== 'underrun') failed.push(`Überlastung: steigende underrunEvents melden ${reasons.join() || 'nichts'} statt underrun`);
+      if (view._ovl.underrunDuration !== .04) failed.push('Überlastung: underrunDuration nicht gemerkt');
+      view._pollPlaybackStats(); // unverändert: kein weiterer Aussetzer
+      if (reasons.length !== 1) failed.push('Überlastung: gleicher Zähler meldet erneut');
+      // Rückfall auf den Altnamen aus dem Spec-Entwurf.
+      view.engine.ctx = { state: 'running', currentTime: 0, playoutStats: { underrunEvents: 5 } };
+      view._pollPlaybackStats();
+      if (reasons.length !== 2) failed.push('Überlastung: Altname playoutStats wird nicht gelesen');
+      // Wirft der Zugriff, bleibt es still.
+      view.engine.ctx = { get playbackStats() { throw new Error('nein'); } };
+      view._pollPlaybackStats();
+    } catch (err) {
+      failed.push(`Überlastung (Statistik): ${err?.message || err}`);
+    }
     // Beat-Lupe und Rückfrage vor „Raster leeren“/„Original“ (echte, nicht eingehängte Ansicht).
     try {
       const z = document.createElement('chor-groove-lab');

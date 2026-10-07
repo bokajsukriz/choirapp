@@ -3822,7 +3822,7 @@
 
       // Überlastungsanzeige: Zeitpunkte erkannter Aussetzer, letzter Scheduler-
       // Tick, letzter Vergleich Audiozeit/Wanduhr, Zähler der Browser-Statistik.
-      this._ovl = { events: [], lastEvent: 0, lastTick: 0, ratioWall: 0, ratioAudio: 0, underruns: 0, visibleSince: performance.now() };
+      this._ovl = { events: [], lastEvent: 0, lastTick: 0, ratioWall: 0, ratioAudio: 0, underruns: 0, underrunDuration: 0, visibleSince: performance.now() };
       document.addEventListener('visibilitychange', () => { this._ovl.visibleSince = performance.now(); this._ovl.lastTick = 0; this._ovl.ratioWall = 0; });
 
       this.playing = false;
@@ -5577,7 +5577,7 @@
       this.globalStep = 0;
       this.scheduledSteps.length = 0;
       this.nextStepTime = this.engine.ctx.currentTime + .06;
-      this._ovl.lastTick = 0; this._ovl.ratioWall = 0; this._ovl.underruns = this._playoutUnderruns();
+      this._ovl.lastTick = 0; this._ovl.ratioWall = 0; this._ovl.underruns = this._playbackStats()?.underrunEvents || 0;
       this._renderTransport();
       this._setStatus(t('lab.statusRunning'));
       this._scheduleAhead();
@@ -5672,11 +5672,24 @@
        (1) der Scheduler-Takt (25 ms) reißt ab — der Hauptthread hängt;
        (2) die Audiozeit läuft langsamer als die Wanduhr — der Audiothread
            kommt nicht hinterher;
-       (3) der Browser meldet selbst Unterläufe (playoutStats, nur Chromium).
+       (3) der Browser meldet selbst Unterläufe (AudioContext.playbackStats, Chrome
+           ab 146; früher im Spec-Entwurf playoutStats genannt — bleibt als Rückfall).
        Drei Aussetzer innerhalb von 10 s zeigen das rote Ausrufezeichen am Titel. */
 
-    _playoutUnderruns() {
-      try { return this.engine.ctx?.playoutStats?.underrunEvents || 0; } catch { return 0; }
+    /** Die Wiedergabe-Statistik des Browsers (live, ~1×/s aktualisiert) oder
+     *  null, wenn es sie nicht gibt (Firefox, Safari, ältere Chromium). */
+    _playbackStats() {
+      try { const ctx = this.engine.ctx; return ctx?.playbackStats ?? ctx?.playoutStats ?? null; } catch { return null; }
+    }
+
+    /** Steigt der Unterlauf-Zähler der Statistik, ist das ein Aussetzer. */
+    _pollPlaybackStats() {
+      const o = this._ovl, stats = this._playbackStats();
+      let underruns = 0, duration = 0;
+      try { underruns = Number(stats?.underrunEvents) || 0; duration = Number(stats?.underrunDuration) || 0; } catch { /* Statistik nicht lesbar */ }
+      if (underruns > o.underruns) this._noteOverload('underrun');
+      o.underruns = underruns;
+      o.underrunDuration = duration;
     }
 
     _watchOverload(ctx) {
@@ -5689,9 +5702,7 @@
         if (ratio < OVERLOAD_RATIO) this._noteOverload('ratio');
         o.ratioWall = now; o.ratioAudio = ctx.currentTime;
       } else if (!o.ratioWall) { o.ratioWall = now; o.ratioAudio = ctx.currentTime; }
-      const underruns = this._playoutUnderruns();
-      if (underruns > o.underruns) this._noteOverload('underrun');
-      o.underruns = underruns;
+      this._pollPlaybackStats();
     }
 
     _noteOverload() {
