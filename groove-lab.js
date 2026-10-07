@@ -3806,6 +3806,7 @@
   const OVERLOAD_EVENTS = 3;          // ... in diesem Fenster zeigen das Ausrufezeichen
   const OVERLOAD_GAP_MS = 150;        // Scheduler-Lücke (erwartet 25 ms) = Hauptthread hängt
   const OVERLOAD_RATIO = .9;          // Audiozeit pro Wanduhrzeit darunter = Audiothread kommt nicht hinterher
+  const RC_PEAK_LOAD = .95;           // renderCapacity: Spitzenlast ab hier (oder underrunRatio > 0) = Aussetzer
   const LOADTEST_SECONDS = 4;         // Lasttest: so lange Musik im OfflineAudioContext rendern
   const LOADTEST_WARN = 40, LOADTEST_HIGH = 70; // % Echtzeit: ab hier gelb bzw. rot
   /** Einordnung des Lasttests (Renderdauer in % der Musikdauer). */
@@ -5809,11 +5810,16 @@
       } catch { o.rc = null; o.rcCtx = null; }
     }
 
-    /** `update` der Renderkapazität (1×/s): Werte merken, mehr nicht — die Anzeige holt sie sich selbst. */
+    /** `update` der Renderkapazität (1×/s): Werte merken — die Anzeige holt sie sich selbst —
+     *  und eine Spitze oder ein Unterlauf als viertes Anzeichen („load“) melden. */
     _onRenderCapacity(event) {
       const num = (value) => (Number.isFinite(value) ? value : 0);
-      this._ovl.rcStats = { avg: num(event?.averageLoad), peak: num(event?.peakLoad), ratio: num(event?.underrunRatio) };
+      const stats = this._ovl.rcStats = { avg: num(event?.averageLoad), peak: num(event?.peakLoad), ratio: num(event?.underrunRatio) };
+      if (this._rcOverload(stats) && document.visibilityState === 'visible' && this.engine.ctx?.state === 'running') this._noteOverload('load');
     }
+
+    /** Spitzenlast ab 95 % oder irgendein Unterlauf in der letzten Sekunde: der Audiothread hat Töne verpasst oder fast. */
+    _rcOverload({ peak, ratio }) { return peak >= RC_PEAK_LOAD || ratio > 0; }
 
     /** Ausgabegerät beim Namen nennen — nur wenn der Browser die Namen ohne
      *  Berechtigungsabfrage herausgibt (Labels sind sonst leer); sonst weglassen. */

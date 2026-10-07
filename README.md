@@ -271,15 +271,29 @@ python3 -m http.server
 
 Danach `http://localhost:8000` im Browser öffnen.
 
-## Groove Lab: Überlastungsanzeige und Puffer
+## Groove Lab: Audio & Leistung (Überlastungsanzeige, Puffer, Diagnose)
 
-Läuft das Gerät dem Groove Lab hinterher (Scheduler-Takt reißt ab, Audiozeit
-läuft langsamer als die Wanduhr, oder der Browser meldet Unterläufe über
-`playoutStats`), erscheint nach drei Aussetzern in 10 s ein rotes „!“ am Titel.
-Antippen öffnet eine Info mit Puffer-Wahl Klein/Mittel/Groß (`latencyHint`
-`interactive`/`balanced`/`playback`, gespeichert als `latency` im Lab-Stand) und
-dem gemessenen Latenzwert. Ein Wechsel schließt den AudioContext und baut ihn
-neu auf; Transport und Liegeton laufen danach weiter.
+Am Titel sitzt immer ein Knopf „Audio & Leistung“ (neutral, Tachosymbol). Läuft
+das Gerät dem Groove Lab hinterher, wird er nach drei Aussetzern in 10 s rot mit
+„!“. Erkannt wird über vier Anzeichen, die `_noteOverload(grund)` einzeln zählt:
+`gap` (Scheduler-Takt reißt ab, Hauptthread hängt), `ratio` (Audiozeit läuft
+langsamer als die Wanduhr), `underrun` (steigender `underrunEvents` in
+`AudioContext.playbackStats`, Chrome ab 146; `playoutStats` als Altname-Rückfall)
+und `load` (`renderCapacity`: Spitzenlast ≥ 95 % oder `underrunRatio` > 0).
+Knacken, das erst in der Bluetooth-Strecke entsteht, sieht der Browser nicht.
+
+Antippen öffnet das Panel (auch im neutralen Zustand): Puffer-Wahl Klein/Mittel/
+Groß (`latencyHint` `interactive`/`balanced`/`playback`, gespeichert als
+`latency` im Lab-Stand), gemessene Verzögerung und ein Abschnitt „Diagnose“, der
+sich einmal pro Sekunde auffrischt, solange das Panel offen ist: Rechenlast
+(`renderCapacity`, sonst der Lasttest), Aussetzer und Latenz aus `playbackStats`,
+Kontext, Zähler je Grund und „Werte kopieren“ (für Fehlerberichte). Der
+**Lasttest** („Rechenlast messen“) rendert die aktuelle Einstellung 4 s lang in
+einem `OfflineAudioContext` (derselbe Graph-Aufbau wie live:
+`GrooveEngine._buildGraph`; geplant über die echten `_playStep`-Funktionen) und
+zeigt Renderdauer ÷ 4 s als „% Echtzeit“ (ab 40 % gelb, ab 70 % rot). Ein
+Pufferwechsel schließt den AudioContext und baut ihn neu auf; Transport und
+Liegeton laufen danach weiter, der Knopf ist wieder neutral.
 
 ## Groove Lab: Samples und Sampler
 

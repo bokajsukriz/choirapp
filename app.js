@@ -21414,6 +21414,19 @@ async function runMusicSelfTests({ log = true } = {}) {
       // (t() ist ohne open() nur ein Platzhalter — geprüft werden darum die Rohwerte, nicht der Wortlaut.)
       const rcs = view._ovl.rcStats;
       if (!rcs || Math.abs(rcs.avg - .234) > 1e-9 || Math.abs(rcs.peak - .51) > 1e-9 || rcs.ratio !== 0) failed.push(`Überlastung: renderCapacity-Werte ${JSON.stringify(rcs)}`);
+      // Paket D: Spitze ≥ 95 % oder underrunRatio > 0 zählt als Aussetzer, alles darunter nicht.
+      for (const [peak, ratio, want] of [[.5, 0, false], [.94, 0, false], [.95, 0, true], [1, 0, true], [.3, .01, true]]) {
+        if (view._rcOverload({ peak, ratio }) !== want) failed.push(`Überlastung: renderCapacity peak ${peak}/ratio ${ratio} → ${!want}`);
+      }
+      const reasons = [];
+      view._noteOverload = (reason) => reasons.push(reason);
+      view.engine.ctx.state = 'running';
+      if (document.visibilityState === 'visible') {
+        rc.on.update?.({ averageLoad: .9, peakLoad: .99, underrunRatio: 0 });
+        rc.on.update?.({ averageLoad: .2, peakLoad: .3, underrunRatio: 0 });
+        if (reasons.join() !== 'load') failed.push(`Überlastung: renderCapacity-Spitze meldet ${reasons.join() || 'nichts'} statt load`);
+      }
+      delete view._noteOverload;
       view._renderDiag();
       if (view.$('.ovl-diag').children.length < 10) failed.push('Überlastung: Diagnose im Panel nicht gezeichnet');
       view._toggleOverloadPop(false, { focus: false });
