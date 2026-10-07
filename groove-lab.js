@@ -16,9 +16,10 @@
    - GrooveEngine:  reine Klangerzeugung (AudioContext, Bus-Struktur, Voices).
                     Kennt weder Muster noch UI-Zustand.
    - Knob:          eigenständiger Dreh-Regler (Pointer-Events, Tastatur).
-   - GrooveLabView: die UI (Shadow-DOM-Web-Component) — sechs Reiter unter
-                    einer festen Transportleiste, Zustand, Scheduler,
-                    Rendering, Speichern.
+   - GrooveLabView: die UI (Shadow-DOM-Web-Component) — schlanke
+                    Transportleiste oben (▶, Taktpunkte, ↶, Menü), darunter
+                    die Reiter; Menü mit Speichern & Öffnen, Modus und
+                    Einstellungen. Zustand, Scheduler, Rendering, Speichern.
    ========================================================================== */
 (function (global) {
   'use strict';
@@ -2049,6 +2050,7 @@
 
   // Ansichten des Labs (state.view); 'deconstruct' seit de:construct.
   const VIEWS = ['choir', 'studio', 'workshop', 'deconstruct'];
+  const VIEW_LABEL = { choir: 'lab.viewChoir', studio: 'lab.viewStudio', workshop: 'lab.viewWorkshop', deconstruct: 'lab.viewDeconstruct' };
 
   const TABS = [
     { id: 'beat', labelKey: 'lab.tabBeat' },
@@ -2462,6 +2464,7 @@
     undo: svg('<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>'),
     zoom: svg('<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5M10.5 7.5v6M7.5 10.5h6"/>'),
     save: svg('<path d="M6 3h12v18l-6-4-6 4Z"/>'),
+    menu: svg('<path d="M4 7h16M4 12h16M4 17h16"/>'),
     reset: svg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'),
     speaker: svg('<path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>'),
     speakerOff: svg('<path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9l5 6M21 9l-5 6"/>'),
@@ -3906,7 +3909,7 @@
       this._releaseAllKeys();
       this._stopDrone();
       this.state.droneOn = false;
-      this._closeSheet();
+      this._closeSheet({ focus: false });
       this._dcSheetClose({ focus: false });
       this.ui.dc.menu = false;
       this._closePicker({ focus: false });
@@ -4039,7 +4042,6 @@
       // Ohne Song zeigt de:construct nur die Auswahl, keine Reiter.
       const dcEmpty = dcView && (!this._saved.deconstruct || this.ui.dc.choosing);
       this.$all('[data-action="view"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === v)));
-      this.$('.view-select').value = v;
       this.$('.tab-bar').hidden = choir || workshop || dcEmpty;
       // de:construct baut mit den bekannten Reitern — der Sampler gehört nicht dazu.
       const smpBtn = this.$('.tab-btn[data-tab="sampler"]');
@@ -4300,7 +4302,6 @@
     _dcSheetOpen() {
       const sheet = this.$('.dc-sheet');
       if (!sheet || !this.ui.dc.last) return;
-      sheet.style.setProperty('--dc-bar-h', `${this.$('.transport-bar').offsetHeight}px`);
       this._renderDcSheet();
       sheet.hidden = false;
       this.$('.dc-sheet-card').focus();
@@ -5123,7 +5124,7 @@
       const up = (list, sel) => list.map((el) => el.closest(sel) || el);
       const [kind, arg] = key.split(':');
       switch (kind) {
-        case 'bpm': return this.$all('.transport-bar .tempo-field');
+        case 'bpm': return inPanels('.tempo-panel');
         case 'swing': case 'pump': return up(inPanels(`[data-field="${kind}"]`), '.slider-line');
         case 'track': return inPanels(`.track-list .track-row[data-track="${arg}"]`);
         case 'picker': return inPanels(`.picker-trigger[data-picker="${arg === 'preset' ? 'sound' : arg}"]`);
@@ -5707,25 +5708,18 @@
       this._ovl.cleared = false;
       const btn = this.$('.ovl-btn');
       if (btn) btn.hidden = false;
-      this._renderOverloadPop();
+      this._renderSettings();
     }
 
-    _renderOverloadPop() {
-      const pop = this.$('.ovl-pop');
-      if (!pop) return;
+    /** Einstellungen im Menü: Puffergröße, gemessene Verzögerung, ggf. der Überlastungs-Hinweis. */
+    _renderSettings() {
       const current = this._saved.latency;
-      this.$all('.ovl-pop [data-action="latency"]').forEach((chip) => chip.setAttribute('aria-pressed', String(chip.dataset.value === current)));
+      this.$all('.menu-settings [data-action="latency"]').forEach((chip) => chip.setAttribute('aria-pressed', String(chip.dataset.value === current)));
       const ctx = this.engine.ctx;
       const ms = ctx ? Math.round(((ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000) : 0;
       this.$('.ovl-measured').textContent = ms > 0 ? tf('lab.ovl.measured', { ms }) : '';
       this.$('.ovl-max').hidden = current !== 'playback';
-    }
-
-    _toggleOverloadPop(open = this.$('.ovl-pop').hidden) {
-      this.$('.ovl-pop').hidden = !open;
-      this.$('.ovl-btn').setAttribute('aria-expanded', String(open));
-      if (open) { this._renderOverloadPop(); this.$('.ovl-pop [aria-pressed="true"]')?.focus(); }
-      else this.$('.ovl-btn').focus();
+      this.$('.ovl-warn').hidden = this.$('.ovl-btn').hidden;
     }
 
     /** Puffer wechseln: die Latenz lässt sich nach dem Anlegen des Kontexts nicht
@@ -5749,7 +5743,7 @@
         if (wasPlaying) await this.start();
       }
       this._setStatus(tf('lab.ovl.applied', { name: t(`lab.ovl.${hint}`) }));
-      this._renderOverloadPop();
+      this._renderSettings();
     }
 
     /* ---- Lookahead-Scheduler ---- */
@@ -8629,15 +8623,61 @@
       this._handleAction(def.action, String(next.i), null);
     }
 
-    /* ---- Speichern-Blatt ---- */
+    /* ---- Menü (Speichern & Öffnen · Modus · Einstellungen) ---- */
 
-    _openSheet() {
+    /** `section: 'settings'` springt gleich zu den Einstellungen (Überlastungs-„!“). */
+    _openSheet({ section = null } = {}) {
       this.$('.sheet').hidden = false;
+      this.$('.menu-btn').setAttribute('aria-expanded', 'true');
       this._renderSheet();
-      this.$('.sheet [data-action="close-sheet"]').focus();
+      if (section === 'settings') {
+        const sec = this.$('.menu-settings');
+        sec.scrollIntoView({ block: 'start' });
+        sec.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true });
+      } else {
+        this.$('.sheet-card').scrollTop = 0;
+        this.$('.sheet .menu-head [data-action="close-sheet"]').focus();
+      }
     }
 
-    _closeSheet() { this.$('.sheet').hidden = true; }
+    _closeSheet({ focus = true } = {}) {
+      const sheet = this.$('.sheet');
+      if (sheet.hidden) return;
+      sheet.hidden = true;
+      this.$('.menu-btn').setAttribute('aria-expanded', 'false');
+      this._flash('');
+      if (focus) this.$('.menu-btn').focus();
+    }
+
+    /** Als Datei sichern: derselbe Code wie „Als Code teilen“, nur als .groove-Datei. */
+    _saveFile() {
+      const blob = new Blob([`${encodeState(this.state)}\n`], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `groove-lab-${localDate()}.groove`;
+      a.style.display = 'none';
+      this.shadowRoot.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      this._flash(t('lab.fileSaved'));
+    }
+
+    /** Datei öffnen: eine .groove-Datei (oder Text mit Groove-Lab-Code) laden. */
+    async _openFile(input) {
+      const file = input.files?.[0];
+      input.value = '';
+      if (!file) return;
+      try {
+        if (file.size > 2e6) throw new Error('zu groß');
+        this._applyState(decodeState(await file.text()));
+        this._renderSheet();
+        this._flash(t('lab.fileLoaded'));
+      } catch {
+        this._flash(t('lab.fileFailed'));
+      }
+    }
 
     _renderSheet() {
       const host = this.$('.slot-list');
@@ -8665,6 +8705,7 @@
       }));
       this.$('.code-out').value = encodeState(this.state);
       this.$('.storage-hint').textContent = t(this._storage ? 'lab.autoSaveHint' : 'lab.noStorageHint');
+      this._renderSettings();
     }
 
     _flash(text) {
@@ -9321,7 +9362,7 @@
         else if (field === 'keyRoot') { s.keyRoot = Number(el.value); this._onHarmonyChange(); this._retuneDrone(); }
         else if (field === 'modeId') { s.modeId = el.value; this._onHarmonyChange(); }
         else if (el.dataset.choir === 'prog' && el.value) this._handleAction('pick-prog', el.value, el);
-        else if (el.classList.contains('view-select')) this._applyView(el.value);
+        else if (el.classList.contains('file-in')) this._openFile(el);
         else if (el.classList.contains('mel-name') || el.classList.contains('prog-name')) this._persist();
         else if (el.dataset.kit) { if (!this.playing) this._preview('kick', 1); }
         else if (el.dataset.switch) this._toggleSwitch(el.dataset.switch, el.checked);
@@ -9381,7 +9422,7 @@
       const s = this.state;
       switch (action) {
         case 'close': this.close(); break;
-        case 'view': this._applyView(value); break;
+        case 'view': this._applyView(value); this._closeSheet(); break;
         case 'choir-task': this._applyChoirTask(value); break;
         case 'choir-part': {
           this.ui.choirPart = value;
@@ -9455,14 +9496,15 @@
         case 'dc-reveal': this._dcReveal(); break;
         case 'dc-adopt': this._dcAdopt(); break;
         case 'toggle-transport': if (this.playing) this.stop(); else this.start(); break;
-        case 'randomize': this.randomize(); break;
+        case 'randomize': this._closeSheet({ focus: false }); this.randomize(); break;
         case 'undo': this.undo(); break;
         case 'tap-tempo': this._tapTempo(); break;
         case 'tab': this._setTab(target.dataset.tab); break;
         case 'lock': s.locks[target.dataset.lock] = !s.locks[target.dataset.lock]; this._renderLock(target.dataset.lock); break;
         case 'open-sheet': this._openSheet(); break;
-        case 'overload': this._toggleOverloadPop(); break;
-        case 'overload-close': this._toggleOverloadPop(false); break;
+        case 'overload': this._openSheet({ section: 'settings' }); break;
+        case 'file-save': this._saveFile(); break;
+        case 'file-open': this.$('.file-in').click(); break;
         case 'latency': this._setLatency(value); break;
         case 'picker-open': this._openPicker(target.dataset.picker); break;
         case 'picker-close': this._closePicker(); break;
@@ -9934,6 +9976,13 @@
       // Lupe: Beat-Editor bildschirmfüllend (Studio im Kopf, de:construct in der Werkzeugzeile).
       const zoomBtn = `<button class="zoom-btn" type="button" data-action="beat-zoom" aria-label="${t('lab.zoomAria')}" title="${t('lab.zoomAria')}">${UI_ICON.zoom}</button>`;
       // Aktuelle Auswahl mit ‹ › — ein Tipp auf die Mitte öffnet den Auswahl-Dialog.
+      // Tempo: Anzeige, Regler, Tap — im Beat-Reiter und in der Chor-Ansicht
+      // (alle .bpm-out/.bpm-input werden gemeinsam aktualisiert, _renderTransport).
+      const tempoRow = `<div class="tempo-row">
+        <label class="tempo-field"><span class="tempo-label">${t('lab.tempoAria')}</span><output class="bpm-out">106</output>
+          <input class="bpm-input" type="range" min="${BPM_MIN}" max="${BPM_MAX}" value="106" aria-label="${t('lab.tempoAria')}"></label>
+        <button class="chip tap-btn" type="button" data-action="tap-tempo" aria-label="${t('lab.tapAria')}">${t('lab.tapTempo')}</button>
+      </div>`;
       const pickerTrigger = (which) => `<div class="picker-trigger" data-picker="${which}">
         <button class="picker-step" type="button" data-action="picker-step" data-picker="${which}" data-value="-1" aria-label="${t('lab.prevAria')}">${UI_ICON.prev}</button>
         <button class="picker-main${which === 'melody' || which === 'prog' ? ' is-wide' : ''}" type="button" data-action="picker-open" data-picker="${which}" aria-haspopup="dialog">
@@ -9969,26 +10018,28 @@
   button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-  .lab-head {
-    flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
-    padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
+  /* Transportleiste oben: ▶ · Taktpunkte/Akkord/Status · (de:construct: Prüfen, A/B) · ↶ · ☰ */
+  .transport-bar {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 8px; position: relative;
+    border-bottom: 1px solid var(--line); background: var(--surface);
+    padding: max(8px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
   }
-  .lab-head-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; position: relative; }
+  .transport-play {
+    width: 44px; height: 44px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; border: 0;
+    background: var(--accent); color: #fff; box-shadow: 0 4px 14px -6px rgba(var(--accent-rgb), .7);
+  }
+  .now-box { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+  .now-line { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .beat-dots { display: flex; gap: 5px; flex: 0 0 auto; }
+  .beat-dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+  .beat-dots i:first-child { width: 12px; height: 12px; margin-top: -1px; }
+  .beat-dots i.is-now { background: var(--accent); }
+  .now-chord { font-weight: 800; font-size: .9rem; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status-line { font-size: .64rem; color: var(--muted); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ovl-btn {
-    width: 26px; height: 26px; flex: 0 0 auto; border-radius: 50%; background: var(--bad); color: #fff;
-    font-weight: 900; font-size: .95rem; line-height: 1; margin-top: .15em; box-shadow: 0 0 0 3px rgba(224, 68, 90, .25);
+    width: 28px; height: 28px; flex: 0 0 auto; border-radius: 50%; background: var(--bad); color: #fff;
+    font-weight: 900; font-size: .95rem; line-height: 1; box-shadow: 0 0 0 3px rgba(224, 68, 90, .25);
   }
-  .ovl-pop {
-    position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; width: min(92vw, 340px);
-    background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px;
-    box-shadow: 0 10px 30px rgba(36, 27, 61, .22); display: flex; flex-direction: column; gap: 8px; font-size: .82rem; line-height: 1.4;
-  }
-  .ovl-pop p { margin: 0; }
-  .ovl-pop .ovl-effect, .ovl-pop .ovl-measured { color: var(--muted); }
-  .ovl-pop .ovl-max { color: var(--bad); font-weight: 700; }
-  .ovl-pop .chip-row { margin: 0; }
-  .lab-head h1 { font-size: 1.32rem; margin: .15em 0 0; letter-spacing: -.02em; font-weight: 800; }
-  .lab-head h1 span { color: var(--accent); }
   .icon-btn {
     width: 40px; height: 40px; flex: 0 0 auto; display: grid; place-items: center;
     border: 1px solid var(--line); border-radius: 13px; background: var(--surface-2); color: var(--muted);
@@ -10207,12 +10258,12 @@
   .zoom-btn svg { width: 18px; height: 18px; }
   .dc-tools .zoom-btn { width: 44px; height: 44px; margin-left: auto; flex-shrink: 0; }
   .zoom-head, .zoom-hint { display: none; }
-  :host(.beat-zoom) .lab-head, :host(.beat-zoom) .tab-bar,
+  :host(.beat-zoom) .tab-bar,
   :host(.beat-zoom) .lab-body > :not([data-tab-panel="beat"]),
   :host(.beat-zoom) [data-tab-panel="beat"] > :not(.beat-panel),
   :host(.beat-zoom) .beat-panel > .panel-head, :host(.beat-zoom) .beat-panel .kit-box, :host(.beat-zoom) .beat-panel .help-text,
   :host(.beat-zoom) .zoom-btn, :host(.beat-zoom) .dc-tools [data-action="dc-tpl"] { display: none !important; }
-  :host(.beat-zoom) .lab-body { padding-top: max(10px, env(safe-area-inset-top)); }
+  :host(.beat-zoom) .lab-body { padding-top: 10px; }
   /* Kopfzeile: Überschrift · Werkzeuge (de:construct) · Fertig — alles Weitere volle Breite */
   :host(.beat-zoom) .beat-panel { margin: 0; padding: 0; border: 0; background: none; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
   :host(.beat-zoom) .beat-panel > * { grid-column: 1 / -1; }
@@ -10236,7 +10287,7 @@
   }
   /* Quer auf dem Handy: alle sechs Spuren ohne Scrollen */
   @media (orientation: landscape) and (max-height: 520px) {
-    :host(.beat-zoom) .lab-body { padding-top: max(6px, env(safe-area-inset-top)); padding-bottom: 6px; }
+    :host(.beat-zoom) .lab-body { padding-top: 6px; padding-bottom: 6px; }
     :host(.beat-zoom) .beat-panel { row-gap: 6px; }
     :host(.beat-zoom) .zoom-done, :host(.beat-zoom) .dc-tools .chip { min-height: 36px; }
     :host(.beat-zoom) .track-list { gap: 6px; }
@@ -10275,15 +10326,6 @@
 
   .satb-list { display: grid; gap: 6px; }
   .satb-row.is-own .satb-name { font-weight: 800; }
-  .view-switch { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
-  .view-switch .chip { min-height: 44px; }
-  /* Drei Ansichten passen auf schmalen Bildschirmen nicht neben den Titel —
-     dort steht statt der Knöpfe eine Auswahlliste in der Kopfzeile. */
-  .view-select { display: none; min-height: 44px; margin-left: auto; font-size: .8rem; font-weight: 800; color: var(--accent); padding: 8px 10px; }
-  @media (max-width: 560px) {
-    .view-switch { display: none; }
-    .view-select { display: block; }
-  }
   .kit-box { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
   .kit-box summary { min-height: 44px; display: flex; align-items: center; font-size: .72rem; font-weight: 800; color: var(--muted); cursor: pointer; }
   .kit-box .slider-line { grid-template-columns: 96px 1fr 56px; }
@@ -10403,13 +10445,10 @@
   .dc-tap:active { transform: scale(.97); }
   .dc-tap-bpm { font-size: 1.9rem; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
   /* Prüfen in der Transportleiste (nur de:construct mit Song) */
-  .dc-check-btn { display: none; min-height: 52px; max-width: 96px; padding: 0 12px; border-radius: 16px; background: #241b3d; color: #fff;
+  .dc-check-btn { display: none; flex: 0 1 auto; min-height: 44px; max-width: 96px; padding: 0 12px; border-radius: 16px; background: #241b3d; color: #fff;
     font-size: .8rem; font-weight: 800; line-height: 1.15; text-align: center; }
   .transport-bar.is-dc-song .dc-check-btn { display: block; }
-  .transport-bar.is-dc-song .tap-btn { display: none; }
-  .transport-bar.is-dc-song .transport-row { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
-  .transport-bar.is-dc-song .bpm-out { font-size: .9rem; }
-  .transport-bar.is-dc-song .icon-btn { min-width: 44px; min-height: 44px; }
+  .transport-bar.is-dc-song .status-line { display: none; }
   /* Beat-Reiter in de:construct: schlank — Vorlage, Bass-/Kick-Klang eingeklappt oder weg */
   .dc-tools { display: none; }
   .is-dc .dc-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
@@ -10428,14 +10467,14 @@
   .dc-solution { margin-top: 10px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--accent); font-size: .76rem; line-height: 1.45; }
   .dc-solution p { margin: 0 0 8px; }
   .dc-menu .dc-reveal.is-ask { color: #c0364a; background: #fde4e8; }
-  /* Prüf-Blatt: unten im Lab, über der Transportleiste (Höhe per --dc-bar-h) */
+  /* Prüf-Blatt: unten im Lab (die Transportleiste sitzt oben) */
   .confirm { position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(36,27,61,.38); }
   .confirm-card { width: min(100%, 340px); background: var(--surface); border-radius: 20px; padding: 18px; box-shadow: 0 12px 40px rgba(36,27,61,.3); }
   .confirm-text { margin: 0 0 16px; font-size: .9rem; font-weight: 700; line-height: 1.4; }
   .confirm-row { display: flex; justify-content: flex-end; gap: 8px; }
   .confirm-row .chip { min-height: 44px; padding: 0 16px; font-size: .78rem; }
   .confirm-yes { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .dc-sheet { position: absolute; left: 0; right: 0; top: 0; bottom: var(--dc-bar-h, 0px); z-index: 6; display: flex; align-items: flex-end; justify-content: center; }
+  .dc-sheet { position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 6; display: flex; align-items: flex-end; justify-content: center; }
   .dc-sheet-backdrop { position: absolute; inset: 0; background: rgba(36,27,61,.38); }
   .dc-sheet-card { position: relative; width: 100%; max-width: 520px; max-height: 92%; overflow-y: auto; display: grid; gap: 14px; background: var(--surface);
     border-radius: 26px 26px 0 0; padding: 10px max(18px, env(safe-area-inset-right)) 18px max(18px, env(safe-area-inset-left)); box-shadow: 0 -14px 40px -16px rgba(36,27,61,.4); }
@@ -10470,7 +10509,7 @@
   .dc-sheet-main { min-height: 54px; border-radius: 18px; background: #241b3d; color: #fff; font-size: 1rem; font-weight: 800; }
   .dc-sheet-close { min-height: 44px; border-radius: 14px; font-size: .9rem; font-weight: 700; color: #4a3f66; }
   .dc-quick {
-    min-width: 52px; height: 44px; padding: 0 8px; border-radius: 13px; border: 2px solid var(--accent); background: var(--surface);
+    flex: 0 0 auto; min-width: 52px; height: 44px; padding: 0 8px; border-radius: 13px; border: 2px solid var(--accent); background: var(--surface);
     color: var(--accent); display: grid; place-items: center; line-height: 1; gap: 1px;
   }
   .dc-quick b { font-size: .95rem; font-weight: 900; }
@@ -10686,25 +10725,19 @@
   .key.is-black { height: 60%; background: #2d2639; border-radius: 0 0 7px 7px; z-index: 2; }
   .key.is-hot { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-  .transport-bar {
-    flex: 0 0 auto; border-top: 1px solid var(--line); background: var(--surface);
-    padding: 10px max(16px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
-  }
-  .transport-row { display: grid; grid-template-columns: auto 1fr auto auto auto; align-items: center; gap: 8px; }
-  .transport-play {
-    width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; border: 0;
-    background: var(--accent); color: #fff; box-shadow: 0 6px 20px -6px rgba(var(--accent-rgb), .7);
-  }
-  .tempo-field { display: grid; gap: 2px; min-width: 0; }
+  /* Tempo (Beat-Reiter und Chor-Ansicht) */
+  .tempo-row { display: flex; align-items: center; gap: 10px; }
+  .tempo-field { flex: 1; min-width: 0; display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 4px 10px; }
+  .tempo-label { font-size: .62rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
   .bpm-out { font-weight: 800; font-size: 1rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .tap-btn { width: auto; padding: 0 10px; font-size: .68rem; font-weight: 800; }
-  .now-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; min-height: 18px; }
-  .beat-dots { display: flex; gap: 4px; }
-  .beat-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
-  .beat-dots i:first-child { width: 10px; height: 10px; margin-top: -1px; }
-  .beat-dots i.is-now { background: var(--accent); }
-  .now-chord { font-weight: 800; font-size: .8rem; color: var(--accent); }
-  .status-line { flex: 1; font-size: .66rem; color: var(--muted); text-align: right; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tempo-field .bpm-input { min-width: 0; width: 100%; }
+  .tap-btn { flex: 0 0 auto; min-height: 44px; padding: 0 16px; font-weight: 800; }
+  .tempo-panel { padding-top: 10px; padding-bottom: 10px; }
+  .choir-tempo { margin-top: 12px; }
+  @media (max-width: 380px) {
+    .tempo-field { grid-template-columns: auto 1fr; }
+    .tempo-field .bpm-input { grid-column: 1 / -1; }
+  }
 
   .picker-trigger { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); overflow: hidden; }
   .picker-step { flex: 0 0 42px; display: grid; place-items: center; color: var(--muted); }
@@ -10841,18 +10874,49 @@
   .picker-done { padding: 11px 24px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .8rem; }
   @media (prefers-reduced-motion: reduce) { .picker-card, .picker-backdrop { transition: none; } }
 
-  .sheet { position: absolute; inset: 0; background: rgba(36,27,61,.35); display: flex; align-items: flex-end; justify-content: center; z-index: 5; }
+  /* Menü: Schublade von rechts (auf dem Handy fast bildschirmbreit) */
+  .sheet { position: absolute; inset: 0; z-index: 5; display: flex; justify-content: flex-end; }
+  .sheet-backdrop { position: absolute; inset: 0; background: rgba(36,27,61,.35); }
   .sheet-card {
-    width: 100%; max-width: 520px; max-height: 88%; overflow-y: auto; background: var(--bg); border-radius: 22px 22px 0 0;
-    padding: 16px max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    position: relative; width: min(400px, 92%); height: 100%; overflow-y: auto; background: var(--bg);
+    box-shadow: -12px 0 30px -12px rgba(36, 27, 61, .35);
+    padding: max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) 16px;
   }
+  .menu-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+  .menu-title { font-size: 1.32rem; margin: 0; letter-spacing: -.02em; font-weight: 800; }
+  .menu-title span { color: var(--accent); }
+  .menu-sec { padding: 14px 0; border-top: 1px solid var(--line); }
+  .menu-sec:first-of-type { border-top: 0; }
+  .menu-sec-title { font-size: .7rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 10px; }
+  .menu-sec .chip { min-height: 40px; }
+  .file-row { margin-top: 8px; }
+  .menu-code { margin-top: 10px; }
+  .menu-code > summary { cursor: pointer; font-size: .78rem; font-weight: 700; color: var(--muted); padding: 6px 2px; }
+  .mode-list { display: grid; gap: 6px; }
+  .mode-item {
+    display: grid; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface);
+  }
+  .mode-item strong { font-size: .86rem; }
+  .mode-item span { font-size: .7rem; color: var(--muted); line-height: 1.35; }
+  .mode-item[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .mode-item[aria-pressed="true"] strong { color: var(--accent); }
+  .menu-settings .sub-label { margin-top: 0; }
+  .menu-note { margin: 8px 0 0; font-size: .72rem; line-height: 1.4; color: var(--muted); }
+  .menu-note.ovl-max { color: var(--bad); font-weight: 700; }
+  .ovl-warn { margin-bottom: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(224, 68, 90, .08); border: 1px solid rgba(224, 68, 90, .3); font-size: .78rem; line-height: 1.4; }
+  .ovl-warn strong { color: var(--bad); }
+  .ovl-warn p { margin: 4px 0 0; }
+  .menu-actions { display: grid; gap: 4px; }
+  .menu-item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 6px; border-radius: 10px; font-size: .84rem; font-weight: 700; text-align: left; }
+  .menu-item svg { width: 20px; height: 20px; color: var(--muted); }
+  .menu-item:active { background: var(--surface-2); }
   .slot-list { display: grid; gap: 6px; }
   .slot-row { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 8px 8px 12px; }
   .slot-text { display: grid; min-width: 0; }
   .slot-text strong { font-size: .76rem; }
   .slot-text span { font-size: .64rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   textarea { width: 100%; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 8px; font-size: .66rem; font-family: ui-monospace, monospace; resize: vertical; min-height: 54px; }
-  .sheet-status { min-height: 1.2em; font-size: .7rem; font-weight: 700; color: var(--accent); text-align: center; margin: 10px 0 0; }
+  .sheet-status { min-height: 1.2em; font-size: .7rem; font-weight: 700; color: var(--accent); margin: 8px 0 0; }
 
   @media (max-width: 380px) {
     .adsr-sliders { grid-template-columns: repeat(2, 1fr); }
@@ -10864,37 +10928,21 @@
   @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; animation: none !important; } }
 </style>
 
-<header class="lab-head">
-  <div class="lab-head-title">
-    <h1><span>Groove</span> Lab</h1>
-    <button class="ovl-btn" type="button" data-action="overload" hidden aria-expanded="false" aria-label="${t('lab.ovl.aria')}" title="${t('lab.ovl.aria')}">!</button>
-    <div class="ovl-pop" role="dialog" aria-label="${t('lab.ovl.title')}" hidden>
-      <strong>${t('lab.ovl.title')}</strong>
-      <p>${t('lab.ovl.text')}</p>
-      <span class="sub-label">${t('lab.ovl.buffer')}</span>
-      <div class="chip-row">
-        ${LATENCY_HINTS.map((hint) => `<button class="chip" type="button" data-action="latency" data-value="${hint}" aria-pressed="false">${t(`lab.ovl.${hint}`)}</button>`).join('')}
-      </div>
-      <p class="ovl-effect">${t('lab.ovl.effect')}</p>
-      <p class="ovl-measured"></p>
-      <p class="ovl-max" hidden>${t('lab.ovl.max')}</p>
-      <button class="chip" type="button" data-action="overload-close">${t('lab.ovl.close')}</button>
-    </div>
+<!-- Schlanke Transportleiste oben: Start/Stopp, Taktpunkte mit Akkord und
+     Statuszeile, Rückgängig und das Menü (Speichern/Öffnen, Modus,
+     Einstellungen). Das Tempo steht im Beat-Reiter (bzw. in der Chor-Ansicht
+     beim Drumloop). In de:construct kommen Prüfen und A/B dazu. -->
+<header class="transport-bar">
+  <button class="transport-play" type="button" data-action="toggle-transport" aria-label="${t('lab.startAria')}">${UI_ICON.play}</button>
+  <div class="now-box">
+    <div class="now-line"><div class="beat-dots" aria-hidden="true"></div><strong class="now-chord"></strong></div>
+    <p class="status-line" role="status">${t('lab.statusReady')}</p>
   </div>
-  <div class="view-switch" role="group" aria-label="${t('lab.viewAria')}">
-    <button class="chip" type="button" data-action="view" data-value="choir" aria-pressed="false">${t('lab.viewChoir')}</button>
-    <button class="chip" type="button" data-action="view" data-value="studio" aria-pressed="true">${t('lab.viewStudio')}</button>
-    <button class="chip" type="button" data-action="view" data-value="workshop" aria-pressed="false">${t('lab.viewWorkshop')}</button>
-    <button class="chip" type="button" data-action="view" data-value="deconstruct" aria-pressed="false">${t('lab.viewDeconstruct')}</button>
-  </div>
-  <select class="view-select" aria-label="${t('lab.viewAria')}">
-    <option value="choir">${t('lab.viewChoir')}</option>
-    <option value="studio">${t('lab.viewStudio')}</option>
-    <option value="workshop">${t('lab.viewWorkshop')}</option>
-    <option value="deconstruct">${t('lab.viewDeconstruct')}</option>
-  </select>
-  <button class="icon-btn" type="button" data-action="open-sheet" aria-label="${t('lab.saveAria')}" title="${t('lab.saveAria')}">${UI_ICON.save}</button>
-  <button class="icon-btn close-btn" type="button" data-action="close" aria-label="${t('lab.closeAria')}">${UI_ICON.close}</button>
+  <button class="ovl-btn" type="button" data-action="overload" hidden aria-label="${t('lab.ovl.aria')}" title="${t('lab.ovl.aria')}">!</button>
+  <button class="dc-check-btn" type="button" data-action="dc-check-active"></button>
+  <button class="dc-quick" type="button" data-action="dc-quick" aria-pressed="true" aria-label="${t('lab.dc.quickAria')}" title="${t('lab.dc.quickAria')}" hidden><b class="dc-quick-letter">A</b><span class="dc-quick-text"></span></button>
+  <button class="icon-btn" type="button" data-action="undo" aria-label="${t('lab.undoAria')}" title="${t('lab.undoAria')}" disabled>${UI_ICON.undo}</button>
+  <button class="icon-btn menu-btn" type="button" data-action="open-sheet" aria-haspopup="dialog" aria-expanded="false" aria-label="${t('lab.menuAria')}" title="${t('lab.menuAria')}">${UI_ICON.menu}</button>
 </header>
 
 <nav class="tab-bar" role="tablist">
@@ -10918,6 +10966,7 @@
     <section class="panel">
       <div class="panel-head"><h2>${t('lab.drumloop')}</h2></div>
       <div class="chip-row choir-grooves"></div>
+      <div class="choir-tempo">${tempoRow}</div>
     </section>
     <section class="panel">
       <div class="panel-head"><h2>${t('lab.key')}</h2></div>
@@ -11048,6 +11097,7 @@
     </section>
   </section>
   <section class="tab-panel" data-tab-panel="beat">
+    <section class="panel tempo-panel">${tempoRow}</section>
     <section class="panel dc-tpl-panel">
       <div class="panel-head"><h2>${t('lab.drumloop')}</h2>${lockBtn('beat')}</div>
       ${pickerTrigger('beat')}
@@ -11369,39 +11419,53 @@
   </section>
 </div>
 
-<footer class="transport-bar">
-  <div class="transport-row">
-    <button class="transport-play" type="button" data-action="toggle-transport" aria-label="${t('lab.startAria')}">${UI_ICON.play}</button>
-    <label class="tempo-field">
-      <output class="bpm-out">106 BPM</output>
-      <input class="bpm-input" type="range" min="30" max="180" value="106" aria-label="${t('lab.tempoAria')}">
-    </label>
-    <button class="icon-btn tap-btn" type="button" data-action="tap-tempo" aria-label="${t('lab.tapAria')}">${t('lab.tapTempo')}</button>
-    <button class="icon-btn" type="button" data-action="randomize" aria-label="${t('lab.randomAria')}" title="${t('lab.randomAria')}">${UI_ICON.dice}</button>
-    <button class="dc-check-btn" type="button" data-action="dc-check-active"></button>
-    <button class="dc-quick" type="button" data-action="dc-quick" aria-pressed="true" aria-label="${t('lab.dc.quickAria')}" title="${t('lab.dc.quickAria')}" hidden><b class="dc-quick-letter">A</b><span class="dc-quick-text"></span></button>
-    <button class="icon-btn" type="button" data-action="undo" aria-label="${t('lab.undoAria')}" title="${t('lab.undoAria')}" disabled>${UI_ICON.undo}</button>
-  </div>
-  <div class="now-row">
-    <div class="beat-dots" aria-hidden="true"></div>
-    <strong class="now-chord"></strong>
-    <p class="status-line" role="status">${t('lab.statusReady')}</p>
-  </div>
-</footer>
-
 <div class="sheet" hidden>
-  <div class="sheet-card" role="dialog" aria-modal="true" aria-label="${t('lab.saveTitle')}">
-    <div class="panel-head"><h2>${t('lab.saveTitle')}</h2>
-      <button class="icon-btn" type="button" data-action="close-sheet" aria-label="${t('lab.closeAria')}">${UI_ICON.close}</button></div>
-    <div class="slot-list"></div>
-    <p class="foot-note storage-hint"></p>
-    <span class="sub-label">${t('lab.codeTitle')}</span>
-    <textarea class="code-out" readonly aria-label="${t('lab.codeTitle')}"></textarea>
-    <div class="pill-row" style="margin-top:6px"><button class="chip" type="button" data-action="copy-code">${t('lab.copy')}</button></div>
-    <span class="sub-label">${t('lab.importTitle')}</span>
-    <textarea class="code-in" aria-label="${t('lab.importTitle')}" placeholder="GL1.…"></textarea>
-    <div class="pill-row" style="margin-top:6px"><button class="chip" type="button" data-action="import-code">${t('lab.importCode')}</button></div>
-    <p class="sheet-status" role="status"></p>
+  <div class="sheet-backdrop" data-action="close-sheet"></div>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="gl-menu-title">
+    <div class="menu-head">
+      <h2 class="menu-title" id="gl-menu-title"><span>Groove</span> Lab</h2>
+      <button class="icon-btn" type="button" data-action="close-sheet" aria-label="${t('lab.menuClose')}" title="${t('lab.menuClose')}">${UI_ICON.close}</button>
+    </div>
+    <section class="menu-sec" aria-labelledby="gl-menu-file">
+      <h3 class="menu-sec-title" id="gl-menu-file">${t('lab.menu.file')}</h3>
+      <div class="slot-list"></div>
+      <div class="pill-row file-row">
+        <button class="chip" type="button" data-action="file-save">${t('lab.fileSave')}</button>
+        <button class="chip" type="button" data-action="file-open">${t('lab.fileOpen')}</button>
+        <input class="file-in" type="file" accept=".groove,.txt,text/plain" hidden>
+      </div>
+      <p class="sheet-status" role="status"></p>
+      <details class="menu-code">
+        <summary>${t('lab.codeTitle')}</summary>
+        <textarea class="code-out" readonly aria-label="${t('lab.codeTitle')}"></textarea>
+        <div class="pill-row" style="margin-top:6px"><button class="chip" type="button" data-action="copy-code">${t('lab.copy')}</button></div>
+        <span class="sub-label">${t('lab.importTitle')}</span>
+        <textarea class="code-in" aria-label="${t('lab.importTitle')}" placeholder="GL1.…"></textarea>
+        <div class="pill-row" style="margin-top:6px"><button class="chip" type="button" data-action="import-code">${t('lab.importCode')}</button></div>
+      </details>
+      <p class="foot-note storage-hint"></p>
+    </section>
+    <section class="menu-sec" aria-labelledby="gl-menu-mode">
+      <h3 class="menu-sec-title" id="gl-menu-mode">${t('lab.menu.mode')}</h3>
+      <div class="mode-list" role="group" aria-labelledby="gl-menu-mode">
+        ${VIEWS.map((v) => `<button class="mode-item" type="button" data-action="view" data-value="${v}" aria-pressed="false"><strong>${t(VIEW_LABEL[v])}</strong><span>${t(`lab.menu.modeDesc.${v}`)}</span></button>`).join('')}
+      </div>
+    </section>
+    <section class="menu-sec menu-settings" aria-labelledby="gl-menu-settings">
+      <h3 class="menu-sec-title" id="gl-menu-settings">${t('lab.menu.settings')}</h3>
+      <div class="ovl-warn" hidden><strong>${t('lab.ovl.title')}</strong><p>${t('lab.ovl.text')}</p></div>
+      <span class="sub-label" id="gl-menu-buffer">${t('lab.menu.buffer')}</span>
+      <div class="chip-row" role="group" aria-labelledby="gl-menu-buffer">
+        ${LATENCY_HINTS.map((hint) => `<button class="chip" type="button" data-action="latency" data-value="${hint}" aria-pressed="false">${t(`lab.ovl.${hint}`)}</button>`).join('')}
+      </div>
+      <p class="menu-note">${t('lab.ovl.effect')}</p>
+      <p class="menu-note ovl-measured"></p>
+      <p class="menu-note ovl-max" hidden>${t('lab.ovl.max')}</p>
+    </section>
+    <section class="menu-sec menu-actions">
+      <button class="menu-item" type="button" data-action="randomize">${UI_ICON.dice}<span>${t('lab.randomAria')}</span></button>
+      <button class="menu-item" type="button" data-action="close">${UI_ICON.close}<span>${t('lab.closeAria')}</span></button>
+    </section>
   </div>
 </div>
 
