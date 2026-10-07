@@ -271,6 +271,16 @@ python3 -m http.server
 
 Danach `http://localhost:8000` im Browser öffnen.
 
+## Groove Lab: Überlastungsanzeige und Puffer
+
+Läuft das Gerät dem Groove Lab hinterher (Scheduler-Takt reißt ab, Audiozeit
+läuft langsamer als die Wanduhr, oder der Browser meldet Unterläufe über
+`playoutStats`), erscheint nach drei Aussetzern in 10 s ein rotes „!“ am Titel.
+Antippen öffnet eine Info mit Puffer-Wahl Klein/Mittel/Groß (`latencyHint`
+`interactive`/`balanced`/`playback`, gespeichert als `latency` im Lab-Stand) und
+dem gemessenen Latenzwert. Ein Wechsel schließt den AudioContext und baut ihn
+neu auf; Transport und Liegeton laufen danach weiter.
+
 ## Groove Lab: Samples und Sampler
 
 Das Groove Lab (`groove-lab.js`) klingt ohne geladene Samples rein synthetisch
