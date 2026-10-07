@@ -1,7 +1,8 @@
 /* ==========================================================================
    CHOR GROOVE LAB — verstecktes Easter Egg der BVG-App.
    Sieben Tipps auf den Songtitel im Player öffnen einen kleinen, komplett
-   lokalen Beat-/Synth-Spielplatz (Web Audio API, kein Sample, kein Netz). Vollbild wie die übrigen Vollbild-Ansichten der App — kein Dialog-
+   lokalen Beat-/Synth-Spielplatz (Web Audio API; Schlagzeug bei Bedarf aus
+   den Samples in samples/drums, ohne sie klingt alles per Synthese). Vollbild wie die übrigen Vollbild-Ansichten der App — kein Dialog-
    Karten-Look. Diese Datei wird erst nach dem Auslöser nachgeladen.
 
    Aufbau:
@@ -148,10 +149,11 @@
     // Chor-Grooves (Didaktik Paket 8) — nur angehängt, nie umsortieren.
     // `vocal`: Silben fürs Mundschlagzeug (nur Anzeige, Chor-Ansicht).
     { name: 'Gospel Shuffle', icon: 'users', meter: '4/4', cat: 'calm', kick: [0, 6, 8], clap: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], ghost: [14],
+      perc: [4, 12], percSound: 'tamb',
       swingUnit: 8, swing: .67,
       bass: [0, 6, 8, 14], bassNotes: [0, 2, 4, 5],
       roll: [[1.33, 1], [1.33, .6], [1.34, .85]] },
-    { name: 'Swing Ride', icon: 'horn', meter: '4/4', cat: 'calm', kick: [0, 8], ghost: [4, 12], hat: [0, 4, 6, 8, 12, 14],
+    { name: 'Swing Ride', icon: 'horn', meter: '4/4', cat: 'calm', kick: [0, 8], ghost: [4, 12], hat: [0, 4, 6, 8, 12, 14], hatSound: 'ride',
       swingUnit: 8, swing: .67,
       bass: [0, 4, 8, 12], bassNotes: [0, 2, 4, 5],
       roll: [[1.33, 1], [1.33, .6], [1.34, .85]] },
@@ -159,30 +161,98 @@
       vocal: { kick: 'bm', snare: 'ka', hat: 'ts', open: 'tsch' },
       bass: [0, 8], bassNotes: [0, 0],
       roll: [[1, 1], [1, .6], [2, .85]] },
+    // Popchor-Grooves (Paket 7b) — mit Percussion-Spur (`perc`, Klang `percSound`).
+    { name: 'Pop Ballad', icon: 'heart', meter: '4/4', cat: 'calm',
+      kick: [0, 10], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14],
+      perc: [2, 6, 10, 14], percSound: 'shaker',
+      bass: [0, 10], bassNotes: [0, 0], roll: [[2, 1], [1.5, .6], [.5, .8]] },
+    { name: 'Pop Stomp', icon: 'boot', meter: '4/4', cat: 'dance',
+      kick: [0, 4, 8, 12], snare: [4, 12], clap: [4, 12], hat: [2, 6, 10, 14],
+      perc: [2, 6, 10, 14], percSound: 'tamb',
+      bass: [0, 6, 8, 14], bassNotes: [0, 0, 0, 4], roll: [[1, 1], [.5, .6], [.5, .8], [2, .9]] },
+    { name: 'Motown Stomp', icon: 'tambourine', meter: '4/4', cat: 'funky',
+      kick: [0, 8, 14], snare: [0, 4, 8, 12], hat: [2, 6, 10, 14],
+      perc: [4, 12], percSound: 'tamb',
+      bass: [0, 4, 8, 12], bassNotes: [0, 4, 7, 4], roll: [[1, 1], [1, .7], [1, .85], [1, .7]] },
+    { name: 'Halftime Pop', icon: 'hourglass', meter: '4/4', cat: 'calm',
+      kick: [0, 3, 10], snare: [8], hat: [0, 2, 4, 6, 8, 10, 12, 14],
+      perc: [4, 12], percSound: 'snap',
+      bass: [0, 3, 10], bassNotes: [0, 0, 4], roll: [[2, 1], [1, .6], [1, .8]] },
   ];
 
-  const TRACK_IDS = ['kick', 'snare', 'clap', 'hat', 'open', 'bass'];
+  const TRACK_IDS = ['kick', 'snare', 'clap', 'hat', 'open', 'perc', 'bass'];
   const DRUM_TRACKS = TRACK_IDS.filter((track) => track !== 'bass');
   const TRACK_KEY = { kick: 'lab.trackKick', snare: 'lab.trackSnare', clap: 'lab.trackClap',
-                      hat: 'lab.trackHat', open: 'lab.trackOpen', bass: 'lab.trackBass' };
+                      hat: 'lab.trackHat', open: 'lab.trackOpen', perc: 'lab.trackPerc', bass: 'lab.trackBass' };
   const trackLabel = (track) => t(TRACK_KEY[track]);
 
   // Antippen einer Zelle im Raster schaltet durch diese Werte, danach aus.
   // Snare: voll → Ghost-Note; Bass: Grundton → Quinte → Oktave
   // (Tonleiterstufen, siehe DRUM_PATTERNS).
-  const CELL_CYCLE = { kick: [1], snare: [1, .45], clap: [1], hat: [1], open: [1], bass: [0, 4, 7] };
+  const CELL_CYCLE = { kick: [1], snare: [1, .45], clap: [1], hat: [1], open: [1], perc: [1, .5], bass: [0, 4, 7] };
 
   /** Bearbeitbare Arbeitskopie eines Loops: je Spur { Schritt: Wert }. Die
    *  Vorlagen in DRUM_PATTERNS bleiben unangetastet — "Original" stellt
    *  sie wieder her. */
+  /** Schlagzeug-Klänge: Kit-Wahl, Percussion-Klang (siehe LabSamples). */
+  const DRUM_KITS = ['auto', 'synth', 'acoustic', 'hybrid'];
+  const PERC_SOUNDS = ['tamb', 'shaker', 'snap'];
+  const FILL_LENGTHS = [0, 4, 8];
+  const percOf = (pattern) => (PERC_SOUNDS.includes(pattern.percSound) ? pattern.percSound : 'tamb');
+  /** 'auto' nach Loop-Kategorie auflösen: dance → synth, breaks → hybrid,
+   *  calm/funky → acoustic. */
+  const AUTO_KIT = { dance: 'synth', breaks: 'hybrid', calm: 'acoustic', funky: 'acoustic' };
+  const resolveKit = (drumKit, pattern) => (drumKit === 'auto' ? AUTO_KIT[pattern.cat] || 'acoustic' : drumKit);
+  /** Akzentfaktor einer Hi-Hat nach Position im Schlag (Feel): 4/4 voll auf
+   *  der Zählzeit, .72 auf dem Achtel, .55 auf den Sechzehnteln; in 6/8 ebenso
+   *  mit der punktierten Viertel als Zählzeit (alle 6 Schritte); in 3/4 voll auf
+   *  dem Schlagbeginn (METERS.beats), sonst .6. */
+  function hatAccent(step, meter) {
+    if (meter === '4/4') return step % 4 === 0 ? 1 : step % 2 === 0 ? .72 : .55;
+    if (meter === '6/8') return step % 6 === 0 ? 1 : step % 2 === 0 ? .72 : .55;
+    return METERS[meter].beats.includes(step) ? 1 : .6;
+  }
+  /** Fill: im letzten Takt jedes `fills`-Takte-Blocks spielen die letzten vier
+   *  Schritte Toms (idx 0–3 → Tom, Velocity) statt Snare/Clap/Hat/Open/Perc;
+   *  auf Schritt 0 des Folgetakts kommt ein Crash. Nur Wiedergabe. */
+  const FILL_HITS = [['tom-hi', 1], ['tom-hi', .7], ['tom-lo', 1], ['tom-lo', .85]];
+  const FILL_MUTED = ['snare', 'clap', 'hat', 'open', 'perc'];
+  function fillAt(g, barSteps, fills) {
+    if (!fills) return { idx: -1, crash: false, fillBar: false };
+    const bar = Math.floor(g / barSteps);
+    const step = g % barSteps;
+    const fillBar = bar % fills === fills - 1;
+    return {
+      idx: fillBar && step >= barSteps - 4 ? step - (barSteps - 4) : -1,
+      crash: step === 0 && bar > 0 && (bar - 1) % fills === fills - 1,
+      fillBar,
+    };
+  }
+  /** Workshop und de:construct beginnen mit dem früheren Standard-Klang der Melodie. */
+  const pinLegacyVoice = (s) => { s.sound = soundFromPreset(presetIndexByName('Velvet Choir')); return s; };
+  /** Chor-Aufgaben, Workshop und de:construct klingen wie vor dem Sample-Kit. */
+  function pinLegacySound(s) {
+    s.drumKit = 'synth'; s.feel = false; s.fills = 0; s.trackOn.perc = false; s.bassSoundId = 'pluck';
+    s.chordVoicing = 'satb'; s.chordAdd9 = false; s.chordSound = 'synth'; s.mix.chords = .55;
+    return s;
+  }
+  /** Workshop und de:construct beginnen mit dem früheren Standard-Stand der Studio-Ansicht:
+   *  erster Loop, erste Melodie, Velvet Choir, Pad aus. */
+  function pinLegacyStudio(s) {
+    s.patternIndex = 0; s.beat = beatFromPattern(DRUM_PATTERNS[0]); s.percSound = percOf(DRUM_PATTERNS[0]);
+    s.melodyIndex = 0; s.chordsOn = false;
+    return pinLegacyVoice(s);
+  }
+
   function beatFromPattern(pattern) {
-    const beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, bass: {} };
+    const beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, perc: {}, bass: {} };
     (pattern.kick || []).forEach((s) => { beat.kick[s] = 1; });
     (pattern.snare || []).forEach((s) => { beat.snare[s] = 1; });
     (pattern.ghost || []).forEach((s) => { beat.snare[s] = .45; });
     (pattern.clap || []).forEach((s) => { beat.clap[s] = 1; });
     (pattern.hat || []).forEach((s) => { beat.hat[s] = 1; });
     (pattern.open || []).forEach((s) => { beat.open[s] = 1; });
+    (pattern.perc || []).forEach((s) => { beat.perc[s] = 1; });
     (pattern.bass || []).forEach((s, i) => { beat.bass[s] = pattern.bassNotes?.[i] ?? 0; });
     return beat;
   }
@@ -255,10 +325,50 @@
       vary: [{}, { extendLast: 2 }] },
     { name: 'Jig Hop', meter: '6/8', cat: 'dance', motif: [[0, 0, 2], [2, 2, 2], [4, 4, 2], [6, 5, 2], [8, 4, 2], [10, 2, 2]],
       vary: [{}, {}, { extendLast: 2 }] },
+    // Synco Verse endet auf der Quinte (Vorlage: Oktave): Oktave → Tonika im nächsten
+    // Durchlauf wäre ein Sprung von 12 Halbtönen (Prüfung: höchstens 9).
+    // --- Tonart-Bezug (ref 'key'): fertige Takte, Stufen über der Tonika (0 = Tonika,
+    // 7 = Oktave, negativ = darunter) — keine Motive über dem Akkordgrundton, sondern
+    // eine singbare Linie, die über jede Folge passt (siehe snapMelodyMidi). ---
+    { name: 'Pop Hook', meter: '4/4', cat: 'dance', ref: 'key', bars: [
+      [[0, 2, 2], [2, 2, 1], [3, 4, 3], [6, 2, 2], [10, 1, 2], [12, 0, 4]],
+      [[0, 1, 2], [2, 1, 1], [3, 4, 3], [6, 1, 2], [10, 0, 2], [12, -1, 4]],
+      [[0, 0, 2], [2, 0, 1], [3, 2, 3], [6, 4, 2], [8, 5, 4], [12, 2, 4]],
+      [[0, 5, 3], [3, 7, 3], [6, 5, 2], [8, 3, 4], [12, 0, 4]]] },
+    { name: 'Ballad Line', meter: '4/4', cat: 'calm', ref: 'key', bars: [
+      [[0, 2, 6], [6, 1, 2], [8, 0, 6], [14, -1, 2]],
+      [[0, 1, 8], [8, -1, 4], [12, 1, 4]],
+      [[0, 0, 6], [6, -1, 2], [8, 0, 4], [12, 2, 4]],
+      [[0, 5, 8], [8, 3, 4], [12, 1, 4]]] },
+    { name: 'Offbeat Chant', meter: '4/4', cat: 'dance', ref: 'key', bars: [
+      [[2, 4, 1], [4, 4, 1], [6, 2, 2], [10, 4, 1], [12, 4, 2]],
+      [[2, 4, 1], [4, 4, 1], [6, 6, 2], [10, 4, 1], [12, 1, 4]],
+      [[2, 2, 1], [4, 2, 1], [6, 0, 2], [10, 2, 1], [12, 2, 2]],
+      [[2, 3, 1], [4, 3, 1], [6, 5, 2], [10, 5, 1], [12, 7, 4]]] },
+    { name: 'Gospel Call', meter: '4/4', cat: 'funky', ref: 'key', bars: [
+      [[0, 4, 2], [2, 5, 2], [4, 4, 2], [6, 2, 2], [8, 4, 6], [14, 2, 2]],
+      [[0, 1, 4], [4, 2, 2], [6, 1, 2], [8, -1, 6]],
+      [[0, 4, 2], [2, 5, 2], [4, 4, 2], [6, 2, 2], [8, 0, 6], [14, 2, 2]],
+      [[0, 5, 4], [4, 4, 2], [6, 2, 2], [8, 0, 8]]] },
+    { name: 'Synco Verse', meter: '4/4', cat: 'funky', ref: 'key', bars: [
+      [[0, 0, 1], [2, 0, 1], [3, 0, 1], [6, 2, 2], [9, 2, 1], [11, 0, 1], [12, -1, 1], [14, 0, 2]],
+      [[0, -1, 1], [2, -1, 1], [3, -1, 1], [6, 1, 2], [9, 1, 1], [11, -1, 1], [12, -3, 1], [14, -1, 2]],
+      [[0, 0, 1], [2, 0, 1], [3, 0, 1], [6, 2, 2], [9, 2, 1], [11, 4, 1], [12, 2, 2], [14, 0, 2]],
+      [[0, 0, 1], [2, 0, 1], [3, 0, 1], [6, 3, 2], [9, 3, 1], [11, 5, 1], [12, 4, 4]]] },
+    { name: 'Anthem Oh', meter: '4/4', cat: 'dance', ref: 'key', bars: [
+      [[0, 4, 3], [3, 4, 3], [6, 5, 2], [8, 4, 4], [12, 2, 4]],
+      [[0, 4, 3], [3, 4, 3], [6, 5, 2], [8, 4, 4], [12, 1, 4]],
+      [[0, 4, 3], [3, 4, 3], [6, 5, 2], [8, 4, 4], [12, 2, 4]],
+      [[0, 5, 3], [3, 5, 3], [6, 7, 2], [8, 5, 4], [12, 4, 4]]] },
+    { name: 'Guide Tones', meter: '4/4', cat: 'calm', ref: 'key', bars: [
+      [[0, 2, 16]], [[0, 1, 16]], [[0, 0, 16]], [[0, 0, 8], [8, -2, 8]]] },
   ];
+  /** Bezug der Stufen einer Vorlage: 'chord' (über dem Akkordgrundton) oder 'key' (über der Tonika). */
+  const melodyRefOf = (index) => MELODIES[index]?.ref ?? 'chord';
 
   // Je Abwandlung einmal fertig ausrechnen — der Scheduler liest nur noch.
   MELODIES.forEach((melody) => {
+    if (!melody.vary) return; // fertige Takte (ref 'key', siehe unten): nichts auszurechnen
     const steps = METERS[melody.meter].steps;
     melody.bars = melody.vary.map(({ rhythmShift = 0, extendLast = 0, shift = 0, motif = melody.motif }) => {
       const bar = motif.map(([at, deg, len, alt]) => (alt ? [mod(at + rhythmShift, steps), deg + shift, len, alt] : [mod(at + rhythmShift, steps), deg + shift, len]));
@@ -326,7 +436,32 @@
       lfoSync: 2, lfoDepth: 2000, drive: .35, subLevel: .3, mono: true, glide: .04 },
     { name: 'Hollow Band', icon: 'bulb', cat: 'keys', wave: 'square', attack: .01, decay: .25, sustain: .5, release: .5, cutoff: 1500, resonance: 5, filterEnvAmount: 800, filterType: 'bandpass', reverbWet: .3, echoWet: .18,
       detune: 6, width: .5 },
+    // Sample-Instrumente (Paket 7c): `sample` nennt den Ordner/das Instrument; Wellenform, Detune,
+    // Sub, Pitch-Drop, LFO, Vibrato und Breite gelten dort nicht. Ohne geladene Samples klingt
+    // der Ersatzklang (SAMPLE_FALLBACK).
+    { name: 'Klavier', icon: 'piano', cat: 'keys', sample: 'piano', attack: .003, decay: .3, sustain: 1, release: .35, cutoff: 12000, resonance: 0, reverbWet: .18, echoWet: .05 },
+    { name: 'E-Gitarre', icon: 'guitar', cat: 'keys', sample: 'guitar', attack: .003, decay: .3, sustain: 1, release: .25, cutoff: 9000, resonance: 0, reverbWet: .15, echoWet: .18 },
+    { name: 'Chor Ooh', icon: 'mic', cat: 'pad', sample: 'choir', attack: .12, decay: .3, sustain: 1, release: .6, cutoff: 8000, resonance: 0, reverbWet: .35, echoWet: .05 },
+    { name: 'Streicher', icon: 'harp', cat: 'pad', sample: 'strings', attack: .25, decay: .3, sustain: 1, release: .7, cutoff: 7000, resonance: 0, reverbWet: .3, echoWet: 0 },
+    { name: 'Brass Stab', icon: 'trumpet', cat: 'lead', sample: 'brass', attack: .005, decay: .2, sustain: 1, release: .15, cutoff: 9000, resonance: 0, reverbWet: .15, echoWet: .08 },
   ];
+
+  /** Sample-Instrumente der Klang-Presets. */
+  const SAMPLE_INSTRUMENTS = ['piano', 'guitar', 'choir', 'strings', 'brass'];
+  /** Ersatzklang je Instrument, solange die Samples fehlen (offline, Ladefehler, noch beim Laden). */
+  const SAMPLE_FALLBACK = { piano: 'Tape Keys', guitar: 'Tape Keys', choir: 'Airy Choir', strings: 'Moon Pad', brass: 'Soft Brass' };
+  // Dateien und Töne je Instrument (samples/<Ordner>, MIDI-Nummer als Name, ein Ton alle drei Halbtöne —
+  // dieselben Listen wie SAMPLE_INST in uebe-lab.html); `long`: Überblend-Loop für lange Töne
+  // (Vorbild SAMPLE_LONG/sampleNote dort); `level`: Pegel gegenüber den Synth-Klängen.
+  const noteRange = (lo, hi) => Array.from({ length: (hi - lo) / 3 + 1 }, (_, i) => lo + i * 3);
+  const SAMPLE_LONG = { loopFrom: .9, tail: .2, xfade: .4 };
+  const LAB_INST = {
+    guitar: { folder: 'guitar', notes: noteRange(54, 87), level: 1.15 },
+    choir: { folder: 'choir', notes: noteRange(45, 81), long: SAMPLE_LONG, level: .7 },
+    strings: { folder: 'strings', notes: noteRange(39, 81), long: SAMPLE_LONG, level: .55 },
+    brass: { folder: 'brass', notes: noteRange(51, 75), level: 1.4 },
+    piano: { level: 4.8, notes: noteRange(48, 84) },
+  };
 
   // Wertebereiche für Regler UND fürs Einlesen gespeicherter/geteilter
   // Stände (sanitizeSound) — ein geteilter Code darf keine Werte setzen, die
@@ -360,6 +495,8 @@
   // Die SATB-Akkorde sind eine Hörhilfe wie der Liegeton — sie klingen fest
   // nach Chor, unabhängig vom gerade eingestellten Synth-Klang.
   const CHORD_SOUND = soundFromPreset(presetIndexByName('Airy Choir'));
+  // Echter Chor für die Akkorde (chordSound 'choir'): Sample-Preset 'Chor Ooh', die Engine fällt ohne Samples auf Airy Choir zurück.
+  const CHOIR_CHORD_SOUND = soundFromPreset(presetIndexByName('Chor Ooh'));
 
   // Liegeton: bewusst schlicht und fest (gefilterte Säge, langsamer Einsatz)
   // — eine Stimmreferenz soll nicht vom gerade gewählten Klang abhängen.
@@ -369,11 +506,54 @@
   // Bass-Klänge für die Basslinie der Drumloops (eigene, einfache Stimme —
   // kein voller Synth-Klang, damit der Bass immer knapp und trocken bleibt).
   const BASS_SOUNDS = [
-    { id: 'pluck', name: 'Square Pluck', wave: 'square', cutoff: 480, q: 8, decay: .14, level: .2, envAmount: 0 },
-    { id: 'sub', name: 'Sub Sine', wave: 'sine', cutoff: 2000, q: 0, decay: .32, level: .42, envAmount: 0 },
-    { id: 'growl', name: 'Saw Growl', wave: 'sawtooth', cutoff: 520, q: 7, decay: .22, level: .2, envAmount: 1400 },
-    { id: 'round', name: 'Round Finger', wave: 'triangle', cutoff: 900, q: 1, decay: .26, level: .36, envAmount: 300 },
+    { id: 'pluck', name: 'Square Pluck', wave: 'square', cutoff: 480, q: 8, decay: .14, sustain: 0, level: .2, envAmount: 0 },
+    { id: 'sub', name: 'Sub Sine', wave: 'sine', cutoff: 2000, q: 0, decay: .32, sustain: .8, level: .42, envAmount: 0 },
+    { id: 'growl', name: 'Saw Growl', wave: 'sawtooth', cutoff: 520, q: 7, decay: .22, sustain: .6, level: .2, envAmount: 1400 },
+    { id: 'round', name: 'Round Finger', wave: 'triangle', cutoff: 900, q: 1, decay: .26, sustain: .7, level: .36, envAmount: 300 },
+    // Echter Bass aus samples/bass (nächster Ton, umgestimmt); ohne geladene
+    // Samples klingt stattdessen 'round' (siehe GrooveEngine.playBass).
+    { id: 'finger', name: 'Finger Bass', sample: 'bass', decay: .3, sustain: .9, level: .6 },
   ];
+  const BASS_SAMPLE_NOTES = [30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66];
+
+  /** Länge eines Basstons in Schritten: bis zum nächsten Bass-Ton im selben
+   *  Takt, sonst bis zum Taktende; mindestens ein Schritt. */
+  function bassNoteSteps(bassSteps, step, barSteps) {
+    let next = barSteps;
+    for (const key of Object.keys(bassSteps)) {
+      const at = Number(key);
+      if (at > step && at < next) next = at;
+    }
+    return Math.max(1, next - step);
+  }
+
+  /** MIDI-Ton einer Bassstufe `bassDeg` über dem Akkord auf Stufe `deg`: `root` ist der Basston
+   *  des Akkords (bei einer Umkehrung Terz/Quinte), Stufe 0 liegt auf diesem Basston, alle
+   *  anderen Stufen bleiben Stufen über dem Akkordgrundton. */
+  function bassNoteMidi(root, steps, deg, bassIndex, bassDeg) {
+    const inv = 2 * bassIndex;
+    return root + degreeSemis(steps, deg + (bassDeg === 0 ? inv : bassDeg)) - degreeSemis(steps, deg + inv);
+  }
+
+  /** Grundtöne des Basses je Akkord mit Stimmführung: der erste im Bereich
+   *  36–47, jeder weitere in der Oktavlage 28–47 (Anweisung: 33–47; die fünf
+   *  Halbtöne mehr nach unten (bis zum tiefen E der Bassgitarre) braucht es,
+   *  damit kein Sprung über 7 Halbtöne entsteht, z. B. C → G → A → F), die dem vorherigen am nächsten liegt
+   *  (Gleichstand → tiefer). `pcs`: Tonhöhenklassen. */
+  function bassRootsFor(pcs) {
+    const roots = [];
+    for (const pc of pcs) {
+      if (!roots.length) { roots.push(36 + pc); continue; }
+      const prev = roots[roots.length - 1];
+      let best = null;
+      for (let m = 28; m <= 47; m++) {
+        if (mod(m, 12) !== pc) continue;
+        if (best === null || Math.abs(m - prev) < Math.abs(best - prev)) best = m;
+      }
+      roots.push(best);
+    }
+    return roots;
+  }
 
   // Kick-Parameter (Workshop Paket 6): Start-/Endtonhöhe in Hz, Länge in s.
   // Die Standardwerte ergeben genau die bisherige Kick.
@@ -391,7 +571,7 @@
   const {
     MAJOR, degreeSemis, spell, noteLabel, SPELL_CASES, spellCheck,
     chordQuality, chordPitchClasses, chordSteps, SATB, VOICE_RANGES: SATB_RANGES,
-    VOICING_STATS, voicePairs, voiceChord, leadingToneOf, voiceProgressionSatb,
+    VOICING_STATS, voicePairs, voiceChord, leadingToneOf, voiceProgressionSatb, voiceProgressionPop,
   } = H;
   const MODE_NAME_KEYS = { major: 'lab.modeMajor', minor: 'lab.modeMinor', dorian: 'lab.modeDorian', mixolydian: 'lab.modeMixolydian' };
   const MODES = H.MODES.map((m) => ({ ...m, nameKey: MODE_NAME_KEYS[m.id] }));
@@ -433,7 +613,23 @@
     { id: 'andalusian', cat: 'modal', degrees: [0, 6, 5, 4], dominant: true, modes: ['minor'] },
     { id: 'epic', cat: 'modal', degrees: [0, 5, 2, 6], modes: ['minor'] },
     { id: 'drone', cat: 'modal', degrees: [0] },
+    // Paket 8: geliehene Akkorde, Zwischendominanten, Umkehrungen. `alter` und `bass` sind
+    // optionale Parallel-Arrays zu `degrees`: alter[i] null | 'borrow' | 'secdom', bass[i]
+    // 0 | 1 | 2 (Grundton, Terz, Quinte im Bass). In C: C – G/H – Am – F …
+    { id: 'descend', cat: 'pop', degrees: [0, 4, 5, 3], bass: [0, 1, 0, 0] },
+    { id: 'gospelIv', cat: 'pop', degrees: [0, 3, 3, 0], alter: [null, null, 'borrow', null] },
+    { id: 'mixFlat7', cat: 'pop', degrees: [0, 6, 3, 0], alter: [null, 'borrow', null, null] },
+    { id: 'secDom', cat: 'pop', degrees: [0, 2, 5, 3], alter: [null, 'secdom', null, null] },
   ];
+  const PROG_ALTERS = ['borrow', 'secdom'];
+  /** alter/bass auf `n` Akkorde bringen (fehlend/ungültig → normal bzw. Grundton). */
+  const normAlter = (arr, n) => Array.from({ length: n }, (_, i) => (PROG_ALTERS.includes(arr?.[i]) ? arr[i] : null));
+  const normBass = (arr, n) => Array.from({ length: n }, (_, i) => ([0, 1, 2].includes(arr?.[i]) ? arr[i] : 0));
+  const plainAlter = (arr) => !arr || arr.every((x) => !x);
+  const plainBass = (arr) => !arr || arr.every((x) => !x);
+  /** Eingelesene Arrays prüfen: null, wenn nichts Besonderes übrig bleibt. */
+  const sanitizeProgAlter = (raw, n) => { const a = Array.isArray(raw) ? normAlter(raw, n) : null; return a && !plainAlter(a) ? a : null; };
+  const sanitizeProgBass = (raw, n) => { const b = Array.isArray(raw) ? normBass(raw, n) : null; return b && !plainBass(b) ? b : null; };
   const PROG_CATS = ['pop', 'classic', 'jazz', 'modal'];
   /** Passt die Folge zum Modus? Eigene Folgen (ohne `modes`) immer. */
   const progFitsMode = (prog, modeId) => !prog?.modes || prog.modes.includes(modeId);
@@ -446,11 +642,13 @@
   const progKey = (kind, id) => `lab.prog${kind}${id[0].toUpperCase()}${id.slice(1)}`;
 
   /** Mini-Bild einer Akkordfolge: je Akkord ein Balken, Höhe = Stufe. */
-  function progPreview(degrees) {
+  function progPreview(degrees, alter = null) {
     const w = 64 / degrees.length;
     const rects = degrees.map((d, i) => {
       const h = 3 + (mod(d, 7) / 6) * 11;
-      return `<rect x="${(i * w + .6).toFixed(2)}" y="${(15 - h).toFixed(2)}" width="${Math.max(1, w - 1.2).toFixed(2)}" height="${h.toFixed(2)}" rx="1"/>`;
+      // Geliehene Akkorde und Zwischendominanten: Balken blasser, mit hellem Kopf.
+      const tint = alter?.[i] ? ' fill-opacity=".5"' : '';
+      return `<rect x="${(i * w + .6).toFixed(2)}" y="${(15 - h).toFixed(2)}" width="${Math.max(1, w - 1.2).toFixed(2)}" height="${h.toFixed(2)}" rx="1"${tint}/>`;
     }).join('');
     return `<svg class="preview" viewBox="0 0 64 16" preserveAspectRatio="none" aria-hidden="true">${rects}</svg>`;
   }
@@ -470,7 +668,12 @@
       if (!degrees) return null;
       seen.add(p.id);
       const name = typeof p.name === 'string' && p.name.trim() ? p.name.trim().slice(0, 40) : 'Progression';
-      return { id: p.id.slice(0, 24), name, degrees, sevenths: p.sevenths === true, dominant: p.dominant === true, dom7: p.dom7 === true };
+      const entry = { id: p.id.slice(0, 24), name, degrees, sevenths: p.sevenths === true, dominant: p.dominant === true, dom7: p.dom7 === true };
+      const alter = sanitizeProgAlter(p.alter, degrees.length);
+      const bass = sanitizeProgBass(p.bass, degrees.length);
+      if (alter) entry.alter = alter;
+      if (bass) entry.bass = bass;
+      return entry;
     }).filter(Boolean);
   }
 
@@ -492,10 +695,77 @@
    * der Tonika in der Tonleiter des Modus — klingt über jedem Akkord gleich,
    * auch wenn die Aufnahme kürzer ist als die Folge.
    */
-  function melodyMidi(deg, alt, h, ref, modeSteps, melodyOctave) {
+  function melodyMidi(deg, alt, h, ref, modeSteps, melodyOctave, shift = 0) {
     const base = 12 * (melodyOctave + 1) + foldRoot(h.keyRoot);
     if (ref === 'key') return base + degreeSemis(modeSteps, deg) + alt;
-    return base + melodyOffset(h.steps, foldDegree(h.deg), deg, alt);
+    return base + melodyOffset(h.steps, foldDegree(h.deg), deg, alt) + shift;
+  }
+  /**
+   * Akkord-Anpassung auf schweren Zählzeiten (alle Vorlagen): liegt der Ton
+   * genau einen Halbton über einem Akkordton (kleine None, reibt), wird er auf
+   * diesen Akkordton abgesenkt. Alles andere (Optionen, Sexten, Septimen)
+   * bleibt. `pcs`: Tonhöhenklassen des klingenden Akkords.
+   */
+  function snapMelodyMidi(midi, pcs) {
+    return pcs.includes(mod(midi - 1, 12)) ? midi - 1 : midi;
+  }
+  /**
+   * Oktavlage je Takt für Melodien mit Akkord-Bezug (statt foldDegree): der
+   * erste Ton eines Takts soll dem letzten Ton des Vortakts möglichst nah
+   * liegen (Gleichstand → tiefer), je Takt um höchstens eine Oktave nach oben
+   * oder unten gegenüber der bisherigen Lage (melodyOctave ± 1). Weil Takt
+   * für Takt nacheinander gewählt an der Grenze „hängen bleibt“ (der Akkord-
+   * grundton wandert reihum), wird die ganze Periode (Ende → Anfang inklusive)
+   * auf einmal gelöst: kleinste Summe der Sprünge, bei Gleichstand die
+   * Lage nahe der bisherigen, dann die tiefere.
+   * `bars`: Takte der Melodie; `count`: Takte der Periode; `midiAt(bar, deg, alt)`:
+   * Ton im Takt `bar` ohne Verschiebung; `altBars`: nur jeder zweite Takt.
+   * Liefert je Takt der Periode eine Verschiebung in {−12, 0, 12}.
+   */
+  function melodyBarShifts(bars, count, midiAt, altBars = false) {
+    const shifts = new Array(count).fill(0);
+    const idx = [];
+    for (let n = 0; n < count; n++) {
+      if (altBars && n % 2 === 1) continue;
+      if (bars[n % bars.length].length) idx.push(n);
+    }
+    const L = idx.length;
+    if (L < 2) return shifts;
+    const options = [-12, 0, 12];
+    const first = idx.map((n) => { const note = bars[n % bars.length][0]; return midiAt(n, note[1], note[3] || 0); });
+    const last = idx.map((n) => { const notes = bars[n % bars.length]; const note = notes[notes.length - 1]; return midiAt(n, note[1], note[3] || 0); });
+    const stateCost = (b) => Math.abs(options[b]) * 1e-3 + (options[b] + 12) * 1e-6;
+    let best = null;
+    for (let start = 0; start < 3; start++) {
+      // cost[b]: bester Gesamtpreis bis Takt i, wenn dort Zustand b gewählt ist
+      let cost = [Infinity, Infinity, Infinity];
+      let back = [];
+      cost[start] = stateCost(start);
+      for (let i = 1; i <= L; i++) {
+        const next = [Infinity, Infinity, Infinity];
+        const from = [0, 0, 0];
+        for (let b = 0; b < 3; b++) {
+          if (i === L && b !== start) continue; // Ende schließt an den Anfang an
+          for (let a = 0; a < 3; a++) {
+            if (cost[a] === Infinity) continue;
+            const c = cost[a] + Math.abs(first[i % L] + options[b] - (last[i - 1] + options[a])) + (i === L ? 0 : stateCost(b));
+            if (c < next[b]) { next[b] = c; from[b] = a; }
+          }
+        }
+        back.push(from);
+        cost = next;
+      }
+      if (cost[start] === Infinity) continue;
+      if (!best || cost[start] < best.cost) {
+        const path = new Array(L);
+        let b = start;
+        for (let i = L; i >= 1; i--) { path[i % L] = b; b = back[i - 1][b]; }
+        path[0] = start;
+        best = { cost: cost[start], path };
+      }
+    }
+    if (best) idx.forEach((n, i) => { shifts[n] = options[best.path[i]]; });
+    return shifts;
   }
   /** Stufe in den Bereich -3…3 falten — ein Motiv, das dem Akkord folgt,
    *  soll nicht mit jeder höheren Stufe weiter nach oben wandern. */
@@ -510,22 +780,32 @@
   // Sprache der Tonnamen (spell/noteLabel), gesetzt in ChorGrooveLab.open.
   let labLang = 'de';
 
-  function romanNumeral(steps, deg, sevenths) {
+  /**
+   * Stufenzahl eines Akkords: „V“, „vi“, „♭VII“, „iv“. `alter` 'secdom' → „V/vi“ (Dominante der
+   * Zielstufe; `modeSteps` = Leiter des Modus, daraus der Zielakkord), `bassIndex` → Umkehrung
+   * („V⁶“, „I⁶₄“, bei Septakkorden „⁶₅“, „⁴₃“).
+   */
+  function romanNumeral(steps, deg, sevenths, alter = null, bassIndex = 0, modeSteps = MAJOR) {
     const d = mod(deg, 7);
     const quality = chordQuality(steps, d);
     const base = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'][d];
+    const figure = bassIndex === 1 ? (sevenths ? '⁶₅' : '⁶') : bassIndex === 2 ? (sevenths ? '⁴₃' : '⁶₄') : '';
+    if (alter === 'secdom') return `V${sevenths ? '7' : ''}${figure}/${romanNumeral(modeSteps, d + 3, false)}`;
     const flat = steps[d] < MAJOR[d] ? '♭' : '';
     const core = quality === 'min' || quality === 'dim' ? base.toLowerCase() : base;
-    return flat + core + (quality === 'dim' ? '°' : quality === 'aug' ? '+' : '') + (sevenths ? '7' : '');
+    return flat + core + (quality === 'dim' ? '°' : quality === 'aug' ? '+' : '') + (sevenths ? '7' : '') + figure;
   }
 
-  function chordName(keyRoot, steps, deg, sevenths, modeId = 'major', lang = labLang) {
+  function chordName(keyRoot, steps, deg, sevenths, modeId = 'major', lang = labLang, alter = null, bassIndex = 0) {
     const d = mod(deg, 7);
     const quality = chordQuality(steps, d);
-    const name = spell(keyRoot + steps[d], keyRoot, modeId, lang);
-    if (quality === 'dim') return name + (sevenths ? 'm7♭5' : '°');
+    // Geliehene Akkorde schreibt man wie in der Gegen-Tonart (in C: B♭, A♭, Fm).
+    const spellMode = alter === 'borrow' ? (modeId === 'minor' || modeId === 'dorian' ? 'major' : 'minor') : modeId;
+    const name = spell(keyRoot + steps[d], keyRoot, spellMode, lang);
+    const slash = bassIndex ? `/${spell(keyRoot + degreeSemis(steps, d + 2 * bassIndex), keyRoot, spellMode, lang)}` : '';
+    if (quality === 'dim') return name + (sevenths ? 'm7♭5' : '°') + slash;
     const seventh = sevenths ? (degreeSemis(steps, d + 6) - steps[d] === 11 ? 'maj7' : '7') : '';
-    return name + (quality === 'min' ? 'm' : quality === 'aug' ? '+' : '') + seventh;
+    return name + (quality === 'min' ? 'm' : quality === 'aug' ? '+' : '') + seventh + slash;
   }
 
   // Farbe und Name je Stimme (Umfänge: VOICE_RANGES in harmony.js).
@@ -654,6 +934,40 @@
   const patternIndexByName = (name) => DRUM_PATTERNS.findIndex((p) => p.name === name);
   const melodyIndexByName = (name) => MELODIES.findIndex((m) => m.name === name);
 
+  /* Kuratierte Auswahl (Paket 7e): in den Auswahllisten stehen zuerst die Vorlagen mit
+     klarer Rolle für einen Popchor, in dieser Reihenfolge; alles andere liegt eingeklappt
+     unter „Weitere“. Nichts wird gelöscht oder umsortiert — gespeichert wird weiter der
+     Index, Workshop, Chor-Aufgaben und de:construct finden ihre Vorlagen per Name. Die
+     Listen nennen Namen (lesbar) und werden mit *IndexByName aufgelöst. */
+  const MELODY_ORDER = [
+    'Pop Hook', 'Offbeat Chant', 'Anthem Oh', 'Ballad Line', 'Gospel Call',
+    'Synco Verse', 'Call & Response', 'Question & Answer', 'Guide Tones',
+    // andere Taktarten (der Picker zeigt ohnehin nur die passende)
+    'Waltz Line', 'Turning Waltz', 'Lullaby', 'Jig Hop',
+  ];
+  const BEAT_ORDER = [
+    'Pop Stomp', 'Pop Ballad', 'Backbeat Open', 'Gospel Shuffle', 'Motown Stomp',
+    'Halftime Pop', 'Disco Clap', 'Boom Bap', 'Swing Soul', 'Swing Ride',
+    'Vocal Perc Basic', 'Minimal Click',
+    // andere Taktarten
+    'Waltz Step', 'Jazz Waltz', '6/8 Ballad', 'Folk Jig',
+  ];
+  const PRESET_ORDER = [
+    // keys
+    'Klavier', 'Tape Keys', 'Vintage Organ', 'E-Gitarre', 'Neon Pluck', 'Crystal Drops',
+    // pad
+    'Chor Ooh', 'Streicher', 'Moon Pad', 'Breath Glass',
+    // lead
+    'Brass Stab', 'Analog Lead', 'Bright Saw',
+  ];
+  /** Indizes einer Namensliste (unbekannte Namen fallen weg; der Selbsttest meldet sie). */
+  const orderIndexes = (order, byName) => order.map(byName).filter((i) => i >= 0);
+  /** Erster Eintrag einer Taktart in der sichtbaren Reihenfolge (sonst der erste überhaupt). */
+  const firstPatternOfMeter = (meter) => orderIndexes(BEAT_ORDER, patternIndexByName).find((i) => DRUM_PATTERNS[i].meter === meter)
+    ?? DRUM_PATTERNS.findIndex((p) => p.meter === meter);
+  const firstMelodyOfMeter = (meter) => orderIndexes(MELODY_ORDER, melodyIndexByName).find((i) => MELODIES[i].meter === meter)
+    ?? Math.max(0, MELODIES.findIndex((m) => m.meter === meter));
+
   /** Zustandsfelder einer Aufgabe/Einheit übernehmen. progId setzt eine
    *  bearbeitete Folge zurück und nimmt ggf. den passenden Modus mit
    *  (außer `set` nennt selbst einen Modus). */
@@ -661,7 +975,7 @@
     for (const [key, value] of Object.entries(set)) {
       if (key === 'progId') {
         s.progId = value;
-        s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progName = null; s.progOwnId = null;
+        s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progName = null; s.progOwnId = null; s.progAlter = null; s.progBass = null;
         const prog = PROGRESSIONS.find((p) => p.id === value);
         if (!set.modeId) s.modeId = modeForProg(prog, s.modeId);
       } else if (key === 'bpm') {
@@ -679,6 +993,7 @@
       s.patternIndex = patternIndexByName(task.groove);
       const pattern = DRUM_PATTERNS[s.patternIndex];
       s.beat = beatFromPattern(pattern);
+      s.percSound = percOf(pattern);
       s.beatEdited = false;
       s.swing = typeof pattern.swing === 'number' ? pattern.swing : 0;
       s.mute.drums = false; s.mute.bass = false;
@@ -691,6 +1006,7 @@
       s.melodyBars = null; s.melodyMeter = null; s.melodyName = null; s.melodyOwnId = null; s.melodyRef = 'chord';
     }
     s.melodyAltBars = !!task.melodyAltBars;
+    pinLegacySound(s);
     for (const v of CHOIR_PARTS) s.satb[v] = 'on';
     if (task.own && CHOIR_PARTS.includes(part)) s.satb[part] = task.own;
     if (task.satb) Object.assign(s.satb, task.satb);
@@ -906,7 +1222,7 @@
       focus: ['progSevenths'],
       checks: [(s) => !progSeventhsOf(s), (s) => progSeventhsOf(s)],
       solution: [(s) => { s.progDegrees = [...progOf(s).degrees]; s.progSevenths = false; s.progDominant = true; s.progDom7 = true; },
-                 (s) => { s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; }] },
+                 (s) => { s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progAlter = null; s.progBass = null; }] },
 
     { id: 'modi', tier: 'deep', area: 'harmony', tab: 'harmony', groove: 'Backbeat Open',
       set: { bpm: 96, progId: 'modal', modeId: 'minor', chordsOn: true },
@@ -1100,7 +1416,7 @@
    *  Einheit gleich beginnt. Behält nur Ansicht, Tastenlayout, Oktave und
    *  Master-Pegel des aktuellen Stands. */
   function lessonState(current, lesson) {
-    const s = defaultState();
+    const s = pinLegacyStudio(pinLegacySound(defaultState()));
     s.view = current.view; s.keysLayout = current.keysLayout; s.octave = current.octave;
     s.mix.master = current.mix.master;
     s.chordsOn = false; s.melodyOn = false; s.arpOn = false;
@@ -1109,6 +1425,7 @@
       s.patternIndex = patternIndexByName(lesson.groove);
       const pattern = DRUM_PATTERNS[s.patternIndex];
       s.beat = beatFromPattern(pattern);
+      s.percSound = percOf(pattern);
       s.swing = typeof pattern.swing === 'number' ? pattern.swing : 0;
     }
     if (lesson.melody) { s.melodyIndex = melodyIndexByName(lesson.melody); s.melodyOn = true; }
@@ -1454,7 +1771,7 @@
     // Eigene/neue Folgen (mit Namen) erben von der zuletzt gewählten
     // Vorlage nur Id und Kategorie — keine Modus-Bindung.
     const from = s.progName ? { id: base.id, cat: base.cat } : base;
-    return { ...from, degrees: s.progDegrees, sevenths: s.progSevenths, dominant: !!s.progDominant, dom7: !!s.progDom7, custom: true };
+    return { ...from, degrees: s.progDegrees, sevenths: s.progSevenths, dominant: !!s.progDominant, dom7: !!s.progDom7, alter: s.progAlter || undefined, bass: s.progBass || undefined, custom: true };
   }
   const meterOfState = (s) => DRUM_PATTERNS[s.patternIndex].meter;
   const modeStepsOf = (s) => (MODES.find((m) => m.id === s.modeId) || MODES[0]).steps;
@@ -1465,12 +1782,13 @@
     const barSteps = METERS[meterOfState(s)].steps;
     const index = Math.floor(Math.floor(g / barSteps) / s.chordBars) % prog.degrees.length;
     const deg = prog.degrees[index];
-    return { keyRoot: s.keyRoot, steps: chordSteps(modeStepsOf(s), s.modeId, prog, deg), deg, sevenths: !!prog.sevenths, index };
+    const alter = prog.alter?.[index] || null;
+    return { keyRoot: s.keyRoot, steps: chordSteps(modeStepsOf(s), s.modeId, prog, deg, alter), deg, sevenths: !!prog.sevenths, index, alter, bass: prog.bass?.[index] || 0 };
   }
 
   /** Beat eines Songs aus seinen Rasterzeilen (siehe DC_SONGS). */
   function dcBeat(song) {
-    const beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, bass: {} };
+    const beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, perc: {}, bass: {} };
     for (const track of DRUM_TRACKS) {
       [...(song[track] || '')].forEach((c, st) => { if (c === 'x') beat[track][st] = 1; else if (c === 'g') beat[track][st] = .45; });
     }
@@ -1488,7 +1806,8 @@
     if (!song) return null;
     const level = dcLevel(song.level);
     const has = (el) => level.elements.includes(el);
-    const o = defaultState();
+    const o = pinLegacyStudio(pinLegacySound(defaultState()));
+    o.bassSoundId = 'round'; // hält Noten (Gate), „Bass halbe Noten“ klingt so; Workshop/Chor bleiben bei 'pluck'
     o.patternIndex = DRUM_PATTERNS.findIndex((p) => p.meter === song.meter);
     o.beat = dcBeat(song);
     o.beatEdited = true;
@@ -1516,11 +1835,12 @@
 
     // „Meine Version“: Vorgegebenes wie im Original, Gesuchtes neutral —
     // leeres Raster, Tempo 100, ein einziger Akkord, Melodie aus.
-    const m = defaultState();
+    const m = pinLegacySound(defaultState());
+    m.bassSoundId = 'round';
     m.view = 'deconstruct';
     m.keyRoot = o.keyRoot;
     m.patternIndex = 0;
-    m.beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, bass: {} };
+    m.beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, perc: {}, bass: {} };
     m.beatEdited = true;
     m.bpm = DC_MINE_BPM;
     m.eighths = m.bpm * eighthsPerBeat(meterOfState(m));
@@ -1554,10 +1874,10 @@
     if (!s.melodyOn) return [];
     const barSteps = METERS[meterOfState(ref)].steps;
     const melBars = s.melodyBars || MELODIES[s.melodyIndex].bars;
-    const melRef = s.melodyBars ? s.melodyRef : 'chord';
+    const melRef = s.melodyBars ? s.melodyRef : melodyRefOf(s.melodyIndex);
     const out = [];
     for (let g = 0; g < bars * barSteps; g++) {
-      for (const [at, deg, , alt = 0] of melodyNotesAt(g, melBars, barSteps, s.melodyAltBars && melRef !== 'key')) {
+      for (const [at, deg, , alt = 0] of melodyNotesAt(g, melBars, barSteps, s.melodyAltBars && !(s.melodyBars && melRef === 'key'))) {
         out.push({ g: Math.floor(g / barSteps) * barSteps + Math.round(at), midi: melodyMidi(deg, alt, harmonyOfState(ref, g), melRef, modeStepsOf(ref), s.melodyOctave) });
       }
     }
@@ -1734,6 +2054,7 @@
     { id: 'beat', labelKey: 'lab.tabBeat' },
     { id: 'harmony', labelKey: 'lab.tabHarmony' },
     { id: 'melody', labelKey: 'lab.tabMelody' },
+    { id: 'sampler', labelKey: 'lab.tabSampler' },
     { id: 'sound', labelKey: 'lab.tabSound' },
     { id: 'mixer', labelKey: 'lab.tabMixer' },
     { id: 'keys', labelKey: 'lab.tabKeys' },
@@ -1746,20 +2067,35 @@
      ------------------------------------------------------------------------ */
 
   function defaultState() {
+    // Neue Stände der Studio-Ansicht (Paket 7d): Pop Stomp, Pop Hook, Klavier, Pop-Satz,
+    // Chor-Pad an. Workshop und de:construct beginnen über pinLegacy… wie früher.
+    const pattern = DRUM_PATTERNS[patternIndexByName('Pop Stomp')];
     return {
       // bpm im Tempo-Bezug der Taktart (tempoRef 'beat' seit v305, vorher
       // immer Viertel); eighths: genaues Tempo in Achteln pro Minute — bleibt
       // beim Taktartwechsel gleich, damit nichts durch Runden wandert.
       bpm: 106, tempoRef: 'beat', eighths: 212, swing: 0, pump: 0,
-      patternIndex: 0, beat: beatFromPattern(DRUM_PATTERNS[0]), beatEdited: false,
-      trackOn: { kick: true, snare: true, clap: true, hat: true, open: true, bass: true },
-      bassSoundId: 'pluck',
+      patternIndex: patternIndexByName('Pop Stomp'), beat: beatFromPattern(pattern), beatEdited: false,
+      trackOn: { kick: true, snare: true, clap: true, hat: true, open: true, perc: true, bass: true },
+      // Schlagzeug-Klang: 'auto' (je Loop-Kategorie) | 'synth' | 'acoustic' | 'hybrid';
+      // feel: Akzente/Mikro-Timing nur bei der Wiedergabe; percSound: Klang der
+      // Percussion-Spur (übernimmt beim Loop-Wählen den Wert des Loops).
+      drumKit: 'auto', feel: true, percSound: percOf(pattern),
+      // Fill im letzten Takt jedes Blocks: 0 (aus) | 4 | 8 Takte.
+      fills: 8,
+      // Sampler (Paket 9): Kits mit acht Pads (Verweise auf Samples) und Sample-Spuren im Raster.
+      sampler: sanitizeSampler(null), sampleLanes: [],
+      bassSoundId: 'finger',
       keyRoot: 0, modeId: 'major', progId: 'pop', chordBars: 1,
       // Bearbeitete oder eigene Akkordfolge (null = Vorlage progId).
       progDegrees: null, progSevenths: false, progDominant: false, progDom7: false, progName: null, progOwnId: null,
-      chordsOn: false, satb: { S: 'on', A: 'on', T: 'on', B: 'on' },
+      // Geliehene Akkorde/Umkehrungen der bearbeiteten Folge (Parallel-Arrays zu progDegrees, siehe PROGRESSIONS).
+      progAlter: null, progBass: null,
+      chordsOn: true, satb: { S: 'on', A: 'on', T: 'on', B: 'on' },
+      // Satz der Akkorde ('satb' Chor | 'pop' enge Lage), Farbe add9, Klang ('synth' | 'choir').
+      chordVoicing: 'pop', chordAdd9: false, chordSound: 'choir',
       droneOn: false, droneFifth: true,
-      melodyIndex: 0, melodyOn: true, melodyOctave: 4,
+      melodyIndex: melodyIndexByName('Pop Hook'), melodyOn: true, melodyOctave: 4,
       // Bearbeitete oder eigene Melodie: die Takte selbst (null = Vorlage
       // melodyIndex unverändert), dazu Taktart, Name und ggf. Bibliotheks-Id.
       melodyBars: null, melodyMeter: null, melodyName: null, melodyOwnId: null,
@@ -1770,8 +2106,8 @@
       arpDivision: 2, arpRhythm: 'straight', arpOctaves: 1, arpRef: 'key',
       keysLayout: 'piano',
       octave: 4,
-      sound: soundFromPreset(presetIndexByName('Velvet Choir')),
-      mix: { drums: .8, bass: .8, melody: .75, arp: .6, chords: .55, keys: .8, drone: .5, master: .8 },
+      sound: soundFromPreset(presetIndexByName('Klavier')),
+      mix: { drums: .8, bass: .8, melody: .75, arp: .6, chords: .45, keys: .8, drone: .5, master: .8 },
       mute: { drums: false, bass: false, melody: false, arp: false, chords: false, keys: false, drone: false },
       fx: { reverbLength: 1.8, echoDiv: 3, echoFeedback: .35, chorus: .2, reverbOn: true, echoOn: true, chorusOn: true },
       // Aufgenommene Reglerbewegungen: je Klang-Parameter ein Wert pro
@@ -1954,7 +2290,16 @@
     s.beat = sanitizeBeat(raw.beat, pattern);
     s.beatEdited = bool(raw.beatEdited, false);
     for (const track of TRACK_IDS) s.trackOn[track] = bool(obj(raw.trackOn)[track], true);
-    s.bassSoundId = oneOf(raw.bassSoundId, BASS_SOUNDS.map((b) => b.id), s.bassSoundId);
+    s.bassSoundId = oneOf(raw.bassSoundId, BASS_SOUNDS.map((b) => b.id), raw.view === 'deconstruct' ? 'round' : ['choir', 'workshop'].includes(raw.view) || raw.choirTask || raw.lessonId ? 'pluck' : s.bassSoundId);
+    // Alte Stände aus Chor-Aufgaben, Workshop und de:construct (ohne die
+    // neuen Felder) klingen weiter wie damals.
+    const legacy = ['choir', 'workshop', 'deconstruct'].includes(raw.view) || !!raw.choirTask || !!raw.lessonId;
+    s.drumKit = oneOf(raw.drumKit, DRUM_KITS, legacy ? 'synth' : 'auto');
+    s.feel = bool(raw.feel, !legacy);
+    s.fills = oneOf(raw.fills, FILL_LENGTHS, legacy ? 0 : 8);
+    s.sampler = sanitizeSampler(raw.sampler);
+    s.sampleLanes = sanitizeSampleLanes(raw.sampleLanes, METERS[pattern.meter].steps);
+    s.percSound = oneOf(raw.percSound, PERC_SOUNDS, percOf(pattern));
     s.keyRoot = int(raw.keyRoot, 0, 11, 0);
     s.modeId = oneOf(raw.modeId, MODES.map((m) => m.id), s.modeId);
     s.progId = oneOf(raw.progId, PROGRESSIONS.map((p) => p.id), s.progId);
@@ -1970,9 +2315,17 @@
       s.progDominant = bool(raw.progDominant, !s.progName && !!base.dominant);
       // progDom7 (Dominantseptakkorde, Blues) ebenso, seit v298.
       s.progDom7 = bool(raw.progDom7, !s.progName && !!base.dom7);
+      // Geliehene Akkorde/Umkehrungen (seit Paket 8); eine bearbeitete Vorlage ohne diese Felder erbt die der Vorlage.
+      const inherit = !s.progName && s.progDegrees.length === base.degrees.length;
+      s.progAlter = sanitizeProgAlter('progAlter' in raw ? raw.progAlter : inherit ? base.alter : null, s.progDegrees.length);
+      s.progBass = sanitizeProgBass('progBass' in raw ? raw.progBass : inherit ? base.bass : null, s.progDegrees.length);
     }
     s.chordBars = oneOf(raw.chordBars, [1, 2], 1);
     s.chordsOn = bool(raw.chordsOn, false);
+    // Stände ohne diese Felder klingen wie vor Paket 7: SATB-Satz, Synth-Chor.
+    s.chordVoicing = oneOf(raw.chordVoicing, ['satb', 'pop'], 'satb');
+    s.chordAdd9 = bool(raw.chordAdd9, false);
+    s.chordSound = oneOf(raw.chordSound, ['synth', 'choir'], 'synth');
     for (const v of SATB) s.satb[v] = oneOf(obj(raw.satb)[v], ['on', 'focus', 'mute'], 'on');
     s.droneFifth = bool(raw.droneFifth, true);
     s.melodyIndex = int(raw.melodyIndex, 0, MELODIES.length - 1, 0);
@@ -2061,6 +2414,8 @@
     if (WAVE_SHAPES.includes(raw.wave)) sound.wave = raw.wave;
     if (FILTER_TYPES.some((f) => f.id === raw.filterType)) sound.filterType = raw.filterType;
     if (typeof raw.mono === 'boolean') sound.mono = raw.mono;
+    // `sample` nur aus der Liste, sonst entfernen (geteilte Codes dürfen keinen Ordner erfinden).
+    if (SAMPLE_INSTRUMENTS.includes(raw.sample)) sound.sample = raw.sample; else delete sound.sample;
     sound.custom = raw.custom === true;
     return sound;
   }
@@ -2154,6 +2509,15 @@
     cloud: '<path d="M7 18a4.5 4.5 0 0 1-.5-9 5.5 5.5 0 0 1 10.6-1.6A4 4 0 0 1 17 18H7Z" fill="none"/>',
     anchor: '<circle cx="12" cy="5" r="2" fill="none"/><path d="M12 7v14M7 13H2a10 10 0 0 0 10 8 10 10 0 0 0 10-8h-5" fill="none"/><path d="M8 9h8"/>',
     key: '<circle cx="7" cy="7" r="4" fill="none"/><path d="M10 10l10 10M17 15l3-3M14 18l2-2" fill="none"/>',
+    heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z" fill="none"/>',
+    boot: '<path d="M7 3h7v8l5 3v6H5V12l2-2Z" fill="none"/><path d="M5 17h14"/>',
+    tambourine: '<circle cx="12" cy="12" r="8" fill="none"/><circle cx="12" cy="4.2" r=".9" fill="currentColor" stroke="none"/><circle cx="19.8" cy="12" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="19.8" r=".9" fill="currentColor" stroke="none"/><circle cx="4.2" cy="12" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="2.4" fill="none"/>',
+    hourglass: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9" fill="none"/><path d="M16 3c0 5-8 5-8 9s8 4 8 9" fill="none"/>',
+    piano: '<rect x="3" y="5" width="18" height="14" rx="1.5" fill="none"/><path d="M8 19v-6M12 19v-6M16 19v-6M7 5v8h2V5M11 5v8h2V5M15 5v8h2V5" fill="none"/>',
+    guitar: '<circle cx="9" cy="15" r="4.6" fill="none"/><circle cx="9" cy="15" r="1.2" fill="none"/><path d="M12.4 11.6 19.5 4.5M17.5 3l3.5 3.5" fill="none"/>',
+    mic: '<rect x="9" y="3" width="6" height="11" rx="3" fill="none"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" fill="none"/>',
+    harp: '<path d="M6 21V8c0-3 3-5 6-5 3 0 6 2 6 5v13" fill="none"/><path d="M9 8v10M12 8v10M15 8v10"/>',
+    trumpet: '<path d="M3 12h10M13 8l7-3v14l-7-3Z" fill="none"/><path d="M5 12v4h3v-4" fill="none"/>',
     sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2" fill="none"/><circle cx="10" cy="12" r="2" fill="none"/><circle cx="18" cy="18" r="2" fill="none"/>',
   };
 
@@ -2200,7 +2564,304 @@
                                     ├→ Hall-Send     │  und Chorus)
                                     └→ Echo-Send     │
        Liegeton: eigene Ebene, geht am Pumpen vorbei ┘
+       Hall-Send → Vorverzögerung 25 ms → Convolver → Hochpass 250 Hz
+                 → reverbReturn → master   (am Pumpen vorbei: die Hallfahne
+                                            pumpt nicht mit)
+       Echo-Send → Delay → duck           (pumpt mit)
+       Limiter: threshold -3, ratio 20, attack 2 ms — fängt nur Spitzen,
+       kein Bus-Kompressor (der pumpte hörbar).
      ------------------------------------------------------------------------ */
+
+  /* ------------------------------------------------------------------------
+     SAMPLER (Paket 9) — reine Funktionen: Grenzen, Bereinigung gespeicherter
+     Daten, Auto-Schnitt, Tonhöhenerkennung, Tonziel, Quantisierung. Kein DOM,
+     kein AudioContext — per Node und in runMusicSelfTests prüfbar.
+
+     Aufbau der Daten: Das Audio (Blob des MediaRecorders, unverändert) liegt in
+     IndexedDB (`files`, Schlüssel `labSample:<id>`), die Metadaten als meta-Typ
+     `labSample`. Im Lab-Zustand stehen nur Verweise: `sampler` (Kits mit acht
+     Pads) und `sampleLanes` (Sample-Spuren im Raster). Samples reisen nicht
+     mit einem GL1.-Code — fehlt eins auf dem Gerät, bleibt die Spur stumm.
+     ------------------------------------------------------------------------ */
+  const SAMPLER_MAX_SAMPLES = 64;
+  const SAMPLER_MAX_SEC = { hit: 2, tone: 4, loop: 10 };
+  const SAMPLER_MAX_LOOP_BARS = 2;
+  const SAMPLER_MAX_LANES = 4;
+  const SAMPLER_MAX_KITS = 8;
+  const SAMPLER_PADS = 8;
+  const SAMPLE_KINDS = ['hit', 'tone', 'loop'];
+  const SAMPLE_TRACKS = ['kick', 'snare', 'clap', 'hat', 'open', 'perc'];
+  const SAMPLE_TONE_ROLES = ['auto', 'root', 'third', 'fifth'];
+  /** Werks-Sampler: die Schlagzeug-Dateien aus samples/drums (CC0). */
+  const FACTORY_SAMPLES = [
+    ['kick', 'kick'], ['snare', 'snare'], ['rim', 'perc'], ['hat', 'hat'], ['open', 'open'], ['clap', 'clap'],
+    ['tom-hi', 'perc'], ['tom-lo', 'perc'], ['crash', 'perc'], ['ride', 'hat'], ['tamb', 'perc'], ['shaker', 'perc'],
+  ].map(([file, track]) => ({ id: `f:${file}`, name: file.length > 12 ? file.slice(0, 12) : file, kind: 'hit', track, file, factory: true,
+    trim: [0, 2], gainDb: 0, pitch: 0, reverse: false, decay: 2, reverb: 0, layerOriginal: false, toneRole: 'auto', detectedMidi: null,
+    detectedCents: 0, loopBars: 1, bpmAtRec: null, meterAtRec: null, by: '', createdAt: 0 }));
+  /** Werks-Kits (schreibgeschützt). */
+  const FACTORY_KITS = [
+    { id: 'f-acoustic', name: 'Akustik', nameKey: 'lab.sampler.kitAcoustic', factory: true, pads: ['f:kick', 'f:snare', 'f:hat', 'f:open', 'f:clap', 'f:tom-hi', 'f:rim', 'f:crash'] },
+    { id: 'f-electro', name: 'Elektro', nameKey: 'lab.sampler.kitElectro', factory: true, pads: ['f:kick', 'f:clap', 'f:hat', 'f:open', 'f:tom-lo', 'f:tamb', 'f:shaker', 'f:ride'] },
+  ];
+  const isFactoryId = (id) => typeof id === 'string' && id.startsWith('f:');
+  const factorySample = (id) => FACTORY_SAMPLES.find((s) => s.id === id) || null;
+  const SAMPLE_ID_RE = /^[A-Za-z0-9_-]{1,24}$/;
+  const SAMPLE_PAD_ID_RE = /^(f:[a-z-]{1,12}|[A-Za-z0-9_-]{1,24})$/;
+  const dbToGain = (db) => Math.pow(10, db / 20);
+
+  /** Metadaten eines Samples prüfen (gespeicherte Datensätze sind fremde Daten). Null = unbrauchbar. */
+  function sanitizeSampleMeta(raw) {
+    if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string' || !SAMPLE_ID_RE.test(raw.id)) return null;
+    const num = (v, lo, hi, fb) => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, lo, hi) : fb);
+    const kind = SAMPLE_KINDS.includes(raw.kind) ? raw.kind : 'hit';
+    const trimRaw = Array.isArray(raw.trim) ? raw.trim : [];
+    let start = num(trimRaw[0], 0, 600, 0);
+    let end = num(trimRaw[1], 0, 600, 0);
+    if (end - start < .02) end = start + .02;
+    // Länge je Art begrenzen (Schlag ≤ 2 s, Ton ≤ 4 s, Loop ≤ 10 s).
+    end = Math.min(end, start + SAMPLER_MAX_SEC[kind]);
+    const meter = ['4/4', '3/4', '6/8'].includes(raw.meterAtRec) ? raw.meterAtRec : null;
+    return {
+      id: raw.id,
+      name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 12) : '?',
+      kind,
+      trim: [Math.round(start * 1000) / 1000, Math.round(end * 1000) / 1000],
+      gainDb: num(raw.gainDb, -24, 6, 0),
+      pitch: Math.round(num(raw.pitch, -12, 12, 0) * 100) / 100,
+      reverse: raw.reverse === true,
+      decay: num(raw.decay, .05, 10, SAMPLER_MAX_SEC[kind]),
+      reverb: num(raw.reverb, 0, 1, 0),
+      track: SAMPLE_TRACKS.includes(raw.track) ? raw.track : 'perc',
+      layerOriginal: raw.layerOriginal === true,
+      toneRole: SAMPLE_TONE_ROLES.includes(raw.toneRole) ? raw.toneRole : 'auto',
+      detectedMidi: typeof raw.detectedMidi === 'number' && Number.isFinite(raw.detectedMidi) ? clamp(Math.round(raw.detectedMidi), 20, 120) : null,
+      detectedCents: num(raw.detectedCents, -50, 50, 0),
+      loopBars: raw.loopBars === 2 ? 2 : 1,
+      bpmAtRec: typeof raw.bpmAtRec === 'number' && Number.isFinite(raw.bpmAtRec) ? clamp(Math.round(raw.bpmAtRec), BPM_MIN, 300) : null,
+      meterAtRec: meter,
+      by: typeof raw.by === 'string' ? raw.by.trim().slice(0, 24) : '',
+      createdAt: num(raw.createdAt, 0, 8.64e15, 0),
+    };
+  }
+
+  /** Sampler-Zustand (Kits mit je acht Pads, gewähltes Kit) prüfen; unbekannte Pad-Ids bleiben stehen
+   *  (das Sample kann auf einem anderen Gerät liegen) — sie klingen nur nicht. */
+  function sanitizeSampler(raw) {
+    const out = { kits: [], kitId: 'k1' };
+    const obj = raw && typeof raw === 'object' ? raw : {};
+    const seen = new Set();
+    for (const kit of (Array.isArray(obj.kits) ? obj.kits : []).slice(0, SAMPLER_MAX_KITS)) {
+      if (!kit || typeof kit !== 'object' || typeof kit.id !== 'string' || !SAMPLE_ID_RE.test(kit.id) || seen.has(kit.id)) continue;
+      seen.add(kit.id);
+      const pads = Array.from({ length: SAMPLER_PADS }, (_, i) => (typeof kit.pads?.[i] === 'string' && SAMPLE_PAD_ID_RE.test(kit.pads[i]) ? kit.pads[i] : null));
+      out.kits.push({ id: kit.id, name: typeof kit.name === 'string' && kit.name.trim() ? kit.name.trim().slice(0, 16) : 'Kit', pads });
+    }
+    if (!out.kits.length) out.kits.push({ id: 'k1', name: 'Chor-Kit', pads: Array(SAMPLER_PADS).fill(null) });
+    const wanted = obj.kitId;
+    out.kitId = out.kits.some((k) => k.id === wanted) || FACTORY_KITS.some((k) => k.id === wanted) ? wanted : out.kits[0].id;
+    return out;
+  }
+
+  /** Sample-Spuren im Raster: höchstens vier, je Pad eine; Schritte als { Schritt: Anschlagstärke }. */
+  function sanitizeSampleLanes(raw, steps = 16) {
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    const seen = new Set();
+    for (const lane of raw) {
+      if (out.length >= SAMPLER_MAX_LANES) break;
+      if (!lane || typeof lane !== 'object' || typeof lane.padId !== 'string' || !SAMPLE_PAD_ID_RE.test(lane.padId) || seen.has(lane.padId)) continue;
+      seen.add(lane.padId);
+      const hits = {};
+      for (const [key, value] of Object.entries(lane.steps && typeof lane.steps === 'object' ? lane.steps : {})) {
+        const step = Number(key);
+        if (Number.isInteger(step) && step >= 0 && step < steps && typeof value === 'number' && Number.isFinite(value)) hits[step] = clamp(value, .1, 1);
+      }
+      out.push({ padId: lane.padId, on: lane.on !== false, layer: lane.layer === true, steps: hits });
+    }
+    return out;
+  }
+
+  /** Auto-Schnitt: Anfang/Ende (Sekunden) bei −45 dBFS relativ zum Spitzenwert, 2 ms Vorlauf. */
+  function autoTrimBounds(data, sampleRate, { thresholdDb = -45, lead = .002, tail = .01 } = {}) {
+    let peak = 0;
+    for (let i = 0; i < data.length; i++) { const a = Math.abs(data[i]); if (a > peak) peak = a; }
+    if (!(peak > 0)) return { start: 0, end: data.length / sampleRate, peak: 0 };
+    const limit = peak * Math.pow(10, thresholdDb / 20);
+    let first = 0;
+    while (first < data.length && Math.abs(data[first]) < limit) first++;
+    let last = data.length - 1;
+    while (last > first && Math.abs(data[last]) < limit) last--;
+    return { start: Math.max(0, first / sampleRate - lead), end: Math.min(data.length / sampleRate, last / sampleRate + tail), peak };
+  }
+
+  /** Mini-Wellenform: `n` Spitzenwerte (0–1) über den ganzen Puffer. */
+  function wavePeaks(data, n = 14) {
+    const out = [];
+    const size = Math.max(1, Math.floor(data.length / n));
+    let max = 0;
+    for (let i = 0; i < n; i++) {
+      let peak = 0;
+      for (let j = i * size; j < Math.min(data.length, (i + 1) * size); j++) { const a = Math.abs(data[j]); if (a > peak) peak = a; }
+      out.push(peak);
+      if (peak > max) max = peak;
+    }
+    return max > 0 ? out.map((v) => v / max) : out;
+  }
+
+  /**
+   * Tonhöhe per YIN (de Cheveigné & Kawahara) über die mittleren 50 % des geschnittenen Bereichs.
+   * Mehrere Fenster, Median; null, wenn keine verlässliche Tonhöhe da ist (Geräusch, Klatschen).
+   * Liefert { midi (ganzzahlig), cents (−50…50), hz }.
+   */
+  function detectPitch(data, sampleRate, { minHz = 70, maxHz = 1100, threshold = .15, windows = 5 } = {}) {
+    const from = Math.floor(data.length * .25);
+    const to = Math.floor(data.length * .75);
+    const tauMax = Math.min(Math.floor(sampleRate / minHz), 1500);
+    const tauMin = Math.max(2, Math.floor(sampleRate / maxHz));
+    const win = Math.max(1024, tauMax * 2);
+    if (to - from < win + tauMax) {
+      // Zu kurz für eine Messung mit Fenster und Verschiebung — ganze Strecke als ein Fenster versuchen.
+      if (to - from < tauMax * 2 + 64) return null;
+    }
+    const results = [];
+    const span = Math.max(0, to - from - win - tauMax);
+    for (let w = 0; w < windows; w++) {
+      const start = from + (windows > 1 ? Math.floor((span * w) / (windows - 1)) : 0);
+      const len = Math.min(win, to - start - tauMax);
+      if (len < tauMax) continue;
+      const d = new Float64Array(tauMax + 1);
+      for (let tau = 1; tau <= tauMax; tau++) {
+        let sum = 0;
+        for (let i = 0; i < len; i++) { const diff = data[start + i] - data[start + i + tau]; sum += diff * diff; }
+        d[tau] = sum;
+      }
+      // kumulierte mittlere normalisierte Differenz
+      const cm = new Float64Array(tauMax + 1);
+      cm[0] = 1;
+      let running = 0;
+      for (let tau = 1; tau <= tauMax; tau++) { running += d[tau]; cm[tau] = running > 0 ? (d[tau] * tau) / running : 1; }
+      let found = -1;
+      for (let tau = tauMin; tau < tauMax; tau++) {
+        if (cm[tau] < threshold) {
+          while (tau + 1 < tauMax && cm[tau + 1] < cm[tau]) tau++;
+          found = tau;
+          break;
+        }
+      }
+      if (found < 0) continue;
+      // parabolische Verfeinerung
+      const a = cm[found - 1];
+      const b = cm[found];
+      const c = cm[found + 1] ?? b;
+      const denom = a - 2 * b + c;
+      const shift = denom ? (a - c) / (2 * denom) : 0;
+      results.push(sampleRate / (found + clamp(shift, -1, 1)));
+    }
+    if (results.length < Math.ceil(windows / 2)) return null;
+    results.sort((x, y) => x - y);
+    const hz = results[results.length >> 1];
+    const midiFloat = 69 + 12 * Math.log2(hz / 440);
+    const midi = Math.round(midiFloat);
+    return { hz, midi, cents: Math.round((midiFloat - midi) * 100) };
+  }
+
+  /**
+   * Zielton eines Ton-Samples über dem klingenden Akkord. `pcs`: Tonhöhenklassen des Akkords
+   * [Grundton, Terz, Quinte, …]. `auto`: der Akkordton (Grundton/Terz/Quinte) mit dem kleinsten
+   * Abstand zu `detectedMidi`; sonst die gewählte Rolle in der nächstgelegenen Oktave.
+   */
+  function sampleToneTarget(role, detectedMidi, pcs) {
+    const wrap = (semis) => mod(semis + 6, 12) - 6; // −6 … +5
+    const nearest = (pc) => detectedMidi + wrap(pc - mod(detectedMidi, 12));
+    const index = { root: 0, third: 1, fifth: 2 }[role];
+    if (index !== undefined) return nearest(pcs[index] ?? pcs[0]);
+    let best = null;
+    for (const pc of pcs.slice(0, 3)) {
+      const target = nearest(pc);
+      if (best === null || Math.abs(target - detectedMidi) < Math.abs(best - detectedMidi)) best = target;
+    }
+    return best;
+  }
+
+  /** Abspielrate eines Ton-Samples: (Ziel − erkannt − Cent/100 + Feinstimmung) Halbtöne, die Umstimmung
+   *  selbst auf ±7 begrenzt (sonst eine Oktave gefaltet), danach die Feinstimmung `pitch`. */
+  function sampleToneRate(target, detectedMidi, detectedCents, pitch = 0) {
+    let semis = target - detectedMidi - detectedCents / 100;
+    while (semis > 7) semis -= 12;
+    while (semis < -7) semis += 12;
+    return Math.pow(2, (semis + pitch) / 12);
+  }
+
+  /** Globaler Schritt zu einem Tipp: Zeit des Tipps minus Ausgabe-Latenz, gegen einen bekannten
+   *  Schritt (refStep zur Audio-Zeit refTime) abgeglichen und auf die nächste Sechzehntel gerundet. */
+  function quantizeTapStep(tapTime, refTime, refStep, stepSec, latency = 0) {
+    return refStep + Math.round((tapTime - latency - refTime) / stepSec);
+  }
+
+  /** Loop-Tempo: gleiche Rate, wenn das Tempo höchstens 3 % vom Aufnahmetempo abweicht, sonst null
+   *  (v1: kein Strecken ohne Tonhöhenänderung — der Loop schweigt und die Oberfläche nennt das Tempo). */
+  function loopRate(bpm, bpmAtRec) {
+    if (!bpmAtRec) return 1;
+    const ratio = bpm / bpmAtRec;
+    return Math.abs(ratio - 1) <= .03 ? ratio : null;
+  }
+
+  /* ------------------------------------------------------------------------
+     LabSamples — das Schlagzeug-Kit aus samples/drums (VCSL, CC0), im
+     Hintergrund geladen. Fehlt eine Datei oder schlägt das Laden fehl, bleibt
+     der Eintrag null und die Engine nimmt die Synthese. Gehört einem
+     AudioContext (decodeAudioData) und wird mit ihm verworfen.
+     ------------------------------------------------------------------------ */
+  const LAB_DRUM_FILES = ['kick', 'snare', 'snare-soft', 'rim', 'hat', 'hat-soft', 'open', 'clap', 'tom-hi', 'tom-lo', 'crash', 'ride', 'tamb', 'shaker']; // snap: keine Quelle mit geklärter Lizenz (samples/LIZENZ.md) — Synthese
+  // Pegel je Sample: die Dateien sind auf −1 dBFS normalisiert, die Synthese
+  // klingt je Instrument deutlich leiser — so passen beide zusammen.
+  const LAB_DRUM_LEVEL = { kick: .6, snare: .33, 'snare-soft': .33, rim: .3, hat: .13, 'hat-soft': .13, open: .13, clap: .3,
+    'tom-hi': .45, 'tom-lo': .45, crash: .22, ride: .16, tamb: .16, shaker: .14, snap: .3 };
+
+  class LabSamples {
+    constructor(ctx) {
+      this.ctx = ctx;
+      this.buffers = {};
+      this.alive = true;
+      this.loading = null;
+    }
+
+    /** Stille am Anfang abschneiden (MP3-Vorlauf), sonst kommen die Schläge zu spät. */
+    static trimOnset(ctx, buffer) {
+      const data = buffer.getChannelData(0);
+      let peak = 0;
+      for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+      let start = 0;
+      while (start < data.length && Math.abs(data[start]) < peak * .02) start++;
+      start = Math.max(0, start - Math.round(buffer.sampleRate * .001));
+      if (!start) return buffer;
+      const out = ctx.createBuffer(buffer.numberOfChannels, buffer.length - start, buffer.sampleRate);
+      for (let c = 0; c < buffer.numberOfChannels; c++) out.copyToChannel(buffer.getChannelData(c).subarray(start), c);
+      return out;
+    }
+
+    /** Alle Dateien laden, höchstens 3 gleichzeitig; Fehler → null, kein Abbruch. */
+    load(files = LAB_DRUM_FILES, folder = 'drums') {
+      const queue = [...files];
+      const worker = async () => {
+        while (queue.length && this.alive) {
+          const id = queue.shift();
+          try {
+            const response = await fetch(`./samples/${folder}/${id}.mp3`);
+            if (!response.ok) throw new Error(String(response.status));
+            const decoded = await this.ctx.decodeAudioData(await response.arrayBuffer());
+            if (this.alive) this.buffers[id] = LabSamples.trimOnset(this.ctx, decoded);
+          } catch { if (this.alive) this.buffers[id] = null; }
+        }
+      };
+      this.loading = Promise.all([worker(), worker(), worker()]);
+      return this.loading;
+    }
+
+    get(id) { return this.buffers[id] || null; }
+    dispose() { this.alive = false; this.buffers = {}; }
+  }
 
   class GrooveEngine {
     constructor() {
@@ -2209,6 +2870,7 @@
       this.layers = null;
       this.noiseBuffer = null;
       this.voices = new Set();
+      this.inst = {};        // Sample-Instrumente (ensureInstrument): name → { ready, promise, samples | set }
       this.maxVoices = 32;   // Obergrenze gleichzeitiger Synth-Stimmen (Handy-CPU)
       this.lastMidi = {};    // je Ebene: letzte Note (für Glide)
       this.monoVoice = {};   // je Ebene: aktuelle Stimme im Mono-Modus
@@ -2231,8 +2893,13 @@
 
       const master = gain(.8);
       const limiter = ctx.createDynamicsCompressor();
-      limiter.threshold.value = -13; limiter.ratio.value = 6;
-      master.connect(limiter).connect(ctx.destination);
+      limiter.threshold.value = -3; limiter.knee.value = 0; limiter.ratio.value = 20;
+      limiter.attack.value = .002; limiter.release.value = .12;
+      // Fester Vorpegel: gleicht die Lautheit an den früheren Kompressor an
+      // (gemessen: Default-Groove, Peak -1,1 dBFS, Lautheit ±0,7 dB zu vorher) und hält
+      // den Peak unter -1 dBFS. Bewusst nicht am Nutzer-Regler "master".
+      const limiterTrim = gain(.78);
+      master.connect(limiterTrim).connect(limiter).connect(ctx.destination);
 
       const drums = gain(.72, master);
       const bass = gain(.8, master);
@@ -2263,7 +2930,13 @@
       convolver.buffer = this._impulseResponse(1.8);
       this._reverbLength = 1.8;
       const reverbIn = gain(1);
-      reverbIn.connect(convolver).connect(duck);
+      // Hall am Pumpen vorbei, mit Vorverzögerung und Hochpass: die Fahne
+      // soll weder mitpumpen noch den Bass-/Kick-Bereich zuschmieren.
+      const preDelay = ctx.createDelay(.1); preDelay.delayTime.value = .025;
+      const reverbHP = ctx.createBiquadFilter();
+      reverbHP.type = 'highpass'; reverbHP.frequency.value = 250; reverbHP.Q.value = .7;
+      const reverbReturn = gain(1, master);
+      reverbIn.connect(preDelay).connect(convolver).connect(reverbHP).connect(reverbReturn);
 
       const echoIn = gain(1);
       const delay = ctx.createDelay(2); delay.delayTime.value = .3;
@@ -2287,8 +2960,12 @@
         this.layers[id] = { input, shaper, level, reverbSend, echoSend };
       }
 
-      this.buses = { master, drums, bass, duck, synthSum, chorusWet, convolver, delay, feedback, reverbIn, echoIn };
+      this.buses = { master, drums, bass, duck, synthSum, chorusWet, convolver, delay, feedback, reverbIn, reverbReturn, echoIn };
       this.noiseBuffer = this._whiteNoise(.5);
+      this.labSamples = new LabSamples(ctx);
+      this.labSamples.load(); // im Hintergrund; bis dahin klingt die Synthese
+      this.bassSamples = new LabSamples(ctx);
+      this.bassSamples.load(BASS_SAMPLE_NOTES.map(String), 'bass');
       this.lastMidi = {};
       this.monoVoice = {};
       await ctx.resume();
@@ -2298,6 +2975,12 @@
       this.voices.forEach((v) => this._releaseVoice(v, true));
       this.voices.clear();
       clearTimeout(this._reverbTimer);
+      this.labSamples?.dispose();
+      this.labSamples = null;
+      this.bassSamples?.dispose();
+      this.bassSamples = null;
+      for (const entry of Object.values(this.inst)) entry.samples?.dispose();
+      this.inst = {};
       const ctx = this.ctx;
       this.ctx = null;
       this.buses = null;
@@ -2469,27 +3152,323 @@
       else this.playNoise(time, { cutoff: 6500, length: .045, volume: .055 * velocity, type: 'highpass', q: .7 });
     }
 
-    hitTrack(track, time, velocity = 1, kit = KIT_DEFAULTS) {
-      if (track === 'kick') this.playKick(time, velocity, kit);
-      else if (track === 'snare') this.playSnare(time, velocity);
-      else if (track === 'clap') this.playClap(time, velocity);
-      else this.playHat(time, velocity, track === 'open');
+    /** Ein Sample über den Drum-Bus (oder `bus`) spielen. */
+    playSample(buffer, time, velocity = 1, { bus = this.buses.drums, rate = 1, level = 1, highpass = 0 } = {}) {
+      const source = this.ctx.createBufferSource();
+      const gain = this.ctx.createGain();
+      source.buffer = buffer;
+      source.playbackRate.value = rate;
+      gain.gain.value = level * velocity;
+      let node = source;
+      if (highpass) {
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'highpass'; filter.frequency.value = highpass; filter.Q.value = .7;
+        node = source.connect(filter);
+      }
+      node.connect(gain).connect(bus);
+      source.start(time);
+      return gain;
     }
 
-    playBass(time, midi, velocity, sound) {
+    /** Rückwärts abspielbarer Puffer (je Puffer einmal gerechnet). */
+    _reversedBuffer(buffer) {
+      this._reversed ||= new WeakMap();
+      let reversed = this._reversed.get(buffer);
+      if (!reversed) {
+        reversed = this.ctx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+        for (let c = 0; c < buffer.numberOfChannels; c++) reversed.copyToChannel(buffer.getChannelData(c).slice().reverse(), c);
+        this._reversed.set(buffer, reversed);
+      }
+      return reversed;
+    }
+
+    /**
+     * Ein Sampler-Pad spielen (Paket 9): Bereich `meta.trim`, Lautstärke `gainDb`, Umstimmung
+     * (`rate` oder `meta.pitch` + `semitones`), Rückwärts, Ausklingen (`decay`), Hall-Send.
+     * Schläge und Loops laufen über den Drum-Bus, Töne (`layer: 'keys'`) über die Synth-Ebene —
+     * so greifen Mixer, Pumpen und Effekte. Mit `duration` (Töne) hält die Note so lange, danach
+     * 80 ms Release; ist der Bereich kürzer, wird er überblendet wiederholt (wie bei Chor/Streichern).
+     * Liefert die Länge in Sekunden bis zum Ende (für Anzeige/Tests).
+     */
+    playPad(buffer, meta, time, velocity, { rate = null, semitones = 0, duration = null, layer = null } = {}) {
+      const ctx = this.ctx;
+      const total = buffer.duration;
+      const start = clamp(meta.trim[0], 0, Math.max(0, total - .01));
+      const end = clamp(meta.trim[1], start + .01, total);
+      const length = end - start;
+      const playRate = rate ?? Math.pow(2, (meta.pitch + semitones) / 12);
+      const used = meta.reverse ? this._reversedBuffer(buffer) : buffer;
+      const regionStart = meta.reverse ? total - end : start;
+      const dest = layer ? this.layers[layer].input : this.buses.drums;
+      const level = dbToGain(meta.gainDb) * velocity * .7;
+      const wet = clamp(meta.reverb || 0, 0, 1);
+      const piece = (t, offset, audible, fadeIn, fadeOut, endless = false) => {
+        const src = ctx.createBufferSource();
+        src.buffer = used;
+        src.playbackRate.value = playRate;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(.0001, t);
+        g.gain.linearRampToValueAtTime(level, t + Math.max(.002, fadeIn));
+        src.connect(g).connect(dest);
+        if (wet > 0) {
+          const send = ctx.createGain();
+          send.gain.value = wet * .9;
+          g.connect(send).connect(this.buses.reverbIn);
+        }
+        let stop;
+        if (endless) stop = t + audible; // bis zum Ende des Bereichs
+        else {
+          g.gain.setValueAtTime(level, t + audible);
+          g.gain.linearRampToValueAtTime(.0001, t + audible + fadeOut);
+          stop = t + audible + fadeOut + .02;
+        }
+        src.start(t, offset, (stop - t) * playRate + .05);
+        src.stop(stop + .05);
+        return stop;
+      };
+      const regionSec = length / playRate;
+      if (duration === null) {
+        // Schlag/Loop: ganzer Bereich, am Ende 10 ms ausgeblendet; `decay` kürzt ihn.
+        const audible = Math.min(regionSec - .01, Math.max(.03, meta.decay));
+        return piece(time, regionStart, Math.max(.02, audible), .002, .01) - time;
+      }
+      // Ton: hält `duration`, bei kurzem Bereich überblendet wiederholt.
+      const loopFrom = regionStart + length * .35;
+      const xfade = Math.min(.25, regionSec * .2);
+      let t = time;
+      let left = duration;
+      let offset = regionStart;
+      let fadeIn = .004;
+      for (let k = 0; k < 64; k++) {
+        const avail = (regionStart + length - offset) / playRate;
+        if (left + .08 <= avail || k === 63) { piece(t, offset, Math.max(.02, left), fadeIn, .08); break; }
+        const pieceLen = avail - xfade;
+        piece(t, offset, pieceLen, fadeIn, xfade);
+        t += pieceLen; left -= pieceLen; offset = loopFrom; fadeIn = xfade;
+      }
+      return duration + .08;
+    }
+
+    /** Synth-Tom (Fill ohne Tom-Samples): Sinus fällt von `from` auf `to` Hz. */
+    playTom(time, velocity, low) {
       const ctx = this.ctx;
       const osc = ctx.createOscillator();
-      const filter = ctx.createBiquadFilter();
       const gain = ctx.createGain();
-      osc.type = sound.wave;
-      osc.frequency.setValueAtTime(noteHz(midi), time);
-      filter.type = 'lowpass'; filter.Q.value = sound.q;
-      filter.frequency.setValueAtTime(sound.cutoff + sound.envAmount, time);
-      if (sound.envAmount) filter.frequency.exponentialRampToValueAtTime(sound.cutoff, time + sound.decay * .8);
-      gain.gain.setValueAtTime(sound.level * velocity, time);
-      gain.gain.exponentialRampToValueAtTime(.0001, time + sound.decay);
-      osc.connect(filter).connect(gain).connect(this.buses.bass);
-      osc.start(time); osc.stop(time + sound.decay + .02);
+      const [from, to] = low ? [140, 85] : [200, 120];
+      osc.frequency.setValueAtTime(from, time);
+      osc.frequency.exponentialRampToValueAtTime(to, time + .2);
+      gain.gain.setValueAtTime(.5 * velocity, time);
+      gain.gain.exponentialRampToValueAtTime(.0001, time + .25);
+      osc.connect(gain).connect(this.buses.drums);
+      osc.start(time); osc.stop(time + .27);
+    }
+
+    /**
+     * Ein Schlag. `o`: mode ('synth' | 'acoustic' | 'hybrid' — aufgelöstes Kit),
+     * hat ('ride'), soft (leise Hi-Hat), perc ('tamb' | 'shaker' | 'snap').
+     * Je Spur: Sample, falls das Kit es verlangt und es geladen ist, sonst Synthese.
+     */
+    hitTrack(track, time, velocity = 1, kit = KIT_DEFAULTS, o = {}) {
+      const mode = o.mode || 'synth';
+      const sample = (id, v = velocity) => {
+        if (mode === 'synth' || (mode === 'hybrid' && track === 'kick')) return false;
+        const buffer = this.labSamples?.get(id);
+        if (!buffer) return false;
+        const gain = this.playSample(buffer, time, Math.min(1, v), { level: LAB_DRUM_LEVEL[id] ?? .3 });
+        if (id === 'ride') {
+          // Choke: der vorige Ride-Treffer blendet beim nächsten Schlag in 80 ms auf 30 % ab, das Becken staut sich nicht auf.
+          const prev = this._lastRide;
+          if (prev) { prev.gain.gain.setValueAtTime(prev.level, time); prev.gain.gain.linearRampToValueAtTime(prev.level * .3, time + .08); }
+          this._lastRide = { gain, level: gain.gain.value };
+        }
+        return true;
+      };
+      if (track === 'kick') { if (!sample('kick')) this.playKick(time, velocity, kit); }
+      else if (track === 'snare') {
+        const ghost = velocity < .6;
+        if (!sample(ghost ? 'snare-soft' : 'snare', ghost ? velocity * 1.8 : velocity)) this.playSnare(time, velocity);
+      } else if (track === 'clap') { if (!sample('clap')) this.playClap(time, velocity); }
+      else if (track === 'perc') {
+        const perc = o.perc || 'tamb';
+        if (sample(perc)) return;
+        // Ohne Fingerschnipser-Sample: das Clap-Sample, ab 1,5 kHz (heller, trockener), Pegel .5; Rauschen nur, wenn auch das fehlt.
+        const clap = perc === 'snap' && mode !== 'synth' ? this.labSamples?.get('clap') : null;
+        if (clap) this.playSample(clap, time, Math.min(1, velocity), { level: .5, highpass: 1500 });
+        else this.playNoise(time, { cutoff: 5000, length: .08, volume: .08 * velocity, type: 'bandpass', q: 1 });
+      } else if (track === 'tom-hi' || track === 'tom-lo') { if (!sample(track)) this.playTom(time, velocity, track === 'tom-lo'); }
+      else if (track === 'crash') { if (!sample('crash')) this.playNoise(time, { cutoff: 5500, length: .7, volume: .06 * velocity, type: 'highpass', q: .8 }); }
+      else {
+        const open = track === 'open';
+        const id = open ? 'open' : o.hat === 'ride' ? 'ride' : o.soft ? 'hat-soft' : 'hat';
+        if (!sample(id, o.soft && !open ? velocity * 1.4 : velocity)) this.playHat(time, velocity, open);
+      }
+    }
+
+    /**
+     * Bassnote. `duration` (s) = Gate: 5 ms Anstieg → Peak → in `decay` auf
+     * Peak × `sustain` → halten bis `duration` → 60 ms Release. Ohne `duration`
+     * (Vorhören, Pads) klingt sie kurz. `sound.sample`: nächster Ton aus
+     * samples/bass, umgestimmt; fehlt er, klingt 'round'.
+     */
+    playBass(time, midi, velocity, sound, duration = .3) {
+      const ctx = this.ctx;
+      let buffer = null;
+      let base = 0;
+      if (sound.sample) {
+        const bank = this.bassSamples;
+        base = BASS_SAMPLE_NOTES.reduce((best, n) => (Math.abs(n - midi) < Math.abs(best - midi) ? n : best), BASS_SAMPLE_NOTES[0]);
+        buffer = bank?.get(String(base)) || null;
+        if (!buffer) { sound = BASS_SOUNDS.find((b) => b.id === 'round'); }
+      }
+      const gain = ctx.createGain();
+      const t0 = time + .005;
+      const decayEnd = t0 + sound.decay;
+      const holdEnd = Math.max(t0 + .01, time + duration);
+      const floor = .0001;
+      const peak = sound.level * velocity;
+      const sustain = Math.max(floor, peak * sound.sustain);
+      gain.gain.setValueAtTime(floor, time);
+      gain.gain.linearRampToValueAtTime(peak, t0);
+      if (holdEnd <= decayEnd) {
+        // Note endet noch im Abklingen: dort ansetzen, wo die Kurve gerade steht.
+        gain.gain.exponentialRampToValueAtTime(Math.max(floor, peak * Math.pow(sustain / peak, (holdEnd - t0) / sound.decay)), holdEnd);
+      } else {
+        gain.gain.exponentialRampToValueAtTime(sustain, decayEnd);
+        gain.gain.setValueAtTime(sustain, holdEnd);
+      }
+      gain.gain.exponentialRampToValueAtTime(floor, holdEnd + .06);
+      const stop = holdEnd + .08;
+      let source;
+      if (buffer) {
+        source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.playbackRate.value = Math.pow(2, (midi - base) / 12);
+        source.connect(gain).connect(this.buses.bass);
+      } else {
+        source = ctx.createOscillator();
+        const filter = ctx.createBiquadFilter();
+        source.type = sound.wave;
+        source.frequency.setValueAtTime(noteHz(midi), time);
+        filter.type = 'lowpass'; filter.Q.value = sound.q;
+        filter.frequency.setValueAtTime(sound.cutoff + sound.envAmount, time);
+        if (sound.envAmount) filter.frequency.exponentialRampToValueAtTime(sound.cutoff, time + sound.decay * .8);
+        source.connect(filter).connect(gain).connect(this.buses.bass);
+      }
+      source.start(time); source.stop(stop);
+    }
+
+    /* ---- Sample-Instrumente (Klavier, Gitarre, Chor, Streicher, Brass) ---- */
+
+    /** Instrument im Hintergrund laden (einmal je Kontext). Liefert ein Promise
+     *  auf true/false; bis es fertig ist, klingt der Ersatzklang (SAMPLE_FALLBACK). */
+    ensureInstrument(name) {
+      if (!this.ctx || !LAB_INST[name]) return Promise.resolve(false);
+      if (this.inst[name]) return this.inst[name].promise;
+      const cfg = LAB_INST[name];
+      const entry = { ready: false, promise: null, samples: null, set: null };
+      this.inst[name] = entry;
+      const fail = () => { if (this.inst[name] === entry) delete this.inst[name]; return false; }; // später erneut versuchen
+      if (name === 'piano') {
+        // Das Klavier lädt piano-samples.js (Salamander, mit Stimmungskorrektur), falls die App es geladen hat.
+        if (!global.ChorPiano) entry.promise = Promise.resolve(fail());
+        else {
+          entry.promise = global.ChorPiano.load({ notes: cfg.notes, keepSec: () => 4 })
+            .then((set) => { entry.set = set; entry.ready = true; return true; }, fail);
+        }
+      } else {
+        const samples = new LabSamples(this.ctx);
+        entry.samples = samples;
+        entry.promise = samples.load(cfg.notes.map(String), cfg.folder)
+          .then(() => { entry.ready = cfg.notes.some((n) => samples.get(String(n))); return entry.ready || fail(); }, fail);
+      }
+      return entry.promise;
+    }
+
+    instrumentReady(name) { return !!this.inst[name]?.ready; }
+
+    /** Eine Sample-Note als Stimme (gleiche Form wie eine Synth-Stimme, damit Freigabe,
+     *  Stimmenlimit und Automation sie gleich behandeln). Hüllkurve: Attack/Release aus
+     *  dem Klang, Filter und Drive (Ebene) bleiben wirksam. Chor und Streicher halten
+     *  lange Töne mit überblendetem Loop, die übrigen klingen natürlich aus. */
+    _playSampleTone(sound, midi, time, velocity, duration, layer) {
+      const ctx = this.ctx;
+      const L = this.layers[layer];
+      const cfg = LAB_INST[sound.sample];
+      const entry = this.inst[sound.sample];
+      let buffer;
+      let rate;
+      let level = cfg.level;
+      if (sound.sample === 'piano') {
+        const base = global.ChorPiano.nearest(entry.set, midi);
+        buffer = entry.set.bufs[base];
+        rate = global.ChorPiano.rateFor(midi, base);
+        level *= entry.set.gain[base] || 1;
+      } else {
+        const loaded = cfg.notes.filter((n) => entry.samples.get(String(n)));
+        const base = loaded.reduce((best, n) => (Math.abs(n - midi) < Math.abs(best - midi) ? n : best), loaded[0]);
+        buffer = entry.samples.get(String(base));
+        rate = Math.pow(2, (midi - base) / 12);
+      }
+      if (this.voices.size >= this.maxVoices) {
+        for (const oldest of this.voices) { if (oldest.layer !== 'drone') { this._releaseVoice(oldest, true); break; } }
+      }
+      const filter = ctx.createBiquadFilter();
+      filter.type = sound.filterType || 'lowpass';
+      filter.Q.value = sound.resonance;
+      filter.frequency.value = Math.min(sound.cutoff, ctx.sampleRate * .45);
+      const gain = ctx.createGain();
+      const attack = Math.max(.003, sound.attack);
+      const peak = velocity * level;
+      gain.gain.setValueAtTime(.0001, time);
+      if (duration && duration < attack) gain.gain.linearRampToValueAtTime(Math.max(.0001, peak * duration / attack), time + duration);
+      else gain.gain.linearRampToValueAtTime(peak, time + attack);
+      let stopAt = null;
+      if (duration) {
+        gain.gain.setTargetAtTime(0, time + duration, Math.max(.01, sound.release / 4));
+        stopAt = time + duration + sound.release * 1.3 + .05;
+      }
+      filter.connect(gain).connect(L.input);
+
+      const sources = [];
+      const piece = (t, offset, length, fadeIn, fadeOut) => {
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        src.playbackRate.value = rate;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(fadeIn ? .0001 : 1, t);
+        if (fadeIn) g.gain.linearRampToValueAtTime(1, t + fadeIn);
+        let end = null;
+        if (length !== null) {
+          g.gain.setValueAtTime(1, t + length);
+          g.gain.linearRampToValueAtTime(.0001, t + length + fadeOut);
+          end = t + length + fadeOut + .02;
+        }
+        src.connect(g).connect(filter);
+        src.start(t, offset);
+        if (end !== null) src.stop(end);
+        sources.push(src);
+      };
+      const long = cfg.long;
+      if (!long) piece(time, 0, null, 0, 0);
+      else {
+        // Wie sampleNote in uebe-lab.html: Stücke ab loopFrom, am Übergang überblendet.
+        let t = time;
+        let left = duration ?? 10;
+        let offset = 0;
+        let fadeIn = 0;
+        for (let k = 0; k < 64; k++) {
+          const avail = (buffer.duration - offset) / rate - long.tail;
+          if (left + sound.release <= avail || k === 63) { piece(t, offset, null, fadeIn, 0); break; }
+          const length = avail - long.xfade;
+          piece(t, offset, length, fadeIn, long.xfade);
+          t += length; left -= length; offset = long.loopFrom; fadeIn = long.xfade;
+        }
+      }
+      if (stopAt !== null) sources.forEach((src) => { try { src.stop(Math.min(stopAt, ctx.currentTime + 60)); } catch { /* schon gestoppt */ } });
+      const voice = { oscillators: sources, lfos: [], gain, filter, envEnd: time + attack, release: sound.release, done: false, layer };
+      this.voices.add(voice);
+      sources[sources.length - 1].addEventListener('ended', () => { voice.done = true; this.voices.delete(voice); }, { once: true });
+      return voice;
     }
 
     /* ---- Synth-Stimmen ---- */
@@ -2503,6 +3482,12 @@
      * glide (überschreibt sound.glide; 0 = aus).
      */
     playTone(sound, midi, time, velocity, duration, { layer = 'melody', stepSeconds = .14, glide } = {}) {
+      if (sound.sample) {
+        if (this.instrumentReady(sound.sample)) return this._playSampleTone(sound, midi, time, velocity, duration, layer);
+        // Samples fehlen noch (oder offline): Ersatzklang, nebenbei weiter laden.
+        this.ensureInstrument(sound.sample);
+        sound = soundFromPreset(presetIndexByName(SAMPLE_FALLBACK[sound.sample]));
+      }
       const ctx = this.ctx;
       const L = this.layers[layer];
 
@@ -2846,6 +3831,11 @@
       this._soundKnobs = {};
 
       this._storage = null;
+      this._mic = null;
+      // Sampler (Paket 9): Metadaten, Puffer und Blobs der Samples dieses Geräts, Ansicht und Aufnahme.
+      this.sampler = { meta: new Map(), buffers: new Map(), blobs: new Map(), loading: new Map(), peaks: new Map(), peakCache: new Map(),
+        decoder: null, loaded: false, view: 'pads', sel: 0, draft: null, draftBuffer: null, draftPeaks: null, draftNew: false, rec: null, live: true, bluetoothHint: false };
+      this.stepClock = null;   // zuletzt eingeplanter Schritt { g, time } — für das Einrasten beim Live-Einspielen
       this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [], workshop: sanitizeWorkshopProgress(null), deconstruct: null };
       // de:construct: Solange die Ansicht offen ist, hält this.state „Meine
       // Version“ (_dcActive); der Studio-Stand wartet samt Undo in _dcStash.
@@ -2870,7 +3860,7 @@
 
     /* ---- Öffentliche API ---- */
 
-    open({ accent, storage, entry } = {}) {
+    open({ accent, storage, entry, mic } = {}) {
       this._restoreFocusTo = document.activeElement;
       // Einstieg: über Tools → „Chor“, Easter Egg → „Studio“ (solange keine
       // Ansicht gespeichert ist).
@@ -2884,6 +3874,7 @@
         : '248,104,176');
 
       if (storage && typeof storage.load === 'function') this._storage = storage;
+      this._mic = mic && typeof mic.open === 'function' ? mic : null;
       this._loadStorage();
 
       this._bodyOverflow = document.body.style.overflow;
@@ -2895,6 +3886,7 @@
     }
 
     async close() {
+      this._smpRecAbort();
       this._closeConfirm();
       this._setBeatZoom(false);
       this.stop();
@@ -2934,6 +3926,7 @@
     _loadStorage() {
       if (!this._storage || this._storageRequested) return;
       this._storageRequested = true;
+      this._loadSamplesFromStorage();
       Promise.resolve(this._storage.load()).then((data) => {
         if (!data || typeof data !== 'object') return;
         const slots = Array.isArray(data.slots) ? data.slots : [];
@@ -3031,6 +4024,10 @@
       this.$all('[data-action="view"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === v)));
       this.$('.view-select').value = v;
       this.$('.tab-bar').hidden = choir || workshop || dcEmpty;
+      // de:construct baut mit den bekannten Reitern — der Sampler gehört nicht dazu.
+      const smpBtn = this.$('.tab-btn[data-tab="sampler"]');
+      if (smpBtn) smpBtn.hidden = dcView;
+      if ((dcView || workshop) && this.ui.tab === 'sampler') this.ui.tab = 'beat';
       this.$('.choir-view').hidden = !choir;
       this.$('.workshop-view').hidden = !workshop;
       this.$('.dc-view').hidden = !dcView;
@@ -3549,11 +4546,12 @@
         const prog = progressionOfState(o);
         const tiles = mk('div', 'dc-tiles');
         tiles.setAttribute('role', 'list');
-        for (const deg of prog.degrees) {
-          const steps = chordSteps(modeStepsOf(o), o.modeId, prog, deg);
+        for (const [i, deg] of prog.degrees.entries()) {
+          const alter = prog.alter?.[i] || null;
+          const steps = chordSteps(modeStepsOf(o), o.modeId, prog, deg, alter);
           const tile = mk('div', 'dc-tile');
           tile.setAttribute('role', 'listitem');
-          tile.append(mk('strong', '', chordName(o.keyRoot, steps, deg, !!prog.sevenths, o.modeId)), mk('span', '', romanNumeral(steps, deg, prog.sevenths)));
+          tile.append(mk('strong', '', chordName(o.keyRoot, steps, deg, !!prog.sevenths, o.modeId, labLang, alter, prog.bass?.[i] || 0)), mk('span', '', romanNumeral(steps, deg, prog.sevenths, alter, prog.bass?.[i] || 0, modeStepsOf(o))));
           tiles.append(tile);
         }
         return [label, tiles, mk('span', 'dc-sol-text', this._dcSolution('chords'))];
@@ -3855,7 +4853,7 @@
         s.beat = beatFromPattern(pattern);
         s.beatEdited = false;
         s.swing = typeof pattern.swing === 'number' ? pattern.swing : 0;
-        Object.assign(s.trackOn, { kick: true, snare: true, hat: true, clap: false, open: false, bass: false });
+        Object.assign(s.trackOn, { kick: true, snare: true, hat: true, clap: false, open: false, perc: false, bass: false });
         if (ch.kind === 'detective') {
           ch.variant = detectiveVariant(s.beat, ch.rng, METERS[pattern.meter].steps);
         } else {
@@ -4338,7 +5336,7 @@
       const h = this._harmonyAt(Math.max(0, g));
       const [spellRoot, spellMode] = this._spellKeyAt(h.index);
       const name = (pc) => { const n = spell(pc, spellRoot, spellMode, labLang); return labLang === 'en' ? n : n.charAt(0).toLowerCase() + n.slice(1); };
-      this.$('.choir-now-chord').textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths, s.modeId);
+      this.$('.choir-now-chord').textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths, s.modeId, labLang, h.alter, h.bass);
       const barSteps = this._barSteps();
       const step = mod(g, barSteps);
       const bar = Math.floor(Math.max(0, g) / barSteps);
@@ -4387,6 +5385,7 @@
     _setTab(tab) {
       if (tab !== 'beat') this._setBeatZoom(false);
       this.ui.tab = tab;
+      if (tab === 'sampler') { this._primeSamples(); this._renderSampler(); }
       this.$all('.tab-btn').forEach((btn) => btn.setAttribute('aria-selected', String(btn.dataset.tab === tab)));
       this.$all('.tab-panel').forEach((panel) => { panel.hidden = panel.dataset.tabPanel !== tab; });
       this.$('.lab-body').scrollTop = 0;
@@ -4413,27 +5412,44 @@
     /** Klingende Akkordfolge: Vorlage, bearbeitete Vorlage oder eigene. */
     _progression() { return progressionOfState(this.state); }
     /** Tonleiter für den Akkord auf Stufe `deg` (siehe chordSteps). */
-    _stepsFor(deg, prog = this._progression()) { return chordSteps(this._mode().steps, this.state.modeId, prog, deg); }
+    _stepsFor(deg, prog = this._progression(), index = -1) { return chordSteps(this._mode().steps, this.state.modeId, prog, deg, prog.alter?.[index] || null); }
+    /** Stufenzahl/Name des Akkords an Stelle `index` der Folge (mit geliehenen Akkorden und Umkehrung). */
+    _romanAt(prog, index) { return romanNumeral(this._stepsFor(prog.degrees[index], prog, index), prog.degrees[index], prog.sevenths, prog.alter?.[index] || null, prog.bass?.[index] || 0, this._mode().steps); }
+    _nameAt(prog, index) { return chordName(this.state.keyRoot, this._stepsFor(prog.degrees[index], prog, index), prog.degrees[index], prog.sevenths, this.state.modeId, labLang, prog.alter?.[index] || null, prog.bass?.[index] || 0); }
     _progName() {
       const s = this.state;
       return s.progName || t(progKey('Name', (PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0]).id));
     }
     _clearProgEdit() {
       const s = this.state;
-      s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progName = null; s.progOwnId = null;
+      s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progName = null; s.progOwnId = null; s.progAlter = null; s.progBass = null;
       this.ui.progUndo = []; this.ui.progRedo = []; this.ui.progSel = 0;
     }
     /** Die klingende Melodie: Vorlage, bearbeitete Vorlage oder eigene. */
     _melody() {
       const s = this.state;
       const base = MELODIES[s.melodyIndex];
-      if (!s.melodyBars) return { ...base, ref: 'chord' };
+      if (!s.melodyBars) return { ...base, ref: base.ref ?? 'chord' };
       return { name: s.melodyName || base.name, meter: s.melodyMeter, cat: s.melodyOwnId ? OWN_CAT : base.cat, bars: s.melodyBars, ref: s.melodyRef };
     }
     _clearMelodyEdit() {
       const s = this.state;
       s.melodyBars = null; s.melodyMeter = null; s.melodyName = null; s.melodyOwnId = null; s.melodyRef = 'chord';
       this.ui.melUndo = []; this.ui.melRedo = []; this.ui.melBar = 0;
+    }
+    /** Klang der Akkorde: Synth-Chor (fest, 'Airy Choir') oder echter Chor ('Chor Ooh';
+     *  ohne geladene Samples übernimmt die Engine den Ersatzklang 'Airy Choir'). */
+    _chordSound() { return this.state.chordSound === 'choir' ? CHOIR_CHORD_SOUND : CHORD_SOUND; }
+    /** Sample-Instrumente laden, die gerade gebraucht werden (Melodieklang, Akkorde). */
+    _loadInstruments() {
+      if (!this.engine.ready) return;
+      const s = this.state;
+      if (s.sound.sample) this.engine.ensureInstrument(s.sound.sample).then(() => this._renderSampleNote());
+      if (s.chordSound === 'choir') this.engine.ensureInstrument('choir');
+    }
+    _renderSampleNote() {
+      const note = this.$('.sample-note');
+      if (note) note.hidden = !(this.state.sound.sample && !this.engine.instrumentReady(this.state.sound.sample));
     }
     _bassSound() { return BASS_SOUNDS.find((b) => b.id === this.state.bassSoundId) || BASS_SOUNDS[0]; }
 
@@ -4446,7 +5462,7 @@
       const index = Math.floor(bar / s.chordBars) % prog.degrees.length;
       const deg = prog.degrees[index];
       return {
-        keyRoot: s.keyRoot, steps: this._stepsFor(deg, prog), deg, sevenths: !!prog.sevenths,
+        keyRoot: s.keyRoot, steps: this._stepsFor(deg, prog, index), deg, sevenths: !!prog.sevenths, alter: prog.alter?.[index] || null, bass: prog.bass?.[index] || 0,
         index, chordStart: g % (barSteps * s.chordBars) === 0,
       };
     }
@@ -4462,9 +5478,14 @@
     _voicings() {
       const s = this.state;
       const prog = this._progression();
-      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}`;
+      // Pop-Satz: bei laufender Melodie liegt die Oberstimme höchstens auf 64 (statt 69).
+      const pop = s.chordVoicing === 'pop';
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}|${(prog.alter || []).join()}|${(prog.bass || []).join()}`
+        + (pop ? `|pop|${s.chordAdd9}|${s.melodyOn}` : '');
       if (this._voicingCache?.key === key) return this._voicingCache.list;
-      const list = voiceProgressionSatb(s.keyRoot, this._mode(), prog);
+      const list = pop
+        ? voiceProgressionPop(s.keyRoot, this._mode(), prog, { add9: s.chordAdd9, topMax: s.melodyOn ? 64 : 69 })
+        : voiceProgressionSatb(s.keyRoot, this._mode(), prog);
       this._voicingCache = { key, list };
       return list;
     }
@@ -4480,9 +5501,24 @@
       return [s.keyRoot, s.modeId];
     }
 
+    /** Bass-Grundtöne je Akkord der aktuellen Folge, mit Stimmführung
+     *  (bassRootsFor) — einmal je Tonart/Modus/Folge gerechnet. */
+    _bassRoots() {
+      const s = this.state;
+      const prog = this._progression();
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}|${(prog.alter || []).join()}|${(prog.bass || []).join()}`;
+      if (this._bassRootCache?.key === key) return this._bassRootCache.list;
+      // Der Basston ist der Akkordton der Umkehrung (bass: 0 Grundton, 1 Terz, 2 Quinte).
+      const list = bassRootsFor(prog.degrees.map((deg, i) => mod(s.keyRoot + degreeSemis(this._stepsFor(deg, prog, i), deg + 2 * (prog.bass?.[i] || 0)), 12)));
+      this._bassRootCache = { key, list };
+      return list;
+    }
+
     _bassMidi(h, bassDeg) {
-      const rootSemis = degreeSemis(h.steps, h.deg);
-      return 36 + mod(h.keyRoot + rootSemis, 12) + degreeSemis(h.steps, h.deg + bassDeg) - rootSemis;
+      // Die Linie hängt am Basston des Akkords: bei einer Umkehrung (h.bass) liegt die Stufe 0
+      // auf Terz oder Quinte, die übrigen Stufen bleiben Stufen über dem Akkordgrundton.
+      const invSemis = degreeSemis(h.steps, h.deg + 2 * (h.bass || 0));
+      return bassNoteMidi(this._bassRoots()[h.index] ?? 36 + mod(h.keyRoot + invSemis, 12), h.steps, h.deg, h.bass || 0, bassDeg);
     }
 
     /* ---- Transport ---- */
@@ -4492,6 +5528,8 @@
       if (this._syncedCtx !== this.engine.ctx) {
         this._syncedCtx = this.engine.ctx;
         this._syncEngine();
+        // Werks-Samples sind jetzt (im Hintergrund) dabei: Pads und Wellenformen neu zeichnen.
+        this.engine.labSamples?.loading?.then(() => { this._renderSampler(); this._renderLive(); }).catch(() => {});
       }
     }
 
@@ -4504,7 +5542,8 @@
       this.engine.setMaster((this._dcMine || s).mix.master);
       for (const bus of BUSES) this.engine.setBusLevel(bus, s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) ? 0 : s.mix[bus]);
       for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, this._heardSound());
-      this.engine.setLayerSound('chords', CHORD_SOUND);
+      this.engine.setLayerSound('chords', this._chordSound());
+      this._loadInstruments();
       this.engine.setLayerSound('drone', DRONE_SOUND);
       this.engine.setFx(s.fx, this._stepSeconds());
     }
@@ -4537,7 +5576,7 @@
       this.shown = null;
       // Liegeton und gehaltene Tasten laufen unabhängig vom Transport weiter.
       if (this.engine.ready) this.engine.releaseLayers(['melody', 'arp', 'chords']);
-      this.$all('.step-cell.is-now').forEach((cell) => cell.classList.remove('is-now'));
+      this.$all('.step-cell.is-now, .step-cell.is-fill').forEach((cell) => cell.classList.remove('is-now', 'is-fill'));
       this._showMelodyStep(-1);
       this._showRecLoopStep(-1);
       if (this.autoRec.phase !== 'idle') this._autoFinish();
@@ -4555,8 +5594,9 @@
       const s = this.state;
       const locks = s.locks;
       if (!locks.beat) {
-        s.patternIndex = Math.floor(Math.random() * DRUM_PATTERNS.length);
+        s.patternIndex = pick(orderIndexes(BEAT_ORDER, patternIndexByName));
         s.beat = beatFromPattern(this._pattern());
+        s.percSound = percOf(this._pattern());
         s.beatEdited = false;
         // Tempi als Viertel gedacht — in 6/8 in punktierte Viertel umgerechnet.
         this._setBpm(pick([78, 86, 94, 102, 108, 116, 124, 132]) * 2 / eighthsPerBeat(this._meter()));
@@ -4569,14 +5609,15 @@
         this._clearProgEdit();
       }
       if (!locks.melody) {
-        const candidates = MELODIES.map((m, i) => [m, i]).filter(([m]) => m.meter === this._meter());
+        const candidates = orderIndexes(MELODY_ORDER, melodyIndexByName).map((i) => [MELODIES[i], i]).filter(([m]) => m.meter === this._meter());
         s.melodyIndex = pick(candidates)[1];
         this._clearMelodyEdit();
       }
       this._ensureMelodyMeter();
       if (!locks.sound) {
-        const byCat = (cat) => SYNTH_PRESETS.map((p, i) => [p, i]).filter(([p]) => p.cat === cat).map(([, i]) => i);
-        s.sound = soundFromPreset(pick([...byCat('lead'), ...byCat('keys'), ...byCat('pad')]));
+        // Nur aus der kuratierten Liste; Sample-Klänge erst, wenn ihre Samples geladen sind.
+        s.sound = soundFromPreset(pick(orderIndexes(PRESET_ORDER, presetIndexByName)
+          .filter((i) => !SYNTH_PRESETS[i].sample || this.engine.instrumentReady(SYNTH_PRESETS[i].sample))));
       }
       this._afterStateChange();
     }
@@ -4587,7 +5628,7 @@
       const s = this.state;
       if (s.melodyBars && s.melodyMeter !== this._meter()) this._clearMelodyEdit();
       if (MELODIES[s.melodyIndex].meter === this._meter()) return;
-      s.melodyIndex = Math.max(0, MELODIES.findIndex((m) => m.meter === this._meter()));
+      s.melodyIndex = firstMelodyOfMeter(this._meter());
     }
 
     _tapTempo() {
@@ -4630,6 +5671,7 @@
         const side = this._dcHearsOriginal() ? 'orig' : 'mine';
         this._dcHeard(() => {
           const heard = side === 'orig' ? this._harmonyAt(g) : h;
+          this.stepClock = { g, time: this.nextStepTime };
           this._playStep(g, this.nextStepTime, heard);
           this.scheduledSteps.push({ g, time: this.nextStepTime, h: heard, side });
           this.nextStepTime += this._stepSeconds();
@@ -4647,6 +5689,12 @@
      * dazwischen werden anteilig mitverschoben — jeder Schlag wird gedehnt
      * bzw. gestaucht, die Reihenfolge bleibt.
      */
+    /** Optionen fürs Schlagzeug: aufgelöstes Kit, Ride statt Hi-Hat, Percussion-Klang. */
+    _drumOpts() {
+      const pattern = this._pattern();
+      return { mode: resolveKit(this.state.drumKit, pattern), hat: pattern.hatSound, perc: this.state.percSound };
+    }
+
     _swingOffset(step, stepSec) {
       const swing = this.state.swing;
       if (!swing) return 0;
@@ -4669,14 +5717,40 @@
       const beat = this._beatAt(g);
       // de:construct „Nur …“: nur die gewählte Spur klingt (in A und B).
       const hearBeat = this._dcHears('beat');
+      const drumOpts = this._drumOpts();
+      // Sample-Spuren mit „Originalklang leise darunter“: die Zielspur spielt nur mit 35 %.
+      const layered = new Set(s.sampleLanes.filter((l) => l.layer && l.on).map((l) => this._sampleMeta(l.padId)?.track));
+      const fill = fillAt(g, barSteps, s.fills);
+      if (hearBeat && fill.idx >= 0) {
+        const [tom, velocity] = FILL_HITS[fill.idx];
+        this.engine.hitTrack(tom, swung, s.feel ? Math.min(1, velocity * (.94 + Math.random() * .12)) : velocity, s.kit, drumOpts);
+      }
+      if (hearBeat && fill.crash) this.engine.hitTrack('crash', swung, .8, s.kit, drumOpts);
       for (const track of DRUM_TRACKS) {
-        const value = beat[track]?.[step];
+        let value = beat[track]?.[step];
         if (value === undefined || !s.trackOn[track] || !hearBeat) continue;
-        this.engine.hitTrack(track, swung, value, this.state.kit);
+        if (fill.idx >= 0 && FILL_MUTED.includes(track)) continue;
+        if (layered.has(track)) value *= .35;
+        let when = swung;
+        let opts = drumOpts;
+        if (s.feel) {
+          // Nur beim Spielen, das Raster bleibt unverändert: leichte
+          // Lautstärke-Schwankung, Hi-Hats mit Akzent und ±3 ms Timing.
+          value *= .94 + Math.random() * .12;
+          if (track === 'hat' || track === 'open') {
+            const accent = hatAccent(step, this._meter());
+            value *= accent;
+            when = Math.max(this.engine.ctx.currentTime, swung + (Math.random() * 2 - 1) * .003);
+            if (track === 'hat' && accent < .7) opts = { ...drumOpts, soft: true };
+          }
+          value = Math.min(1, value);
+        }
+        this.engine.hitTrack(track, when, value, this.state.kit, opts);
         if (track === 'kick' && s.pump > 0) this.engine.duckAt(swung, s.pump, stepSec * 4);
       }
+      if (hearBeat && s.sampleLanes.length) this._playLanes(g, step, swung, stepSec, h);
       if (s.trackOn.bass && beat.bass?.[step] !== undefined && this._dcHears('bass')) {
-        this.engine.playBass(swung, this._bassMidi(h, beat.bass[step]), 1, this._bassSound());
+        this.engine.playBass(swung, this._bassMidi(h, beat.bass[step]), 1, this._bassSound(), bassNoteSteps(beat.bass, step, barSteps) * stepSec * .92);
       }
 
       if (h.chordStart && s.chordsOn && this._dcHears('chords')) this._playChord(h, swung, stepSec * barSteps * s.chordBars);
@@ -4684,7 +5758,7 @@
       // gespeichert oder verworfen ist; beim Einzählen/Aufnehmen: Stille.
       const recPhase = this.rec.phase;
       if (recPhase === 'done') {
-        if (this.rec.looping) this._playMelodyStep(g, h, swung, stepSec, this.rec.loopBars, 'key');
+        if (this.rec.looping) this._playMelodyStep(g, h, swung, stepSec, this.rec.loopBars, 'key', true);
       } else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording' && this._dcHears('melody')) this._playMelodyStep(g, h, swung, stepSec);
 
       if (s.arpOn && this._dcHears('all')) {
@@ -4837,25 +5911,49 @@
         const mode = s.satb[voice];
         if (mode === 'mute') continue;
         const velocity = mode === 'focus' ? .22 : anyFocus ? .05 : .11;
-        this.engine.playTone(CHORD_SOUND, voicing[voice], time, velocity, duration * .97,
+        this.engine.playTone(this._chordSound(), voicing[voice], time, velocity, duration * .97,
           { layer: 'chords', glide: 0, stepSeconds: this._stepSeconds() });
       }
     }
 
     /** Klingender Ton einer Melodiestufe über der Harmonie `h`. */
-    _melodyMidi(deg, alt, h, ref) {
-      return melodyMidi(deg, alt, h, ref, this._mode().steps, this.state.melodyOctave);
+    _melodyMidi(deg, alt, h, ref, shift = 0) {
+      return melodyMidi(deg, alt, h, ref, this._mode().steps, this.state.melodyOctave, shift);
     }
 
-    _playMelodyStep(g, h, time, stepSec, bars = this._melody().bars, ref = this._melody().ref) {
+    /** Oktavlage je Takt (melodyBarShifts) für Melodien mit Akkord-Bezug;
+     *  null bei Tonart-Bezug (feste Tonhöhen). Je Folge/Melodie gecacht. */
+    _melodyShifts(bars, ref, altBars) {
+      if (ref === 'key') return null;
+      const s = this.state;
+      const prog = this._progression();
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}|${(prog.alter || []).join()}|${s.chordBars}|${s.melodyOctave}|${altBars}|${this._barSteps()}|${JSON.stringify(bars)}`;
+      if (this._melShiftCache?.key === key) return this._melShiftCache.shifts;
+      const barSteps = this._barSteps();
+      const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+      const lcm = (a, b) => (a * b) / gcd(a, b);
+      const count = lcm(lcm(bars.length, prog.degrees.length * s.chordBars), altBars ? 2 : 1);
+      const modeSteps = this._mode().steps;
+      const shifts = melodyBarShifts(bars, count, (bar, deg, alt) => melodyMidi(deg, alt, this._harmonyAt(bar * barSteps), 'chord', modeSteps, s.melodyOctave), altBars);
+      this._melShiftCache = { key, shifts };
+      return shifts;
+    }
+
+    /** `rec`: Schleife einer Aufnahme (kein Echo, keine Anpassung). */
+    _playMelodyStep(g, h, time, stepSec, bars = this._melody().bars, ref = this._melody().ref, rec = false) {
       const s = this.state;
       const barSteps = this._barSteps();
       const step = g % barSteps;
       // Echo (melodyAltBars): nur jeden zweiten Takt; Aufnahmen immer.
-      for (const [at, deg, len, alt = 0] of melodyNotesAt(g, bars, barSteps, s.melodyAltBars && ref !== 'key')) {
+      const altBars = s.melodyAltBars && !rec && !(s.melodyBars && ref === 'key');
+      const template = !rec && !s.melodyBars;
+      const shifts = this._melodyShifts(bars, ref, altBars);
+      for (const [at, deg, len, alt = 0] of melodyNotesAt(g, bars, barSteps, altBars)) {
         // Eingespielte Töne liegen zwischen den Sechzehnteln: im Schritt, in
         // dem sie beginnen, mit dem Rest als Verzögerung ansetzen.
-        const midi = this._melodyMidi(deg, alt, h, ref);
+        let midi = this._melodyMidi(deg, alt, h, ref, shifts ? shifts[Math.floor(g / barSteps) % shifts.length] : 0);
+        // Vorlagen: auf dem Schlag keine kleine None über einem Akkordton.
+        if (template && METERS[this._meter()].beats.includes(at)) midi = snapMelodyMidi(midi, chordPitchClasses(h.keyRoot, h.steps, h.deg, h.sevenths));
         const barIndex = Math.floor(g / barSteps) % bars.length;
         const room = bars.length * barSteps - (barIndex * barSteps + at);
         this.engine.playTone(this._heardSound(), midi, time + (at - step) * stepSec, .2, Math.min(len, room) * stepSec, { layer: 'melody', stepSeconds: stepSec });
@@ -4892,7 +5990,12 @@
 
     _showStep({ g }, chordChanged) {
       const step = g % this._barSteps();
-      this.$all('.track-list .step-cell').forEach((cell) => cell.classList.toggle('is-now', Number(cell.dataset.step) === step));
+      const barSteps = this._barSteps();
+      const fillBar = fillAt(g, barSteps, this.state.fills).fillBar;
+      this.$all('.track-list .step-cell').forEach((cell) => {
+        cell.classList.toggle('is-now', Number(cell.dataset.step) === step);
+        cell.classList.toggle('is-fill', fillBar && Number(cell.dataset.step) >= barSteps - 4 && cell.dataset.track !== 'kick' && cell.dataset.track !== 'bass');
+      });
       this._renderBeatDots(step);
       this._showMelodyStep(g);
       this._showRecLoopStep(g);
@@ -4922,7 +6025,7 @@
           this.engine.playBass(now, this._bassMidi(this._currentHarmony(), notes[bassIndex % notes.length]), velocity, this._bassSound());
           bassIndex++;
         } else {
-          this.engine.hitTrack(track, now, velocity, this.state.kit);
+          this.engine.hitTrack(track, now, velocity, this.state.kit, this._drumOpts());
         }
         cellIndex++;
         this.rollTimers[track] = global.setTimeout(tick, Math.max(30, duration * this._stepSeconds() * 1000));
@@ -4984,6 +6087,8 @@
       this._renderMixer();
       this._renderKeys();
       this._renderRec();
+      this._renderSampler();
+      this._renderLive();
       this._renderTransport();
       this._renderNow();
       this._renderChoir();
@@ -5046,6 +6151,10 @@
       this.$('[data-out="pump"]').textContent = `${Math.round(s.pump * 100)} %`;
       this.$('.dc-meter').value = this._meter();
       this._chips(this.$('.bass-chips'), BASS_SOUNDS.map((b) => ({ value: b.id, label: b.name })), s.bassSoundId, 'bass-sound');
+      this.$('.kit-panel').hidden = s.view === 'workshop';
+      this.$('.live-panel').hidden = s.view === 'workshop';
+      this._chips(this.$('.kit-chips'), DRUM_KITS.map((id) => ({ value: id, label: t(`lab.kit.${id}`) })), s.drumKit, 'drum-kit');
+      this._chips(this.$('.fill-chips'), FILL_LENGTHS.map((n) => ({ value: n, label: t(`lab.fill.${n}`) })), s.fills, 'fills');
       this._renderKit();
     }
 
@@ -5066,7 +6175,14 @@
       const s = this.state;
       const meter = METERS[this._meter()];
       const host = this.$('.track-list');
-      host.replaceChildren(...TRACK_IDS.map((track) => {
+      // Workshop und de:construct bauen mit den bekannten fünf Schlagzeugspuren.
+      const hidePerc = s.view === 'workshop' || s.view === 'deconstruct';
+      const laneRows = (track) => s.sampleLanes.flatMap((lane, i) => {
+        const meta = this._sampleMeta(lane.padId);
+        const target = meta ? (meta.kind === 'hit' ? meta.track : 'bass') : 'bass';
+        return target === track ? [this._laneRow(lane, i, meta, meter)] : [];
+      });
+      host.replaceChildren(...TRACK_IDS.filter((track) => !(hidePerc && track === 'perc')).flatMap((track) => {
         const on = s.trackOn[track];
         const row = document.createElement('div');
         row.className = `track-row${on ? '' : ' is-off'}`;
@@ -5133,9 +6249,46 @@
         toggle.textContent = t(on ? 'lab.trackOn' : 'lab.trackOff');
 
         row.append(roll, label, cells, toggle);
-        return row;
+        return [row, ...laneRows(track)];
       }));
       if (this.state.view === 'workshop') this._wsDecorate();
+    }
+
+    /** Zeile einer Sample-Spur: Vorhören, Name, Zellen (Anschlagstärke, bei Tönen der klingende Ton), An/Aus. */
+    _laneRow(lane, index, meta, meter) {
+      const row = this._mk('div', `track-row is-lane${lane.on ? '' : ' is-off'}`);
+      row.dataset.lane = String(index);
+      const name = meta ? meta.name : t('lab.sampler.missing');
+      const roll = this._mk('button', 'track-roll');
+      roll.type = 'button'; roll.dataset.action = 'lane-preview'; roll.dataset.value = String(index);
+      roll.setAttribute('aria-label', `${t('lab.sampler.listen')}: ${name}`);
+      roll.innerHTML = svg('<path d="M8 5l11 7-11 7z" fill="none"/>');
+      const label = this._mk('span', 'track-name', name);
+      label.title = meta ? `${name} · ${this._kindLabel(meta.kind)}` : t('lab.sampler.missing');
+      const cells = this._mk('div', 'step-row');
+      cells.style.gridTemplateColumns = `repeat(${meter.steps}, 1fr)`;
+      cells.style.setProperty('--half', String(Math.ceil(meter.steps / 2)));
+      for (let i = 0; i < meter.steps; i++) {
+        const value = lane.steps[i];
+        const cell = this._mk('button', 'step-cell');
+        cell.type = 'button'; cell.tabIndex = -1; cell.dataset.action = 'lane-cell'; cell.dataset.lane = String(index); cell.dataset.step = String(i);
+        if (Math.floor(i / meter.group) % 2 === 1) cell.classList.add('is-alt');
+        if (value !== undefined) {
+          cell.classList.add('is-hit');
+          if (value < 1) cell.classList.add('is-soft');
+          if (!meta) cell.classList.add('is-missing');
+          const label2 = meta ? this._laneNoteLabel(meta, i) : '';
+          if (label2) cell.dataset.label = label2;
+        }
+        cell.setAttribute('aria-label', `${name} ${i + 1}`);
+        cells.append(cell);
+      }
+      const toggle = this._mk('button', 'track-toggle', t(lane.on ? 'lab.trackOn' : 'lab.trackOff'));
+      toggle.type = 'button'; toggle.dataset.action = 'lane-toggle'; toggle.dataset.value = String(index);
+      toggle.setAttribute('aria-pressed', String(lane.on));
+      toggle.setAttribute('aria-label', name);
+      row.append(roll, label, cells, toggle);
+      return row;
     }
 
     _toggleCell(track, step) {
@@ -5157,7 +6310,1085 @@
       try { await this._ensureAudio(); } catch { return; }
       const now = this.engine.ctx.currentTime;
       if (track === 'bass') this.engine.playBass(now, this._bassMidi(this._currentHarmony(), value), 1, this._bassSound());
-      else this.engine.hitTrack(track, now, value, this.state.kit);
+      else this.engine.hitTrack(track, now, value, this.state.kit, this._drumOpts());
+    }
+
+    /* ---- Sampler (Paket 9) ----------------------------------------------
+       Eigene Klänge als Pads: aufnehmen (Mikrofon), zuschneiden, als Schlag, Ton
+       (folgt den Akkorden) oder Loop spielen, ins Raster legen oder live
+       einspielen. Das Audio liegt in der Ablage (options.storage.samples), das
+       Lab hält nur Metadaten, Puffer und Kits. Texte: lab.sampler.* */
+
+    _smp() { return this.sampler; }
+
+    _allKits() {
+      return [...this.state.sampler.kits, ...FACTORY_KITS.map((k) => ({ ...k, name: t(k.nameKey) }))];
+    }
+
+    _kit() {
+      const kits = this._allKits();
+      return kits.find((k) => k.id === this.state.sampler.kitId) || kits[0];
+    }
+
+    /** Der eigene Kit, in den Aufnahmen und Bibliothek-Klänge gelegt werden (ein Werks-Kit ist schreibgeschützt). */
+    _ownKit() {
+      const s = this.state;
+      return s.sampler.kits.find((k) => k.id === s.sampler.kitId) || s.sampler.kits[0];
+    }
+
+    _sampleMeta(id) {
+      if (!id) return null;
+      return isFactoryId(id) ? factorySample(id) : this.sampler.meta.get(id) || null;
+    }
+
+    _kindLabel(kind) { return t(`lab.sampler.kind${kind[0].toUpperCase()}${kind.slice(1)}`); }
+
+    _roleLabel(meta) {
+      if (meta.kind === 'tone') return t('lab.sampler.roleTone');
+      if (meta.kind === 'loop') return tf('lab.sampler.roleLoop', { n: meta.loopBars });
+      return t(`lab.sampler.role${meta.track[0].toUpperCase()}${meta.track.slice(1)}`);
+    }
+
+    _secLabel(sec) { return `${(Math.round(sec * 100) / 100).toFixed(2).replace('.', ',')} s`; }
+
+    /** Lautstärke-Ausgleich je Art: Aufnahmen sind unterschiedlich laut, die Spur bestimmt, wie präsent sie sind. */
+    _padLevel(meta, buffer) {
+      if (meta.factory) return (LAB_DRUM_LEVEL[meta.file] ?? .3) / .7;
+      const kindLevel = meta.kind === 'tone' ? .55 : meta.kind === 'loop' ? .6 : { kick: .9, snare: .55, clap: .5, hat: .3, open: .3, perc: .4 }[meta.track];
+      const key = `${meta.id}|${meta.trim.join()}`;
+      let peak = this.sampler.peakCache.get(key);
+      if (peak === undefined) {
+        const data = buffer.getChannelData(0);
+        const from = Math.max(0, Math.floor(meta.trim[0] * buffer.sampleRate));
+        const to = Math.min(data.length, Math.ceil(meta.trim[1] * buffer.sampleRate));
+        peak = 0;
+        for (let i = from; i < to; i++) { const a = Math.abs(data[i]); if (a > peak) peak = a; }
+        this.sampler.peakCache.set(key, peak);
+      }
+      return peak > 0 ? kindLevel * clamp(.9 / peak, .25, 8) : 0;
+    }
+
+    /** Decodierter Puffer eines Pads (Werks-Sample aus dem Kit der Engine, eigenes aus der Ablage); null, solange er fehlt. */
+    _bufferNow(id) {
+      if (isFactoryId(id)) return this.engine.labSamples?.get(factorySample(id)?.file) || null;
+      return this.sampler.buffers.get(id) || null;
+    }
+
+    async _decodeBlob(blob) {
+      const OAC = global.OfflineAudioContext || global.webkitOfflineAudioContext;
+      if (!OAC) throw new Error('Kein Web Audio');
+      this.sampler.decoder ||= new OAC(1, 1, 44100);
+      return this.sampler.decoder.decodeAudioData(await blob.arrayBuffer());
+    }
+
+    /** Puffer laden (aus der Ablage, einmal je Sample); löst nie mit einem Fehler auf. */
+    async _loadBuffer(id) {
+      const smp = this.sampler;
+      if (isFactoryId(id)) { await this._ensureAudio().catch(() => {}); return this._bufferNow(id); }
+      if (smp.buffers.has(id)) return smp.buffers.get(id);
+      if (smp.loading.has(id)) return smp.loading.get(id);
+      const job = (async () => {
+        try {
+          const blob = smp.blobs.get(id) || await this._storage?.samples?.get?.(id);
+          if (!blob) return null;
+          smp.blobs.set(id, blob);
+          const buffer = await this._decodeBlob(blob);
+          smp.buffers.set(id, buffer);
+          return buffer;
+        } catch (err) {
+          console.warn('[groove-lab] Sample nicht lesbar', id, err);
+          return null;
+        } finally { smp.loading.delete(id); }
+      })();
+      smp.loading.set(id, job);
+      return job;
+    }
+
+    /** Alles laden, was Kit und Sample-Spuren brauchen — im Hintergrund, danach neu zeichnen. */
+    _primeSamples() {
+      const ids = new Set([...this._kit().pads.filter(Boolean), ...this.state.sampleLanes.map((l) => l.padId)]);
+      const missing = [...ids].filter((id) => !isFactoryId(id) && this._sampleMeta(id) && !this.sampler.buffers.has(id));
+      if (!missing.length) return;
+      Promise.all(missing.map((id) => this._loadBuffer(id))).then(() => { this._renderSampler(); this._renderTracks(); this._renderLive(); });
+    }
+
+    /** Metadaten der Ablage einlesen (beim Öffnen). */
+    _loadSamplesFromStorage() {
+      const store = this._storage?.samples;
+      if (!store?.list) { this.sampler.loaded = true; return; }
+      Promise.resolve(store.list()).then((list) => {
+        for (const raw of Array.isArray(list) ? list : []) {
+          const meta = sanitizeSampleMeta(raw);
+          if (meta && !this.sampler.meta.has(meta.id)) this.sampler.meta.set(meta.id, meta);
+        }
+        this.sampler.loaded = true;
+        this._renderSampler(); this._renderTracks(); this._renderLive();
+        this._primeSamples();
+      }).catch((err) => { this.sampler.loaded = true; console.warn('[groove-lab] Samples nicht geladen', err); });
+    }
+
+    /** Ein Pad mit Anschlagstärke `velocity` hören (Antippen, Anhören, Live). Liefert den Puffer oder null. */
+    async _auditionPad(id, { velocity = 1, meta: override = null } = {}) {
+      try { await this._ensureAudio(); } catch { return null; }
+      const meta = override || this._sampleMeta(id);
+      if (!meta) { this._setStatus(t('lab.sampler.missing')); return null; }
+      const buffer = override ? this.sampler.draftBuffer || await this._loadBuffer(meta.id) : this._bufferNow(id) || await this._loadBuffer(id);
+      if (!buffer) { this._setStatus(t('lab.sampler.missing')); return null; }
+      const now = this.engine.ctx.currentTime + .01;
+      const level = this._padLevel(meta, buffer) * velocity;
+      if (meta.kind === 'tone' && meta.detectedMidi !== null) {
+        const h = this._currentHarmony();
+        const target = sampleToneTarget(meta.toneRole, meta.detectedMidi, chordPitchClasses(h.keyRoot, h.steps, h.deg, h.sevenths).slice(0, 3));
+        this.engine.playPad(buffer, meta, now, level, { rate: sampleToneRate(target, meta.detectedMidi, meta.detectedCents, meta.pitch), duration: Math.max(.6, Math.min(2, (meta.trim[1] - meta.trim[0]))), layer: 'keys' });
+      } else {
+        this.engine.playPad(buffer, meta, now, level, { rate: meta.kind === 'loop' ? 1 : null });
+      }
+      return buffer;
+    }
+
+    /** Pad `index` des Kits antippen: hören, wählen — ein freies Pad führt zum Aufnehmen. */
+    async _tapPad(index, { fromKey = false } = {}) {
+      const smp = this.sampler;
+      smp.sel = index;
+      const id = this._kit().pads[index];
+      if (!id) {
+        if (!fromKey) this._samplerGo('record'); else this._renderSampler();
+        return;
+      }
+      this._renderSampler();
+      await this._auditionPad(id);
+    }
+
+    _samplerGo(view) {
+      const smp = this.sampler;
+      clearTimeout(this._padHold);
+      if (smp.view === 'record' && view !== 'record') this._smpRecAbort();
+      smp.view = view;
+      if (view === 'record') smp.rec = { kind: 'hit', countIn: true, click: true, trim: true, bars: 1, phase: 'idle', level: -90 };
+      this._renderSampler();
+      this.$('.lab-body').scrollTop = 0;
+      this.$('.sampler-root [data-first]')?.focus?.();
+    }
+
+    /* -- Pads -- */
+
+    _renderSampler() {
+      const root = this.$('.sampler-root');
+      if (!root) return;
+      const smp = this.sampler;
+      const draw = { pads: () => this._renderSamplerPads(root), record: () => this._renderSamplerRecord(root), edit: () => this._renderSamplerEdit(root), library: () => this._renderSamplerLibrary(root) }[smp.view] || (() => this._renderSamplerPads(root));
+      draw();
+    }
+
+    _mk(tag, cls, text) { const node = document.createElement(tag); if (cls) node.className = cls; if (text !== undefined) node.textContent = text; return node; }
+
+    _smpHead(titleText, { back = true, backAction = 'smp-back', done = null } = {}) {
+      const head = this._mk('div', 'smp-head');
+      if (back) {
+        const b = this._mk('button', 'smp-back');
+        b.type = 'button'; b.dataset.action = backAction; b.dataset.first = '1';
+        b.setAttribute('aria-label', t('lab.sampler.back'));
+        b.innerHTML = UI_ICON.prev;
+        head.append(b);
+      }
+      head.append(this._mk('h2', 'smp-title', titleText));
+      if (done) { const d = this._mk('button', 'smp-done', done); d.type = 'button'; d.dataset.action = 'smp-done'; head.append(d); }
+      return head;
+    }
+
+    _renderSamplerPads(root) {
+      const s = this.state;
+      const smp = this.sampler;
+      const kit = this._kit();
+      const nodes = [];
+
+      // Kit
+      const kitPanel = this._mk('section', 'panel smp-panel');
+      kitPanel.append(this._panelHead(t('lab.sampler.kit')));
+      const kitChips = this._mk('div', 'chip-row');
+      for (const k of this._allKits()) {
+        const b = this._mk('button', 'chip', k.name);
+        b.type = 'button'; b.dataset.action = 'smp-kit'; b.dataset.value = k.id;
+        b.setAttribute('aria-pressed', String(k.id === kit.id));
+        kitChips.append(b);
+      }
+      if (s.sampler.kits.length < SAMPLER_MAX_KITS) {
+        const add = this._mk('button', 'chip', t('lab.sampler.kitNew'));
+        add.type = 'button'; add.dataset.action = 'smp-kit-new';
+        kitChips.append(add);
+      }
+      kitPanel.append(kitChips);
+      if (!kit.factory && s.sampler.kits.length > 1) {
+        const del = this._mk('button', 'chip smp-kit-del', t('lab.sampler.kitDelete'));
+        del.type = 'button'; del.dataset.action = 'smp-kit-del';
+        kitPanel.append(del);
+      }
+      nodes.push(kitPanel);
+
+      // Pads
+      const padPanel = this._mk('section', 'panel smp-panel');
+      const padHead = this._mk('div', 'panel-head');
+      padHead.append(this._mk('h2', '', t('lab.sampler.pads')), this._mk('span', 'smp-hint', t('lab.sampler.padsHint')));
+      const grid = this._mk('div', 'pad-grid');
+      grid.setAttribute('role', 'group');
+      grid.setAttribute('aria-label', t('lab.sampler.pads'));
+      kit.pads.forEach((id, i) => {
+        const meta = this._sampleMeta(id);
+        const btn = this._mk('button', 'pad-btn');
+        btn.type = 'button';
+        btn.dataset.pad = String(i);
+        btn.setAttribute('aria-pressed', String(i === smp.sel));
+        if (!id) {
+          btn.classList.add('is-free');
+          btn.setAttribute('aria-label', tf('lab.sampler.padFreeAria', { n: i + 1 }));
+          btn.append(this._mk('span', 'pad-plus', '+'), this._mk('span', 'pad-kind', t('lab.sampler.free')));
+        } else if (!meta) {
+          btn.classList.add('is-missing');
+          btn.setAttribute('aria-label', tf('lab.sampler.padAria', { n: i + 1, name: t('lab.sampler.missing'), kind: '' }));
+          btn.append(this._mk('span', 'pad-name', '?'), this._mk('span', 'pad-kind', t('lab.sampler.missingShort')));
+        } else {
+          btn.classList.add(`is-${meta.kind}`);
+          if (meta.factory) btn.classList.add('is-factory');
+          btn.setAttribute('aria-label', tf('lab.sampler.padAria', { n: i + 1, name: meta.name, kind: this._kindLabel(meta.kind) }));
+          const bars = this._mk('span', 'pad-bars');
+          const buffer = this._bufferNow(id);
+          const peaks = buffer ? this._peaks14(id, buffer) : Array(14).fill(.15);
+          for (const p of peaks) { const bar = this._mk('i'); bar.style.height = `${Math.max(2, Math.round(p * 22))}px`; bars.append(bar); }
+          btn.append(this._mk('span', 'pad-name', meta.name), bars, this._mk('span', 'pad-kind', this._kindLabel(meta.kind)));
+        }
+        this._wirePad(btn, i);
+        grid.append(btn);
+      });
+      padPanel.append(padHead, grid);
+
+      const selId = kit.pads[smp.sel];
+      const selMeta = this._sampleMeta(selId);
+      const info = this._mk('div', 'smp-info');
+      const text = this._mk('div', 'smp-info-text');
+      if (!selId) {
+        text.append(this._mk('strong', '', t('lab.sampler.freeInfo')), this._mk('span', '', t('lab.sampler.freeInfoSub')));
+      } else if (!selMeta) {
+        text.append(this._mk('strong', '', t('lab.sampler.missing')), this._mk('span', '', t('lab.sampler.missingSub')));
+      } else {
+        const len = selMeta.kind === 'loop' ? tf('lab.sampler.loopLen', { n: selMeta.loopBars }) : this._secLabel(selMeta.trim[1] - selMeta.trim[0]);
+        text.append(this._mk('strong', '', `„${selMeta.name}“ · ${this._kindLabel(selMeta.kind)}`),
+          this._mk('span', '', [this._roleLabel(selMeta), selMeta.by, len].filter(Boolean).join(' · ')));
+      }
+      info.append(text);
+      if (selMeta && !selMeta.factory) {
+        const edit = this._mk('button', 'chip', t('lab.sampler.edit'));
+        edit.type = 'button'; edit.dataset.action = 'smp-edit';
+        info.append(edit);
+      }
+      if (selMeta) {
+        const toBeat = this._mk('button', 'chip', t('lab.sampler.toBeat'));
+        toBeat.type = 'button'; toBeat.dataset.action = 'smp-to-beat'; toBeat.dataset.value = selId;
+        info.append(toBeat);
+      }
+      padPanel.append(info);
+      nodes.push(padPanel);
+
+      // Quelle
+      const src = this._mk('section', 'panel smp-panel');
+      src.append(this._panelHead(t('lab.sampler.sourceTitle')));
+      const row = this._mk('div', 'smp-source');
+      const rec = this._mk('button', 'smp-big is-primary', t('lab.sampler.record'));
+      rec.type = 'button'; rec.dataset.action = 'smp-record';
+      rec.prepend(this._svgIcon('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>'));
+      const lib = this._mk('button', 'smp-big', t('lab.sampler.library'));
+      lib.type = 'button'; lib.dataset.action = 'smp-library';
+      lib.prepend(this._svgIcon('<path d="M4 5h6v14H4zM14 5l6 1.5-3 13-6-1.5z"/>'));
+      row.append(rec, lib);
+      src.append(row, this._mk('p', 'smp-hint', t('lab.sampler.libraryHint')));
+      if (!this._storage?.samples) src.append(this._mk('p', 'smp-warn', t('lab.sampler.noStorage')));
+      nodes.push(src);
+
+      // Sample-Spuren im Beat
+      if (s.sampleLanes.length) {
+        const lanes = this._mk('section', 'panel smp-panel');
+        lanes.append(this._panelHead(t('lab.sampler.lanes')));
+        for (const [i, lane] of s.sampleLanes.entries()) {
+          const meta = this._sampleMeta(lane.padId);
+          const line = this._mk('div', 'smp-lane-line');
+          line.append(this._mk('span', '', meta ? `${meta.name} · ${this._kindLabel(meta.kind)}` : t('lab.sampler.missing')));
+          const rm = this._mk('button', 'chip', t('lab.sampler.laneRemove'));
+          rm.type = 'button'; rm.dataset.action = 'smp-lane-remove'; rm.dataset.value = String(i);
+          line.append(rm);
+          lanes.append(line);
+        }
+        nodes.push(lanes);
+      }
+      root.replaceChildren(...nodes);
+    }
+
+    _panelHead(title) { const head = this._mk('div', 'panel-head'); head.append(this._mk('h2', '', title)); return head; }
+
+    _svgIcon(inner) {
+      const wrap = this._mk('span', 'smp-ico');
+      wrap.innerHTML = svg(inner);
+      return wrap;
+    }
+
+    _peaks14(id, buffer) {
+      const cache = this.sampler.peaks;
+      if (!cache.has(id)) cache.set(id, wavePeaks(buffer.getChannelData(0), 14));
+      return cache.get(id);
+    }
+
+    /** Antippen spielt (sofort beim Aufsetzen), Halten (500 ms) öffnet den Editor; Tastatur: Enter/Leertaste spielen.
+     *  Der Halte-Zähler hängt an der Ansicht, nicht am Knopf: das Antippen zeichnet die Pads neu, der alte Knopf
+     *  ist dann schon weg, wenn der Finger losgelassen wird (pointerup/-cancel räumt in _wireControls auf). */
+    _wirePad(btn, index) {
+      btn.addEventListener('pointerdown', (event) => {
+        if (event.button > 0) return;
+        const id = this._kit().pads[index];
+        clearTimeout(this._padHold);
+        this._padHold = global.setTimeout(() => {
+          const meta = this._sampleMeta(id);
+          if (meta && !meta.factory) { this.sampler.sel = index; this._openEditor(id); }
+        }, 500);
+        this._padHoldFired = false;
+        this._tapPad(index);
+      });
+      btn.addEventListener('click', (event) => {
+        // Echte Zeigerklicks hat pointerdown schon behandelt; Tastatur (detail 0) spielt hier.
+        if (event.detail === 0) this._tapPad(index, { fromKey: true });
+      });
+      btn.addEventListener('contextmenu', (event) => event.preventDefault());
+    }
+
+    /* -- Aufnehmen -- */
+
+    _renderSamplerRecord(root) {
+      const smp = this.sampler;
+      const rec = smp.rec || (smp.rec = { kind: 'hit', countIn: true, click: true, trim: true, bars: 1, phase: 'idle', level: -90 });
+      const nodes = [this._smpHead(tf('lab.sampler.recTitle', { n: smp.sel + 1 }))];
+
+      const kindPanel = this._mk('section', 'panel smp-panel');
+      kindPanel.append(this._panelHead(t('lab.sampler.whatTitle')));
+      const kinds = this._mk('div', 'smp-kinds');
+      for (const kind of SAMPLE_KINDS) {
+        const b = this._mk('button', 'smp-kind');
+        b.type = 'button'; b.dataset.action = 'smp-rec-kind'; b.dataset.value = kind;
+        b.setAttribute('aria-pressed', String(rec.kind === kind));
+        b.disabled = rec.phase !== 'idle';
+        b.append(this._mk('strong', '', this._kindLabel(kind)), this._mk('span', '', t(`lab.sampler.kind${kind[0].toUpperCase()}${kind.slice(1)}Sub`)));
+        kinds.append(b);
+      }
+      kindPanel.append(kinds, this._mk('p', 'smp-hint', t(`lab.sampler.hint${rec.kind[0].toUpperCase()}${rec.kind.slice(1)}`)));
+      if (rec.kind === 'loop') {
+        const bars = this._mk('div', 'chip-row');
+        for (const n of [1, 2]) {
+          const b = this._mk('button', 'chip', t(`lab.sampler.loopBars${n}`));
+          b.type = 'button'; b.dataset.action = 'smp-rec-bars'; b.dataset.value = String(n);
+          b.setAttribute('aria-pressed', String(rec.bars === n));
+          b.disabled = rec.phase !== 'idle';
+          bars.append(b);
+        }
+        kindPanel.append(bars);
+      }
+      nodes.push(kindPanel);
+
+      const input = this._mk('section', 'panel smp-panel');
+      const inHead = this._mk('div', 'panel-head');
+      inHead.append(this._mk('h2', '', t('lab.sampler.input')));
+      const state = this._mk('span', 'smp-level-state');
+      state.dataset.role = 'level-state';
+      inHead.append(state);
+      const canvas = this._mk('canvas', 'smp-live');
+      canvas.width = 640; canvas.height = 120;
+      canvas.setAttribute('aria-hidden', 'true');
+      const meter = this._mk('div', 'smp-meter');
+      meter.innerHTML = '<i class="low"></i><i class="good"></i><i class="high"></i><b></b>';
+      const ends = this._mk('div', 'smp-meter-ends');
+      ends.append(this._mk('span', '', t('lab.sampler.levelQuiet')), this._mk('span', '', t('lab.sampler.levelLoud')));
+      input.append(inHead, canvas, meter, ends);
+      nodes.push(input);
+
+      const opts = this._mk('section', 'panel smp-panel smp-opts');
+      for (const [key, label, sub, locked] of [
+        ['countIn', 'lab.sampler.optCountIn', 'lab.sampler.optCountInSub', rec.kind === 'loop'],
+        ['click', 'lab.sampler.optClick', 'lab.sampler.optClickSub', false],
+        ['trim', 'lab.sampler.optTrim', 'lab.sampler.optTrimSub', rec.kind === 'loop'],
+      ]) {
+        const line = this._mk('label', 'smp-opt');
+        const text = this._mk('span');
+        text.append(this._mk('strong', '', t(label)), this._mk('span', '', t(sub)));
+        const box = this._mk('input');
+        box.type = 'checkbox'; box.dataset.smpOpt = key;
+        box.checked = key === 'countIn' && rec.kind === 'loop' ? true : key === 'trim' && rec.kind === 'loop' ? false : rec[key];
+        box.disabled = locked || rec.phase !== 'idle';
+        line.append(text, box);
+        opts.append(line);
+      }
+      nodes.push(opts);
+
+      nodes.push(this._mk('p', 'smp-note', t('lab.sampler.headphones')));
+      if (smp.bluetoothHint) nodes.push(this._mk('p', 'smp-note', t('lab.sampler.bluetooth')));
+
+      const foot = this._mk('div', 'smp-rec-foot');
+      const btn = this._mk('button', 'smp-rec-btn');
+      btn.type = 'button'; btn.dataset.action = 'smp-rec-toggle';
+      btn.classList.toggle('is-on', rec.phase !== 'idle');
+      btn.setAttribute('aria-label', t(rec.phase === 'idle' ? 'lab.sampler.recStart' : 'lab.sampler.recStop'));
+      btn.append(this._mk('i'));
+      const label = this._mk('span', 'smp-rec-label', this._smpRecLabel());
+      label.dataset.role = 'rec-label';
+      foot.append(btn, label);
+      nodes.push(foot);
+      root.replaceChildren(...nodes);
+      this._paintRecLevel();
+    }
+
+    _smpRecLabel() {
+      const rec = this.sampler.rec;
+      if (!rec) return '';
+      if (rec.phase === 'counting') return t('lab.sampler.recCounting');
+      if (rec.phase === 'recording') return t('lab.sampler.recRunning');
+      return t((rec.countIn || rec.kind === 'loop') ? 'lab.sampler.recTapCount' : 'lab.sampler.recTapNow');
+    }
+
+    /** Pegelanzeige: Spitze in dBFS; „gut“ zwischen −18 und −3. */
+    _paintRecLevel() {
+      const rec = this.sampler.rec;
+      const root = this.$('.sampler-root');
+      if (!rec || !root) return;
+      const db = rec.level ?? -90;
+      const state = root.querySelector('[data-role="level-state"]');
+      if (state) {
+        const good = db >= -18 && db <= -3;
+        const key = rec.phase === 'idle' && db <= -89 ? '' : good ? 'lab.sampler.levelGood' : db > -3 ? 'lab.sampler.levelHigh' : 'lab.sampler.levelLow';
+        state.textContent = key ? t(key) : '';
+        state.className = `smp-level-state${key ? (good ? ' is-good' : db > -3 ? ' is-high' : ' is-low') : ''}`;
+      }
+      const bar = root.querySelector('.smp-meter b');
+      if (bar) bar.style.left = `${clamp((db + 48) / 48, 0, 1) * 100}%`;
+      const label = root.querySelector('[data-role="rec-label"]');
+      if (label) label.textContent = this._smpRecLabel();
+    }
+
+    _smpRecTickDraw() {
+      const rec = this.sampler.rec;
+      if (!rec?.analyser) return;
+      const analyser = rec.analyser;
+      const data = new Float32Array(analyser.fftSize);
+      analyser.getFloatTimeDomainData(data);
+      let peak = 0;
+      for (let i = 0; i < data.length; i++) { const a = Math.abs(data[i]); if (a > peak) peak = a; }
+      const db = peak > 0 ? 20 * Math.log10(peak) : -90;
+      rec.level = Math.max(db, (rec.level ?? -90) - 1.2); // Spitze fällt langsam
+      const canvas = this.$('.sampler-root .smp-live');
+      if (canvas) {
+        const g = canvas.getContext('2d');
+        const style = getComputedStyle(this);
+        g.clearRect(0, 0, canvas.width, canvas.height);
+        g.fillStyle = style.getPropertyValue('--accent') || '#f868b0';
+        const bars = 64;
+        const size = Math.floor(data.length / bars);
+        for (let b = 0; b < bars; b++) {
+          let max = 0;
+          for (let i = b * size; i < (b + 1) * size; i++) max = Math.max(max, Math.abs(data[i]));
+          const h = Math.max(3, Math.min(canvas.height, max * canvas.height * 1.6));
+          g.fillRect(b * (canvas.width / bars) + 1, (canvas.height - h) / 2, canvas.width / bars - 2, h);
+        }
+      }
+      this._paintRecLevel();
+      rec.raf = global.requestAnimationFrame(() => this._smpRecTickDraw());
+    }
+
+    /** Klick (Einzählen/Metronom) auf der Audio-Uhr. */
+    _smpClick(time, strong) {
+      this.engine.playNoise(time, { cutoff: strong ? 2600 : 1800, length: .05, volume: strong ? .5 : .3, type: 'bandpass', q: 4 });
+    }
+
+    async _smpRecStart() {
+      const smp = this.sampler;
+      const rec = smp.rec;
+      if (!rec || rec.phase !== 'idle') return;
+      if (smp.meta.size >= SAMPLER_MAX_SAMPLES) { this._setStatus(tf('lab.sampler.full', { n: SAMPLER_MAX_SAMPLES })); return; }
+      if (!this._mic || !global.MediaRecorder) { this._setStatus(t('lab.sampler.noMic')); return; }
+      try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
+      let stream;
+      try { stream = await this._mic.open(); } catch (err) { console.warn('[groove-lab] Mikrofon', err); this._setStatus(t('lab.sampler.micFailed')); return; }
+      if (smp.view !== 'record' || smp.rec !== rec) { this._mic.close?.(stream); return; }
+      const ctx = this.engine.ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      source.connect(analyser); // bewusst nicht zum Ausgang: sonst gäbe es eine Rückkopplung
+      const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm', 'audio/ogg;codecs=opus'].find((m) => global.MediaRecorder.isTypeSupported?.(m)) || '';
+      let recorder;
+      try { recorder = new global.MediaRecorder(stream, mimeType ? { mimeType, audioBitsPerSecond: 128000 } : { audioBitsPerSecond: 128000 }); } catch (err) {
+        console.warn('[groove-lab] MediaRecorder', err);
+        this._mic.close?.(stream); this._setStatus(t('lab.sampler.micFailed')); return;
+      }
+      const chunks = [];
+      recorder.ondataavailable = (event) => { if (event.data?.size) chunks.push(event.data); };
+      Object.assign(rec, { stream, source, analyser, recorder, chunks, mimeType: recorder.mimeType || mimeType || 'audio/webm' });
+      // Zeitplan: Einzählen (ein Takt Klicks), dann Aufnahme; bei Loops fester Takt.
+      const stepSec = this._stepSeconds();
+      const barSteps = this._barSteps();
+      const barSec = stepSec * barSteps;
+      const meter = METERS[this._meter()];
+      const countIn = rec.kind === 'loop' || rec.countIn;
+      const start = ctx.currentTime + .12;
+      rec.barSec = barSec;
+      rec.bpm = this.state.bpm;
+      rec.meter = this._meter();
+      rec.downbeat = countIn ? start + barSec : start;
+      if (countIn) meter.beats.forEach((step, i) => this._smpClick(start + step * stepSec, i === 0));
+      if (rec.click) {
+        const bars = rec.kind === 'loop' ? rec.bars : 2;
+        for (let b = 0; b < bars; b++) meter.beats.forEach((step, i) => this._smpClick(rec.downbeat + b * barSec + step * stepSec, i === 0 && b === 0));
+      }
+      recorder.start();
+      rec.startedAt = ctx.currentTime;
+      rec.phase = countIn ? 'counting' : 'recording';
+      const toRecording = global.setTimeout(() => { if (rec.phase === 'counting') { rec.phase = 'recording'; this._paintRecLevel(); } }, Math.max(0, (rec.downbeat - ctx.currentTime) * 1000));
+      const maxSec = rec.kind === 'loop' ? Math.min(SAMPLER_MAX_SEC.loop, rec.bars * barSec) : 8;
+      const stopAfter = (rec.downbeat - ctx.currentTime) + maxSec + (rec.kind === 'loop' ? .25 : 0);
+      rec.timers = [toRecording, global.setTimeout(() => this._smpRecStop(), stopAfter * 1000)];
+      // Bluetooth-Headset (Freisprechprofil) oder Schmalband-Mikrofon: Hinweis wie im Player.
+      smp.bluetoothHint = (this._mic.quality?.(stream) || 'ok') !== 'ok';
+      this._renderSampler();
+      this._smpRecTickDraw();
+    }
+
+    _smpRecStop() {
+      const rec = this.sampler.rec;
+      if (!rec || !rec.recorder || rec.phase === 'idle' || rec.stopping) return;
+      rec.stopping = true;
+      (rec.timers || []).forEach(clearTimeout);
+      const done = new Promise((resolve) => { rec.recorder.onstop = resolve; });
+      try { rec.recorder.stop(); } catch { /* schon gestoppt */ }
+      done.then(() => this._smpRecFinish(rec));
+    }
+
+    /** Aufnahme abbrechen (Ansicht verlassen): Mikrofon frei, nichts speichern. */
+    _smpRecAbort() {
+      const rec = this.sampler.rec;
+      if (!rec) return;
+      (rec.timers || []).forEach(clearTimeout);
+      global.cancelAnimationFrame(rec.raf);
+      if (rec.recorder && rec.recorder.state !== 'inactive') { rec.recorder.onstop = null; try { rec.recorder.stop(); } catch { /* egal */ } }
+      this._smpRecRelease(rec);
+      this.sampler.rec = null;
+    }
+
+    _smpRecRelease(rec) {
+      try { rec.source?.disconnect(); } catch { /* egal */ }
+      if (rec.stream) { try { this._mic?.close?.(rec.stream); } catch { /* egal */ } rec.stream = null; }
+    }
+
+    async _smpRecFinish(rec) {
+      const smp = this.sampler;
+      global.cancelAnimationFrame(rec.raf);
+      this._smpRecRelease(rec);
+      const blob = new Blob(rec.chunks, { type: rec.mimeType });
+      rec.phase = 'idle';
+      rec.stopping = false;
+      if (smp.rec !== rec) return;
+      let buffer;
+      try { buffer = await this._decodeBlob(blob); } catch (err) { console.warn('[groove-lab] Aufnahme nicht lesbar', err); this._setStatus(t('lab.sampler.recEmpty')); this._renderSampler(); return; }
+      const data = buffer.getChannelData(0);
+      const sr = buffer.sampleRate;
+      const maxSec = SAMPLER_MAX_SEC[rec.kind];
+      let start;
+      let end;
+      if (rec.kind === 'loop') {
+        // Ab Takt-Eins, um die Ausgabe-/Basis-Latenz verschoben (wie anchor.lat im Player); Länge = Takte × Taktdauer.
+        const ctx = this.engine.ctx;
+        const latency = (ctx?.outputLatency || 0) + (ctx?.baseLatency || 0);
+        start = Math.max(0, rec.downbeat - rec.startedAt + latency);
+        end = Math.min(buffer.duration, start + rec.bars * rec.barSec, start + maxSec);
+      } else if (rec.trim) {
+        ({ start, end } = autoTrimBounds(data, sr));
+      } else { start = 0; end = buffer.duration; }
+      end = Math.min(end, start + maxSec);
+      let peak = 0;
+      for (let i = Math.floor(start * sr); i < Math.min(data.length, Math.ceil(end * sr)); i++) { const a = Math.abs(data[i]); if (a > peak) peak = a; }
+      if (!(peak > .002) || end - start < .02) { this._setStatus(t('lab.sampler.recEmpty')); this._renderSampler(); return; }
+      let kind = rec.kind;
+      let pitch = null;
+      if (kind === 'tone') {
+        pitch = detectPitch(data.subarray(Math.floor(start * sr), Math.ceil(end * sr)), sr);
+        if (!pitch) { kind = 'hit'; this._setStatus(t('lab.sampler.noPitch')); }
+      }
+      const id = `s${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
+      let n = smp.meta.size + 1;
+      const taken = new Set([...smp.meta.values()].map((m) => m.name));
+      while (taken.has(tf('lab.sampler.defaultName', { n }))) n++;
+      const meta = sanitizeSampleMeta({
+        id, name: tf('lab.sampler.defaultName', { n }), kind, trim: [start, end], gainDb: 0, pitch: 0, reverse: false, decay: SAMPLER_MAX_SEC[kind], reverb: 0,
+        track: 'perc', layerOriginal: false, toneRole: 'auto', detectedMidi: pitch?.midi ?? null, detectedCents: pitch?.cents ?? 0,
+        loopBars: rec.bars, bpmAtRec: kind === 'loop' ? rec.bpm : null, meterAtRec: kind === 'loop' ? rec.meter : null, by: '', createdAt: Date.now(),
+      });
+      await this._saveSample(meta, blob, buffer);
+      this._assignPad(smp.sel, id);
+      smp.rec = null;
+      this._openEditor(id, { isNew: true });
+    }
+
+    /** Sample in der Ablage speichern (mit Audio) bzw. nur die Metadaten ändern (blob = null). */
+    async _saveSample(meta, blob, buffer) {
+      const smp = this.sampler;
+      smp.meta.set(meta.id, meta);
+      if (blob) smp.blobs.set(meta.id, blob);
+      if (buffer) smp.buffers.set(meta.id, buffer);
+      smp.peaks.delete(meta.id);
+      for (const key of [...smp.peakCache.keys()]) if (key.startsWith(`${meta.id}|`)) smp.peakCache.delete(key);
+      try { await this._storage?.samples?.put?.(meta, blob || undefined); } catch (err) { console.warn('[groove-lab] Sample nicht gespeichert', err); this._setStatus(t('lab.sampler.saveFailed')); }
+    }
+
+    /** Pad `index` des eigenen Kits mit einem Sample belegen (ein Werks-Kit ist schreibgeschützt → in den eigenen Kit). */
+    _assignPad(index, id) {
+      const s = this.state;
+      this._pushHistory();
+      const own = this._ownKit();
+      s.sampler.kitId = own.id;
+      own.pads[index] = id;
+      this.sampler.sel = index;
+    }
+
+    /* -- Bearbeiten -- */
+
+    async _openEditor(id, { isNew = false } = {}) {
+      const smp = this.sampler;
+      const meta = this._sampleMeta(id);
+      if (!meta || meta.factory) return;
+      const buffer = await this._loadBuffer(id);
+      if (!buffer) { this._setStatus(t('lab.sampler.missing')); return; }
+      smp.draft = { ...meta, trim: [...meta.trim] };
+      smp.draftBuffer = buffer;
+      smp.draftPeaks = wavePeaks(buffer.getChannelData(0), 160);
+      smp.draftNew = isNew;
+      smp.draftTone = null;
+      smp.view = 'edit';
+      this._renderSampler();
+      this.$('.lab-body').scrollTop = 0;
+    }
+
+    _renderSamplerEdit(root) {
+      const smp = this.sampler;
+      const d = smp.draft;
+      if (!d) { smp.view = 'pads'; this._renderSamplerPads(root); return; }
+      const nodes = [this._smpHead(tf('lab.sampler.editTitle', { name: d.name }), { done: t('lab.sampler.done') })];
+
+      // Wellenform mit zwei Schnittmarken
+      const wave = this._mk('section', 'panel smp-panel');
+      const frame = this._mk('div', 'smp-wave');
+      const canvas = this._mk('canvas');
+      canvas.width = 640; canvas.height = 128;
+      canvas.setAttribute('aria-hidden', 'true');
+      frame.append(canvas);
+      const dur = smp.draftBuffer.duration;
+      for (const [which, labelKey] of [['start', 'lab.sampler.trimStart'], ['end', 'lab.sampler.trimEnd']]) {
+        const handle = this._mk('div', `smp-trim is-${which}`);
+        handle.tabIndex = 0;
+        handle.setAttribute('role', 'slider');
+        handle.setAttribute('aria-label', t(labelKey));
+        handle.setAttribute('aria-valuemin', '0');
+        handle.setAttribute('aria-valuemax', String(Math.round(dur * 1000)));
+        handle.dataset.which = which;
+        this._wireTrim(handle, frame, which);
+        frame.append(handle);
+      }
+      frame.append(this._mk('div', 'smp-shade is-start'), this._mk('div', 'smp-shade is-end'));
+      wave.append(frame);
+      const tools = this._mk('div', 'smp-tools');
+      for (const [action, key] of [['smp-listen', 'lab.sampler.listen'], ['smp-autocut', 'lab.sampler.autoCut'], ['smp-reverse', 'lab.sampler.reverse']]) {
+        const b = this._mk('button', 'chip', t(key));
+        b.type = 'button'; b.dataset.action = action;
+        if (action === 'smp-reverse') b.setAttribute('aria-pressed', String(d.reverse));
+        tools.append(b);
+      }
+      wave.append(tools);
+      nodes.push(wave);
+
+      // Spielt als
+      const play = this._mk('section', 'panel smp-panel');
+      play.append(this._panelHead(t('lab.sampler.playsAs')));
+      const seg = this._mk('div', 'smp-seg');
+      seg.setAttribute('role', 'group');
+      for (const kind of SAMPLE_KINDS) {
+        const b = this._mk('button', 'smp-seg-btn', this._kindLabel(kind));
+        b.type = 'button'; b.dataset.action = 'smp-kind'; b.dataset.value = kind;
+        b.setAttribute('aria-pressed', String(d.kind === kind));
+        seg.append(b);
+      }
+      play.append(seg);
+      if (d.kind === 'tone') {
+        const info = this._mk('div', 'smp-detected');
+        info.append(this._mk('strong', '', d.detectedMidi === null ? '–' : noteLabel(d.detectedMidi, null, 'major', labLang)),
+          this._mk('span', '', d.detectedMidi === null ? t('lab.sampler.noPitchShort') : `${tf('lab.sampler.detected', { cents: `${d.detectedCents > 0 ? '+' : ''}${d.detectedCents}` })} · ${t('lab.sampler.detectedAuto')}`));
+        play.append(info, this._mk('div', 'smp-sub', t('lab.sampler.whichTone')));
+        const chips = this._mk('div', 'chip-row');
+        for (const role of SAMPLE_TONE_ROLES) {
+          const b = this._mk('button', 'chip', t(`lab.sampler.tone${role[0].toUpperCase()}${role.slice(1)}`));
+          b.type = 'button'; b.dataset.action = 'smp-tone-role'; b.dataset.value = role;
+          b.setAttribute('aria-pressed', String(d.toneRole === role));
+          chips.append(b);
+        }
+        play.append(chips);
+      } else if (d.kind === 'hit') {
+        play.append(this._mk('div', 'smp-sub', t('lab.sampler.whichTrack')));
+        const chips = this._mk('div', 'chip-row');
+        for (const track of SAMPLE_TRACKS) {
+          const b = this._mk('button', 'chip', t(TRACK_KEY[track]));
+          b.type = 'button'; b.dataset.action = 'smp-track'; b.dataset.value = track;
+          b.setAttribute('aria-pressed', String(d.track === track));
+          chips.append(b);
+        }
+        const layer = this._mk('label', 'smp-opt');
+        const text = this._mk('span');
+        text.append(this._mk('strong', '', t('lab.sampler.layerOriginal')), this._mk('span', '', t('lab.sampler.layerOriginalSub')));
+        const box = this._mk('input');
+        box.type = 'checkbox'; box.dataset.smpDraft = 'layerOriginal'; box.checked = d.layerOriginal;
+        layer.append(text, box);
+        play.append(chips, layer);
+      } else {
+        const chips = this._mk('div', 'chip-row');
+        for (const n of [1, 2]) {
+          const b = this._mk('button', 'chip', t(`lab.sampler.loopBars${n}`));
+          b.type = 'button'; b.dataset.action = 'smp-loop-bars'; b.dataset.value = String(n);
+          b.setAttribute('aria-pressed', String(d.loopBars === n));
+          chips.append(b);
+        }
+        play.append(chips, this._mk('p', 'smp-hint', d.bpmAtRec ? tf('lab.sampler.loopHint', { bpm: d.bpmAtRec }) : t('lab.sampler.loopHintFree')));
+      }
+      nodes.push(play);
+
+      // Regler
+      const sliders = this._mk('section', 'panel smp-panel');
+      const defs = [
+        ['pitch', 'lab.sampler.pitch', -12, 12, .5, (v) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(v).toFixed(v % 1 ? 1 : 0).replace('.', ',')}`],
+        ['decay', 'lab.sampler.decay', .05, SAMPLER_MAX_SEC[d.kind], .05, (v) => this._secLabel(v)],
+        ['reverb', 'lab.sampler.reverb', 0, 1, .01, (v) => `${Math.round(v * 100)} %`],
+        ['gainDb', 'lab.sampler.gain', -24, 6, .5, (v) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(v).toFixed(v % 1 ? 1 : 0).replace('.', ',')} dB`],
+      ];
+      for (const [key, labelKey, min, max, step, format] of defs) {
+        const line = this._mk('label', 'smp-slider');
+        const out = this._mk('output', '', format(d[key]));
+        const input = this._mk('input');
+        input.type = 'range'; input.min = String(min); input.max = String(max); input.step = String(step); input.value = String(d[key]);
+        input.dataset.smpSlider = key;
+        input.setAttribute('aria-label', t(labelKey));
+        input.addEventListener('input', () => {
+          d[key] = Number(input.value);
+          out.textContent = format(d[key]);
+        });
+        line.append(this._mk('span', '', t(labelKey)), input, out);
+        sliders.append(line);
+      }
+      nodes.push(sliders);
+
+      // Name und Herkunft
+      const names = this._mk('section', 'panel smp-panel');
+      for (const [key, labelKey, max, placeholder] of [['name', 'lab.sampler.name', 12, ''], ['by', 'lab.sampler.by', 24, t('lab.sampler.byPlaceholder')]]) {
+        const line = this._mk('label', 'smp-field');
+        const input = this._mk('input');
+        input.type = 'text'; input.maxLength = max; input.value = d[key]; input.autocomplete = 'off'; input.placeholder = placeholder;
+        input.addEventListener('input', () => { d[key] = input.value; });
+        line.append(this._mk('span', '', t(labelKey)), input);
+        names.append(line);
+      }
+      nodes.push(names);
+
+      const foot = this._mk('div', 'smp-foot');
+      for (const [action, key, cls] of [['smp-to-beat', 'lab.sampler.toBeat', 'chip'], ['smp-cancel', 'lab.sampler.cancel', 'chip'], ['smp-delete', 'lab.sampler.delete', 'chip is-danger']]) {
+        const b = this._mk('button', cls, t(key));
+        b.type = 'button'; b.dataset.action = action;
+        if (action === 'smp-to-beat') b.dataset.value = d.id;
+        foot.append(b);
+      }
+      nodes.push(foot);
+      root.replaceChildren(...nodes);
+      this._paintEditor();
+    }
+
+    /** Wellenform und Schnittmarken zeichnen. */
+    _paintEditor() {
+      const smp = this.sampler;
+      const root = this.$('.sampler-root');
+      const d = smp.draft;
+      const canvas = root?.querySelector('.smp-wave canvas');
+      if (!d || !canvas) return;
+      const dur = smp.draftBuffer.duration;
+      const g = canvas.getContext('2d');
+      const peaks = smp.draftPeaks;
+      g.clearRect(0, 0, canvas.width, canvas.height);
+      const style = getComputedStyle(this);
+      g.fillStyle = style.getPropertyValue('--accent').trim() || '#f868b0';
+      const bw = canvas.width / peaks.length;
+      peaks.forEach((p, i) => { const h = Math.max(3, p * canvas.height * .9); g.fillRect(i * bw + 1, (canvas.height - h) / 2, Math.max(1, bw - 2), h); });
+      const a = d.trim[0] / dur;
+      const b = d.trim[1] / dur;
+      const set = (sel, fn) => { const node = root.querySelector(sel); if (node) fn(node); };
+      set('.smp-trim.is-start', (n) => { n.style.left = `${a * 100}%`; n.setAttribute('aria-valuenow', String(Math.round(d.trim[0] * 1000))); n.setAttribute('aria-valuetext', this._secLabel(d.trim[0])); });
+      set('.smp-trim.is-end', (n) => { n.style.left = `${b * 100}%`; n.setAttribute('aria-valuenow', String(Math.round(d.trim[1] * 1000))); n.setAttribute('aria-valuetext', this._secLabel(d.trim[1])); });
+      set('.smp-shade.is-start', (n) => { n.style.width = `${a * 100}%`; });
+      set('.smp-shade.is-end', (n) => { n.style.left = `${b * 100}%`; n.style.right = '0'; });
+    }
+
+    /** Schnittmarke ziehen (Zeiger) oder mit Pfeiltasten (±10 ms, mit Umschalt ±1 ms) schieben; mindestens 20 ms Abstand,
+     *  höchstens so lang, wie die Art erlaubt. */
+    _wireTrim(handle, frame, which) {
+      const move = (seconds) => {
+        const d = this.sampler.draft;
+        const dur = this.sampler.draftBuffer.duration;
+        const max = SAMPLER_MAX_SEC[d.kind];
+        const t0 = which === 'start' ? clamp(seconds, 0, d.trim[1] - .02) : d.trim[0];
+        let t1 = which === 'end' ? clamp(seconds, d.trim[0] + .02, dur) : d.trim[1];
+        d.trim[0] = Math.round(t0 * 1000) / 1000;
+        t1 = Math.min(t1, d.trim[0] + max);
+        d.trim[1] = Math.round(t1 * 1000) / 1000;
+        this._paintEditor();
+      };
+      handle.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        try { handle.setPointerCapture(event.pointerId); } catch { /* wie Knob */ }
+        handle.dataset.drag = '1';
+        const onMove = (e) => {
+          const rect = frame.getBoundingClientRect();
+          move(clamp((e.clientX - rect.left) / rect.width, 0, 1) * this.sampler.draftBuffer.duration);
+        };
+        const onEnd = () => { delete handle.dataset.drag; handle.removeEventListener('pointermove', onMove); handle.removeEventListener('pointerup', onEnd); handle.removeEventListener('pointercancel', onEnd); };
+        handle.addEventListener('pointermove', onMove);
+        handle.addEventListener('pointerup', onEnd);
+        handle.addEventListener('pointercancel', onEnd);
+      });
+      handle.addEventListener('keydown', (event) => {
+        const dir = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[event.key];
+        if (!dir) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const d = this.sampler.draft;
+        move(d.trim[which === 'start' ? 0 : 1] + dir * (event.shiftKey ? .001 : .01));
+      });
+    }
+
+    async _editorFinish(save) {
+      const smp = this.sampler;
+      const d = smp.draft;
+      let pending = null;
+      if (save && d) {
+        const meta = sanitizeSampleMeta({ ...d, name: d.name.trim() || tf('lab.sampler.defaultName', { n: smp.meta.size }) });
+        if (meta) {
+          pending = this._saveSample(meta, null, null);
+          this._setStatus(tf('lab.sampler.saved', { n: smp.sel + 1, name: meta.name }));
+        }
+      }
+      smp.draft = null; smp.draftBuffer = null; smp.draftPeaks = null;
+      this._samplerGo('pads');
+      if (pending) await pending;
+      this._renderTracks(); this._renderLive(); this._renderSampler();
+    }
+
+    _editorKind(kind) {
+      const smp = this.sampler;
+      const d = smp.draft;
+      if (!SAMPLE_KINDS.includes(kind) || kind === d.kind) return;
+      const sr = smp.draftBuffer.sampleRate;
+      if (kind === 'tone' && d.detectedMidi === null) {
+        const data = smp.draftBuffer.getChannelData(0).subarray(Math.floor(d.trim[0] * sr), Math.ceil(d.trim[1] * sr));
+        const pitch = detectPitch(data, sr);
+        if (!pitch) { this._setStatus(t('lab.sampler.noPitch')); return; }
+        d.detectedMidi = pitch.midi; d.detectedCents = pitch.cents;
+      }
+      d.kind = kind;
+      d.trim[1] = Math.min(d.trim[1], d.trim[0] + SAMPLER_MAX_SEC[kind]);
+      d.decay = Math.min(Math.max(d.decay, .05), SAMPLER_MAX_SEC[kind]);
+      this._renderSampler();
+    }
+
+    _deleteSample(id) {
+      const smp = this.sampler;
+      const s = this.state;
+      this._pushHistory();
+      smp.meta.delete(id); smp.buffers.delete(id); smp.blobs.delete(id); smp.peaks.delete(id);
+      for (const kit of s.sampler.kits) kit.pads = kit.pads.map((p) => (p === id ? null : p));
+      s.sampleLanes = s.sampleLanes.filter((l) => l.padId !== id);
+      Promise.resolve(this._storage?.samples?.remove?.(id)).catch((err) => console.warn('[groove-lab] Sample nicht gelöscht', err));
+      smp.draft = null; smp.draftBuffer = null; smp.draftPeaks = null;
+      this._samplerGo('pads');
+      this._renderTracks(); this._renderLive();
+    }
+
+    /* -- Bibliothek -- */
+
+    _renderSamplerLibrary(root) {
+      const smp = this.sampler;
+      const nodes = [this._smpHead(t('lab.sampler.libTitle'))];
+      const section = (titleKey, metas, emptyKey) => {
+        const panel = this._mk('section', 'panel smp-panel');
+        panel.append(this._panelHead(t(titleKey)));
+        if (!metas.length) panel.append(this._mk('p', 'smp-hint', t(emptyKey)));
+        const list = this._mk('div', 'smp-lib');
+        for (const meta of metas) {
+          const row = this._mk('div', 'smp-lib-row');
+          const listen = this._mk('button', 'chip', '▶');
+          listen.type = 'button'; listen.dataset.action = 'smp-lib-listen'; listen.dataset.value = meta.id;
+          listen.setAttribute('aria-label', `${t('lab.sampler.listen')}: ${meta.name}`);
+          const use = this._mk('button', 'smp-lib-use');
+          use.type = 'button'; use.dataset.action = 'smp-lib-use'; use.dataset.value = meta.id;
+          use.append(this._mk('strong', '', meta.name), this._mk('span', '', `${this._kindLabel(meta.kind)} · ${this._roleLabel(meta)}`));
+          row.append(listen, use);
+          list.append(row);
+        }
+        panel.append(list);
+        return panel;
+      };
+      nodes.push(this._mk('p', 'smp-hint', tf('lab.sampler.libHint', { n: smp.sel + 1 })));
+      nodes.push(section('lab.sampler.libFactory', FACTORY_SAMPLES, ''));
+      nodes.push(section('lab.sampler.libOwn', [...smp.meta.values()].sort((a, b) => b.createdAt - a.createdAt), 'lab.sampler.libEmpty'));
+      root.replaceChildren(...nodes);
+    }
+
+    /* -- Im Beat -- */
+
+    /** Sample-Spur anlegen (höchstens vier): bei Schlägen die Schritte der Zielspur übernehmen und diese stummschalten
+     *  (mit „Originalklang leise darunter“ spielt sie mit 35 %). */
+    _padToBeat(padId) {
+      const s = this.state;
+      const meta = this._sampleMeta(padId);
+      if (!meta) { this._setStatus(t('lab.sampler.missing')); return; }
+      if (s.sampleLanes.some((l) => l.padId === padId)) { this._setStatus(t('lab.sampler.laneExists')); return; }
+      if (s.sampleLanes.length >= SAMPLER_MAX_LANES) { this._setStatus(tf('lab.sampler.lanesFull', { n: SAMPLER_MAX_LANES })); return; }
+      this._pushHistory();
+      const lane = { padId, on: true, layer: false, steps: {} };
+      if (meta.kind === 'hit') {
+        for (const [step, value] of Object.entries(s.beat[meta.track] || {})) lane.steps[step] = value < 1 ? Math.max(.1, value) : 1;
+        if (meta.layerOriginal) lane.layer = true; else s.trackOn[meta.track] = false;
+      } else lane.steps[0] = 1;
+      s.sampleLanes.push(lane);
+      s.beatEdited = true;
+      this._primeSamples();
+      this._renderBeat(); this._renderSampler();
+      this._setStatus(tf('lab.sampler.toBeatDone', { name: meta.name }));
+    }
+
+    _laneRemove(index) {
+      const s = this.state;
+      const lane = s.sampleLanes[index];
+      if (!lane) return;
+      this._pushHistory();
+      s.sampleLanes.splice(index, 1);
+      this._renderBeat(); this._renderSampler();
+    }
+
+    /** Zellen einer Sample-Spur: antippen schaltet 1 → .6 → aus (wie die Drum-Spuren). */
+    _toggleLaneCell(laneIndex, step) {
+      const s = this.state;
+      const lane = s.sampleLanes[laneIndex];
+      if (!lane) return;
+      const cycle = [1, .6];
+      const current = lane.steps[step];
+      const index = current === undefined ? -1 : cycle.indexOf(current);
+      if (current !== undefined && (index === -1 || index === cycle.length - 1)) delete lane.steps[step]; else lane.steps[step] = cycle[index + 1];
+      s.beatEdited = true;
+      this._renderTracks();
+      if (!this.playing && lane.steps[step] !== undefined) this._auditionPad(lane.padId, { velocity: lane.steps[step] });
+    }
+
+    /** Anzeige des klingenden Tons in einer Ton-Zelle (Zielton des Akkords an dieser Stelle des Takts). */
+    _laneNoteLabel(meta, step) {
+      if (meta.kind !== 'tone' || meta.detectedMidi === null) return '';
+      const g = this.playing && this.shown ? Math.floor(this.shown.g / this._barSteps()) * this._barSteps() + step : step;
+      const h = this._harmonyAt(g);
+      const target = sampleToneTarget(meta.toneRole, meta.detectedMidi, chordPitchClasses(h.keyRoot, h.steps, h.deg, h.sevenths).slice(0, 3));
+      return noteLabel(target, ...this._spellKeyAt(h.index), labLang);
+    }
+
+    /** Live einspielen: Pad-Reihe unter dem Raster (die ersten vier Pads des Kits). */
+    _renderLive() {
+      const host = this.$('.live-pads');
+      if (!host) return;
+      const smp = this.sampler;
+      const kit = this._kit();
+      host.replaceChildren(...[0, 1, 2, 3].map((i) => {
+        const id = kit.pads[i];
+        const meta = this._sampleMeta(id);
+        const btn = this._mk('button', `pad-btn live-pad${meta ? ` is-${meta.kind}` : ' is-free'}`);
+        btn.type = 'button';
+        btn.setAttribute('aria-label', meta ? tf('lab.sampler.padAria', { n: i + 1, name: meta.name, kind: this._kindLabel(meta.kind) }) : tf('lab.sampler.padFreeAria', { n: i + 1 }));
+        btn.append(this._mk('span', 'pad-name', meta ? meta.name : '+'));
+        btn.addEventListener('pointerdown', (event) => { if (event.button > 0) return; event.preventDefault(); this._livePad(i); });
+        btn.addEventListener('click', (event) => { if (event.detail === 0) this._livePad(i); });
+        return btn;
+      }));
+      const toggle = this.$('[data-switch="liveWrite"]');
+      if (toggle) toggle.checked = smp.live;
+    }
+
+    /** Pad live spielen; läuft der Loop und „Ins Raster schreiben“ ist an, wird der Anschlag auf die nächste Sechzehntel gelegt. */
+    async _livePad(index) {
+      const s = this.state;
+      const smp = this.sampler;
+      const id = this._kit().pads[index];
+      if (!id) { this.sampler.sel = index; this._setTab('sampler'); this._samplerGo('record'); return; }
+      const tap = this.engine.ready ? this.engine.ctx.currentTime : null;
+      await this._auditionPad(id);
+      if (!smp.live || !this.playing || tap === null || !this.stepClock) return;
+      const meta = this._sampleMeta(id);
+      if (!meta) return;
+      const ctx = this.engine.ctx;
+      const latency = ctx.outputLatency || ctx.baseLatency || 0;
+      const g = quantizeTapStep(tap, this.stepClock.time, this.stepClock.g, this._stepSeconds(), latency);
+      const step = mod(g, this._barSteps());
+      let lane = s.sampleLanes.find((l) => l.padId === id);
+      this._pushHistory();
+      if (!lane) {
+        if (s.sampleLanes.length >= SAMPLER_MAX_LANES) { this._setStatus(tf('lab.sampler.lanesFull', { n: SAMPLER_MAX_LANES })); return; }
+        lane = { padId: id, on: true, layer: false, steps: {} };
+        s.sampleLanes.push(lane);
+      }
+      lane.steps[step] = 1;
+      s.beatEdited = true;
+      this._renderTracks();
+    }
+
+    /** Sample-Spuren eines Schritts spielen (Teil von _playStep). */
+    _playLanes(g, step, swung, stepSec, h) {
+      const s = this.state;
+      const barSteps = this._barSteps();
+      for (const lane of s.sampleLanes) {
+        if (!lane.on) continue;
+        let velocity = lane.steps[step];
+        if (velocity === undefined) continue;
+        const meta = this._sampleMeta(lane.padId);
+        if (!meta) { if (!this._missingSaid) { this._missingSaid = true; this._setStatus(t('lab.sampler.missing')); } continue; }
+        const buffer = this._bufferNow(lane.padId);
+        if (!buffer) { this._loadBuffer(lane.padId); continue; } // erster Durchlauf: noch nicht dekodiert
+        let when = swung;
+        if (s.feel) {
+          velocity *= .94 + Math.random() * .12;
+          if (meta.kind === 'hit' && (meta.track === 'hat' || meta.track === 'open')) {
+            velocity *= hatAccent(step, this._meter());
+            when = Math.max(this.engine.ctx.currentTime, swung + (Math.random() * 2 - 1) * .003);
+          }
+          velocity = Math.min(1, velocity);
+        }
+        const level = this._padLevel(meta, buffer) * velocity;
+        if (meta.kind === 'tone') {
+          if (meta.detectedMidi === null) continue;
+          const target = sampleToneTarget(meta.toneRole, meta.detectedMidi, chordPitchClasses(h.keyRoot, h.steps, h.deg, h.sevenths).slice(0, 3));
+          // Dauer: bis zum nächsten Treffer der Spur im Takt bzw. zum Akkordwechsel.
+          const chordSteps = barSteps * s.chordBars;
+          const untilChord = chordSteps - (g % chordSteps);
+          const untilNext = bassNoteSteps(lane.steps, step, barSteps);
+          const steps = Math.min(untilChord, untilNext);
+          this.engine.playPad(buffer, meta, when, level, { rate: sampleToneRate(target, meta.detectedMidi, meta.detectedCents, meta.pitch), duration: Math.max(.05, steps * stepSec * .92), layer: 'keys' });
+        } else if (meta.kind === 'loop') {
+          // Loops starten nur auf einer Takt-Eins und laufen taktweise (jeden `loopBars`-ten Takt).
+          if (step !== 0 || Math.floor(g / barSteps) % meta.loopBars !== 0) continue;
+          const rate = loopRate(s.bpm, meta.bpmAtRec);
+          if (rate === null) { this._setStatus(tf('lab.sampler.loopTempo', { bpm: meta.bpmAtRec })); continue; }
+          this.engine.playPad(buffer, meta, swung, level, { rate });
+        } else {
+          this.engine.playPad(buffer, meta, when, level, {});
+          if (meta.track === 'kick' && s.pump > 0) this.engine.duckAt(swung, s.pump, stepSec * 4);
+        }
+      }
     }
 
     /* ---- Harmonie ---- */
@@ -5177,6 +7408,10 @@
       this._renderLock('harmony');
 
       this._setSwitch('chordsOn', s.chordsOn);
+      this._setSwitch('chordAdd9', s.chordAdd9);
+      this.$('.add9-row').hidden = s.chordVoicing !== 'pop';
+      this._chips(this.$('.voicing-chips'), [['satb', 'lab.voicingSatb'], ['pop', 'lab.voicingPop']].map(([value, key]) => ({ value, label: t(key) })), s.chordVoicing, 'chord-voicing');
+      this._chips(this.$('.chordsound-chips'), [['synth', 'lab.chordSoundSynth'], ['choir', 'lab.chordSoundChoir']].map(([value, key]) => ({ value, label: t(key) })), s.chordSound, 'chord-sound');
       this._setSwitch('droneOn', s.droneOn);
       this._setSwitch('droneFifth', s.droneFifth);
       this._renderChordStrip();
@@ -5202,9 +7437,9 @@
         }
         const roman = document.createElement('span');
         roman.className = 'chord-roman';
-        roman.textContent = romanNumeral(this._stepsFor(deg, prog), deg, prog.sevenths);
+        roman.textContent = this._romanAt(prog, i);
         const name = document.createElement('strong');
-        name.textContent = chordName(s.keyRoot, this._stepsFor(deg, prog), deg, prog.sevenths, s.modeId);
+        name.textContent = this._nameAt(prog, i);
         box.append(roman, name);
         return box;
       }));
@@ -5404,7 +7639,7 @@
       if (!s.melodyBars) {
         s.melodyBars = MELODIES[s.melodyIndex].bars.map((bar) => bar.map((n) => [...n]));
         s.melodyMeter = this._meter();
-        s.melodyRef = 'chord';
+        s.melodyRef = melodyRefOf(s.melodyIndex);
       }
       return s.melodyBars;
     }
@@ -5413,7 +7648,7 @@
      *  eigene Melodie in der Bibliothek nachziehen, neu zeichnen. */
     _melCommit({ persist = true } = {}) {
       const s = this.state;
-      if (s.melodyBars && !s.melodyName && s.melodyRef !== 'key' && JSON.stringify(s.melodyBars) === JSON.stringify(MELODIES[s.melodyIndex].bars)) {
+      if (s.melodyBars && !s.melodyName && s.melodyRef === melodyRefOf(s.melodyIndex) && JSON.stringify(s.melodyBars) === JSON.stringify(MELODIES[s.melodyIndex].bars)) {
         s.melodyBars = null; s.melodyMeter = null;
       }
       const own = s.melodyOwnId && this._saved.melodies.find((m) => m.id === s.melodyOwnId);
@@ -5525,7 +7760,7 @@
       while (lib.some((m) => m.name === tf('lab.myMelodyN', { n }))) n++;
       const name = s.melodyName && !s.melodyOwnId && s.melodyName !== t('lab.newMelody') ? s.melodyName : tf('lab.myMelodyN', { n });
       const id = `m${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
-      const ref = s.melodyBars ? s.melodyRef : 'chord';
+      const ref = s.melodyBars ? s.melodyRef : melodyRefOf(s.melodyIndex);
       lib.push(ref === 'key' ? { id, name, meter: this._meter(), bars, ref } : { id, name, meter: this._meter(), bars });
       s.melodyBars = bars.map((bar) => bar.map((note) => [...note]));
       s.melodyMeter = this._meter();
@@ -5627,8 +7862,8 @@
       const macros = [
         { label: t('lab.macroBright'), value: Math.log(clamp(sound.cutoff, 200, 10000) / 200) / Math.log(50),
           apply: (v) => { sound.cutoff = 200 * Math.pow(50, v); } },
-        { label: t('lab.macroWidth'), value: Math.max(sound.detune / 20, sound.width),
-          apply: (v) => { sound.detune = v * 20; sound.width = v; } },
+        ...(sound.sample ? [] : [{ label: t('lab.macroWidth'), value: Math.max(sound.detune / 20, sound.width),
+          apply: (v) => { sound.detune = v * 20; sound.width = v; } }]),
         { label: t('lab.macroSpace'), value: sound.reverbWet / .7,
           apply: (v) => { sound.reverbWet = v * .7; sound.echoWet = v * .35; } },
         { label: t('lab.macroSoft'), value: Math.log(clamp(sound.attack, .004, .6) / .004) / Math.log(150),
@@ -5660,6 +7895,20 @@
     /** Der eine Synth-Klang gilt für Melodie, Arp und Tasten. */
     _applySound() {
       for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, this._heardSound());
+      this._loadInstruments();
+      this._renderSampleNote();
+    }
+
+    /** Sample-Klänge: nur die wirksamen Regler zeigen (Attack, Release, Cutoff, Resonanz,
+     *  Drive, Hall, Echo) — Wellenform, Decay/Sustain, Filter-Hüllkurve, LFO, Charakter,
+     *  Vibrato und Gleiten gelten dort nicht (ausgeblendet, nicht nur ausgegraut). */
+    _applySampleControls() {
+      const sampled = !!this.state.sound.sample;
+      for (const m of ['osc', 'lfo', 'char', 'vib', 'glide']) this.$(`[data-mod="${m}"]`).hidden = sampled;
+      this.$all('[data-sound="decay"], [data-sound="sustain"]').forEach((input) => { input.closest('.slider-field').hidden = sampled; });
+      this.$('.filter-type-chips').hidden = sampled;
+      if (this._soundKnobs.filterEnvAmount) this._soundKnobs.filterEnvAmount.el.hidden = sampled;
+      this._renderSampleNote();
     }
 
     _refreshSoundControls() {
@@ -5755,6 +8004,7 @@
       const glideHost = this.$('.glide-knobs'); glideHost.replaceChildren();
       knob(glideHost, 'glide', t('lab.knobGlide'), 0, 1, (v) => `${Math.round(v * 1000)} ms`);
       this._setSwitch('mono', sound.mono);
+      this._applySampleControls();
 
       // Hall- und Echo-Anteil gehören zum Klang, stehen aber bei den
       // Effekten (siehe _renderFx) — ein Ort für alles, was Raum macht.
@@ -5884,7 +8134,7 @@
         label.textContent = t('lab.dc.original');
       } else {
         const h = (this.playing && this.shown?.h) || this._harmonyAt(0);
-        label.textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths, this.state.modeId);
+        label.textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths, this.state.modeId, labLang, h.alter, h.bass);
       }
       if (!this.playing) this._renderBeatDots(-1);
       this._renderChordStrip();
@@ -5920,6 +8170,8 @@
         btn.querySelector('strong').textContent = chordName(s.keyRoot, this._stepsFor(d, prog), d, prog.sevenths, s.modeId);
         return btn;
       }));
+      this._chips(this.$('.prog-alter-chips'), [['', 'lab.alterNormal'], ['borrow', 'lab.alterBorrow'], ['secdom', 'lab.alterSecdom']].map(([value, key]) => ({ value, label: t(key) })), prog.alter?.[this.ui.progSel] || '', 'prog-alter');
+      this._chips(this.$('.prog-bass-chips'), [[0, 'lab.bassRoot'], [1, 'lab.bassThird'], [2, 'lab.bassFifth']].map(([value, key]) => ({ value, label: t(key) })), prog.bass?.[this.ui.progSel] || 0, 'prog-bass');
       this.$('.prog-count').textContent = tf('lab.progCount', { n: prog.degrees.length });
       this.$('[data-action="prog-undo"]').disabled = !this.ui.progUndo.length;
       this.$('[data-action="prog-redo"]').disabled = !this.ui.progRedo.length;
@@ -5940,16 +8192,22 @@
 
     _progBegin() {
       const s = this.state;
-      this.ui.progUndo.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant, s.progDom7]));
+      this.ui.progUndo.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant, s.progDom7, s.progAlter, s.progBass]));
       if (this.ui.progUndo.length > 60) this.ui.progUndo.shift();
       this.ui.progRedo = [];
+      let baseAlter = null;
+      let baseBass = null;
       if (!s.progDegrees) {
         const base = this._progression();
         s.progDegrees = [...base.degrees];
         s.progSevenths = !!base.sevenths;
         s.progDominant = !!base.dominant;
         s.progDom7 = !!base.dom7;
+        baseAlter = base.alter; baseBass = base.bass;
       }
+      // Parallel-Arrays immer in voller Länge, solange die Folge bearbeitet wird.
+      s.progAlter = normAlter(s.progAlter ?? baseAlter, s.progDegrees.length);
+      s.progBass = normBass(s.progBass ?? baseBass, s.progDegrees.length);
       return s.progDegrees;
     }
 
@@ -5957,8 +8215,10 @@
       const s = this.state;
       const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
       if (s.progDegrees && !s.progName && s.progDegrees.join() === base.degrees.join() && s.progSevenths === !!base.sevenths
-        && !!s.progDominant === !!base.dominant && !!s.progDom7 === !!base.dom7) {
-        s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false;
+        && !!s.progDominant === !!base.dominant && !!s.progDom7 === !!base.dom7
+        && normAlter(s.progAlter, s.progDegrees.length).join() === normAlter(base.alter, base.degrees.length).join()
+        && normBass(s.progBass, s.progDegrees.length).join() === normBass(base.bass, base.degrees.length).join()) {
+        s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progAlter = null; s.progBass = null;
       }
       const own = s.progOwnId && this._saved.progressions.find((p) => p.id === s.progOwnId);
       if (own && s.progDegrees) {
@@ -5966,6 +8226,10 @@
         own.sevenths = s.progSevenths;
         own.dominant = !!s.progDominant;
         own.dom7 = !!s.progDom7;
+        const ownAlter = sanitizeProgAlter(s.progAlter, s.progDegrees.length);
+        const ownBass = sanitizeProgBass(s.progBass, s.progDegrees.length);
+        if (ownAlter) own.alter = ownAlter; else delete own.alter;
+        if (ownBass) own.bass = ownBass; else delete own.bass;
         own.name = s.progName || own.name;
         this._persist();
       }
@@ -5977,22 +8241,23 @@
       const snap = from.pop();
       if (!snap) return;
       const s = this.state;
-      to.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant, s.progDom7]));
-      [s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant = false, s.progDom7 = false] = JSON.parse(snap);
+      to.push(JSON.stringify([s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant, s.progDom7, s.progAlter, s.progBass]));
+      [s.progDegrees, s.progSevenths, s.progName, s.progOwnId, s.progDominant = false, s.progDom7 = false, s.progAlter = null, s.progBass = null] = JSON.parse(snap);
       this._progCommit();
     }
 
     /** Akkord kurz anspielen (vierstimmig, im Chorklang). */
-    async _previewChord(deg) {
+    async _previewChord(deg, index = -1) {
       try { await this._ensureAudio(); } catch { return; }
       const s = this.state;
       const prog = this._progression();
-      const steps = this._stepsFor(deg, prog);
+      const alter = prog.alter?.[index] || null;
+      const steps = this._stepsFor(deg, prog, index);
       const voicing = voiceChord(chordPitchClasses(s.keyRoot, steps, deg, prog.sevenths), { S: 67, A: 62, T: 55, B: 48 },
-        { leading: leadingToneOf(s.keyRoot, s.modeId, prog, deg), bassIndex: chordQuality(steps, deg) === 'dim' ? 1 : 0 });
+        { leading: leadingToneOf(s.keyRoot, s.modeId, prog, deg, alter), bassIndex: prog.bass?.[index] || (chordQuality(steps, deg) === 'dim' ? 1 : 0) });
       const now = this.engine.ctx.currentTime + .01;
       for (const voice of SATB) {
-        this.engine.playTone(CHORD_SOUND, voicing[voice], now, .1, .9, { layer: 'keys', glide: 0, stepSeconds: this._stepSeconds() });
+        this.engine.playTone(this._chordSound(), voicing[voice], now, .1, .9, { layer: 'keys', glide: 0, stepSeconds: this._stepSeconds() });
       }
     }
 
@@ -6005,7 +8270,14 @@
       while (lib.some((p) => p.name === tf('lab.myProgN', { n }))) n++;
       const name = s.progName && !s.progOwnId && s.progName !== t('lab.newProg') ? s.progName : tf('lab.myProgN', { n });
       const id = `p${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
-      lib.push({ id, name, degrees: [...prog.degrees], sevenths: !!prog.sevenths, dominant: !!prog.dominant, dom7: !!prog.dom7 });
+      const entry = { id, name, degrees: [...prog.degrees], sevenths: !!prog.sevenths, dominant: !!prog.dominant, dom7: !!prog.dom7 };
+      const keepAlter = sanitizeProgAlter(prog.alter, prog.degrees.length);
+      const keepBass = sanitizeProgBass(prog.bass, prog.degrees.length);
+      if (keepAlter) entry.alter = keepAlter;
+      if (keepBass) entry.bass = keepBass;
+      lib.push(entry);
+      s.progAlter = keepAlter;
+      s.progBass = keepBass;
       s.progDegrees = [...prog.degrees];
       s.progSevenths = !!prog.sevenths;
       s.progDominant = !!prog.dominant;
@@ -6037,17 +8309,24 @@
     _pickerDef(which) {
       const s = this.state;
       const meter = this._meter();
+      // Kuratiert: zuerst die Einträge der *_ORDER-Liste in ihrer Reihenfolge, die übrigen
+      // (more: true) folgen in Indexreihenfolge und erscheinen eingeklappt unter „Weitere“.
+      const curated = (items, order, byName) => {
+        const rank = new Map(orderIndexes(order, byName).map((i, r) => [i, r]));
+        const shown = items.filter((it) => rank.has(it.i)).sort((a, b) => rank.get(a.i) - rank.get(b.i));
+        return [...shown, ...items.filter((it) => !rank.has(it.i)).map((it) => ({ ...it, more: true }))];
+      };
       const catLabel = (c) => t(CAT_KEY[c]);
       if (which === 'beat') {
         return {
           title: 'lab.pickBeat', action: 'pick-pattern', catAction: 'beat-cat', cats: BEAT_CATS, cat: this.ui.beatCat,
           current: s.patternIndex, edited: s.beatEdited,
-          items: DRUM_PATTERNS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
-            inMeter: p.meter === meter, sub: `${p.meter} · ${catLabel(p.cat)}`, short: catLabel(p.cat) })),
+          items: curated(DRUM_PATTERNS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
+            inMeter: p.meter === meter, sub: `${p.meter} · ${catLabel(p.cat)}`, short: catLabel(p.cat) })), BEAT_ORDER, patternIndexByName),
         };
       }
       if (which === 'prog') {
-        const romans = (p) => p.degrees.map((d) => romanNumeral(this._stepsFor(d, p), d, p.sevenths)).join('–');
+        const romans = (p) => p.degrees.map((d, i) => this._romanAt(p, i)).join('–');
         const own = this._saved.progressions;
         return {
           title: 'lab.pickProg', action: 'pick-prog', catAction: 'prog-cat',
@@ -6055,10 +8334,10 @@
           current: s.progOwnId && own.some((p) => p.id === s.progOwnId) ? `own:${s.progOwnId}` : s.progOwnId ? -1 : s.progId,
           fallback: s.progId, wide: true,
           items: [
-            ...PROGRESSIONS.map((p) => ({ i: p.id, name: t(progKey('Name', p.id)), visual: progPreview(p.degrees), cat: p.cat,
+            ...PROGRESSIONS.map((p) => ({ i: p.id, name: t(progKey('Name', p.id)), visual: progPreview(p.degrees, p.alter), cat: p.cat,
               inMeter: true, sub: romans(p), short: romans(p), info: t(progKey('Info', p.id)),
               mismatch: !progFitsMode(p, s.modeId) })),
-            ...own.map((p) => ({ i: `own:${p.id}`, name: p.name, visual: progPreview(p.degrees), cat: OWN_CAT,
+            ...own.map((p) => ({ i: `own:${p.id}`, name: p.name, visual: progPreview(p.degrees, p.alter), cat: OWN_CAT,
               inMeter: true, sub: romans(p), short: romans(p) })),
           ],
         };
@@ -6071,8 +8350,8 @@
           current: s.melodyOwnId && own.some((m) => m.id === s.melodyOwnId) ? `own:${s.melodyOwnId}` : s.melodyOwnId ? -1 : s.melodyIndex,
           wide: true,
           items: [
-            ...MELODIES.map((m, i) => ({ i, name: m.name, visual: melodyPreview(m), cat: m.cat,
-              inMeter: m.meter === meter, sub: `${m.meter} · ${catLabel(m.cat)}`, short: catLabel(m.cat) })),
+            ...curated(MELODIES.map((m, i) => ({ i, name: m.name, visual: melodyPreview(m), cat: m.cat,
+              inMeter: m.meter === meter, sub: `${m.meter} · ${catLabel(m.cat)}`, short: catLabel(m.cat) })), MELODY_ORDER, melodyIndexByName),
             ...own.map((m) => ({ i: `own:${m.id}`, name: m.name, visual: melodyPreview(m), cat: OWN_CAT,
               inMeter: true, sub: `${m.meter} · ${catLabel(OWN_CAT)}`, short: catLabel(OWN_CAT) })),
           ],
@@ -6081,8 +8360,8 @@
       return {
         title: 'lab.pickSound', action: 'pick-preset', catAction: 'preset-cat', cats: PRESET_CATS, cat: this.ui.presetCat,
         current: s.sound.custom ? -1 : s.sound.presetIndex,
-        items: SYNTH_PRESETS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
-          inMeter: true, sub: t(presetDescKey(p)), short: t(presetDescKey(p)) })),
+        items: curated(SYNTH_PRESETS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
+          inMeter: true, sub: t(presetDescKey(p)), short: t(presetDescKey(p)) })), PRESET_ORDER, presetIndexByName),
       };
     }
 
@@ -6103,9 +8382,9 @@
           const prog = this._progression();
           const s = this.state;
           name = this._progName();
-          sub = prog.degrees.map((d) => romanNumeral(this._stepsFor(d, prog), d, prog.sevenths)).join('–') + (s.progDegrees && !s.progName ? ` · ${t('lab.edited')}` : '')
+          sub = prog.degrees.map((d, i) => this._romanAt(prog, i)).join('–') + (s.progDegrees && !s.progName ? ` · ${t('lab.edited')}` : '')
             + (progFitsMode(prog, s.modeId) ? '' : ` · ${t('lab.progModeMismatch')}`);
-          visual = progPreview(prog.degrees);
+          visual = progPreview(prog.degrees, prog.alter);
         } else if (which === 'melody') {
           const melody = this._melody();
           const s = this.state;
@@ -6154,7 +8433,7 @@
         sep.className = 'chip-sep';
         chips.prepend(...meterHost.children, sep);
       }
-      const cards = def.items.filter((it) => it.inMeter && (def.cat === 'all' || it.cat === def.cat)).map((it) => {
+      const makeCard = (it, { chosen = false } = {}) => {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = `pick-card${def.wide ? ' is-wide' : ''}${it.mismatch ? ' is-mismatch' : ''}`;
@@ -6175,8 +8454,34 @@
           note.textContent = t('lab.progModeMismatch');
           btn.querySelector('.pick-text').append(note);
         }
+        if (chosen) {
+          const badge = document.createElement('small');
+          badge.className = 'pick-chosen';
+          badge.textContent = t('lab.chosenTemplate');
+          btn.querySelector('.pick-text').append(badge);
+        }
         return btn;
-      });
+      };
+      const visible = def.items.filter((it) => it.inMeter && (def.cat === 'all' || it.cat === def.cat));
+      const shown = visible.filter((it) => !it.more);
+      const more = visible.filter((it) => it.more);
+      const cards = shown.map((it) => makeCard(it));
+      // Eine ausgeblendete Vorlage, die gerade gewählt ist, steht zusätzlich ganz oben.
+      const chosenHidden = more.find((it) => it.i === def.current);
+      if (chosenHidden) cards.unshift(makeCard(chosenHidden, { chosen: true }));
+      if (more.length) {
+        const details = document.createElement('details');
+        details.className = 'pick-more';
+        details.open = !!this._pickMoreOpen;
+        details.addEventListener('toggle', () => { this._pickMoreOpen = details.open; });
+        const summary = document.createElement('summary');
+        summary.textContent = tf('lab.moreTemplates', { n: more.length });
+        const grid = document.createElement('div');
+        grid.className = 'pick-more-grid';
+        grid.append(...more.map((it) => makeCard(it)));
+        details.append(summary, grid);
+        cards.push(details);
+      }
       root.querySelector('.picker-grid').replaceChildren(...cards);
       root.querySelector('.picker-now-name').textContent = this.$(`.picker-trigger[data-picker="${which}"] .picker-name`).textContent;
     }
@@ -6211,7 +8516,7 @@
     /** ‹ › im Panel: nächster/voriger Eintrag (in der aktuellen Taktart). */
     _stepPicker(which, dir) {
       const def = this._pickerDef(which);
-      const list = def.items.filter((it) => it.inMeter);
+      const list = def.items.filter((it) => it.inMeter && (!it.more || it.i === (which === 'sound' ? this.state.sound.presetIndex : def.current)));
       const current = which === 'sound' ? this.state.sound.presetIndex
         : which === 'melody' && def.current === -1 ? this.state.melodyIndex
           : def.current === -1 ? def.fallback : def.current;
@@ -6916,12 +9221,15 @@
         else if (el.classList.contains('mel-name') || el.classList.contains('prog-name')) this._persist();
         else if (el.dataset.kit) { if (!this.playing) this._preview('kick', 1); }
         else if (el.dataset.switch) this._toggleSwitch(el.dataset.switch, el.checked);
+        else if (el.dataset.smpOpt && this.sampler.rec) { this.sampler.rec[el.dataset.smpOpt] = el.checked; this._paintRecLevel(); }
+        else if (el.dataset.smpDraft && this.sampler.draft) this.sampler.draft[el.dataset.smpDraft] = el.checked;
       });
       // Workshop: nach jeder Eingabe (nach den Handlern oben) die Teilziele
       // prüfen — höchstens einmal pro Frame.
       for (const type of ['click', 'input', 'change', 'pointerup', 'keyup']) {
         this.shadowRoot.addEventListener(type, () => { this._wsSchedule(); this._dcAutosave(); });
       }
+      for (const type of ['pointerup', 'pointercancel']) this.shadowRoot.addEventListener(type, () => clearTimeout(this._padHold));
       this._wireMelGrid();
     }
 
@@ -6949,6 +9257,7 @@
         }
         return;
       }
+      if (key === 'liveWrite') { this.sampler.live = on; return; }
       if (key === 'mono') { s.sound.mono = on; this._onSoundEdit(); return; }
       if (key === 'autoOn') { if (s.automation) s.automation.on = on; this._renderAutomation(); return; }
       if (key === 'reverbOn' || key === 'echoOn' || key === 'chorusOn') {
@@ -6960,6 +9269,7 @@
       if (key === 'melChroma') { this.ui.melChroma = on; this._renderMelEditor(); return; }
       if (key === 'progSevenths') { this._progBegin(); s.progSevenths = on; this._progCommit(); return; }
       if (key === 'progDominant') { this._progBegin(); s.progDominant = on; this._progCommit(); return; }
+      if (key === 'chordAdd9') { this._pushHistory(); s.chordAdd9 = on; this._renderSatb(); return; }
       s[key] = on; // melodyOn, chordsOn
     }
 
@@ -7055,8 +9365,9 @@
         // Beat
         case 'meter': {
           if (value === this._meter()) break;
-          s.patternIndex = DRUM_PATTERNS.findIndex((p) => p.meter === value);
+          s.patternIndex = firstPatternOfMeter(value);
           s.beat = beatFromPattern(this._pattern());
+          s.percSound = percOf(this._pattern());
           s.beatEdited = false;
           this._convertTempo();
           this._onTempoChange();
@@ -7071,6 +9382,7 @@
           const meterBefore = this._meter();
           s.patternIndex = Number(value);
           s.beat = beatFromPattern(this._pattern());
+          s.percSound = percOf(this._pattern());
           s.beatEdited = false;
           if (this._meter() !== meterBefore) { this._convertTempo(); this._onTempoChange(); }
           // Loops mit eigener Swing-Vorgabe (Swing Soul) bringen sie mit.
@@ -7094,6 +9406,82 @@
           break;
         }
         case 'kit-reset': this._pushHistory(); s.kit = { ...KIT_DEFAULTS }; this._renderKit(); if (!this.playing) this._preview('kick', 1); break;
+        // Sampler (Paket 9)
+        case 'smp-back': if (this.sampler.view === 'edit') this._editorFinish(false); else this._samplerGo('pads'); break;
+        case 'smp-done': this._editorFinish(true); break;
+        case 'smp-cancel': this._editorFinish(false); break;
+        case 'smp-kit': this._pushHistory(); s.sampler.kitId = value; this.sampler.sel = 0; this._primeSamples(); this._renderSampler(); this._renderLive(); break;
+        case 'smp-kit-new': {
+          if (s.sampler.kits.length >= SAMPLER_MAX_KITS) break;
+          this._pushHistory();
+          let n = s.sampler.kits.length + 1;
+          while (s.sampler.kits.some((k) => k.name === tf('lab.sampler.kitNewName', { n }))) n++;
+          const id = `k${Date.now().toString(36)}`;
+          s.sampler.kits.push({ id, name: tf('lab.sampler.kitNewName', { n }), pads: Array(SAMPLER_PADS).fill(null) });
+          s.sampler.kitId = id; this.sampler.sel = 0;
+          this._renderSampler(); this._renderLive();
+          break;
+        }
+        case 'smp-kit-del': {
+          const kit = s.sampler.kits.find((k) => k.id === s.sampler.kitId);
+          if (!kit || s.sampler.kits.length < 2) break;
+          this._confirm({ text: tf('lab.sampler.kitDeleteConfirm', { name: kit.name }), ok: t('lab.sampler.kitDelete'), onOk: () => {
+            this._pushHistory();
+            s.sampler.kits = s.sampler.kits.filter((k) => k !== kit);
+            s.sampler.kitId = s.sampler.kits[0].id;
+            this._renderSampler(); this._renderLive();
+          } });
+          break;
+        }
+        case 'smp-edit': { const id = this._kit().pads[this.sampler.sel]; if (id) this._openEditor(id); break; }
+        case 'smp-to-beat':
+          // Im Editor zuerst die Änderungen übernehmen (Schlag/Spur/Schnitt), dann ins Raster legen.
+          if (this.sampler.view === 'edit' && this.sampler.draft) this._editorFinish(true).then(() => this._padToBeat(value));
+          else this._padToBeat(value);
+          break;
+        case 'smp-record': {
+          // Aufnahmen kommen auf das gewählte Pad; ist es belegt und noch eines frei, auf das erste freie.
+          const pads = this._ownKit().pads;
+          const free = pads.findIndex((id) => !id);
+          if (pads[this.sampler.sel] && free >= 0) this.sampler.sel = free;
+          this._samplerGo('record');
+          break;
+        }
+        case 'smp-library': this._samplerGo('library'); break;
+        case 'smp-lane-remove': this._laneRemove(Number(value)); break;
+        case 'smp-rec-kind': if (this.sampler.rec && this.sampler.rec.phase === 'idle') { this.sampler.rec.kind = SAMPLE_KINDS.includes(value) ? value : 'hit'; this._renderSampler(); } break;
+        case 'smp-rec-bars': if (this.sampler.rec && this.sampler.rec.phase === 'idle') { this.sampler.rec.bars = Number(value) === 2 ? 2 : 1; this._renderSampler(); } break;
+        case 'smp-rec-toggle': if (this.sampler.rec?.phase === 'idle') this._smpRecStart(); else if (this.sampler.rec) this._smpRecStop(); break;
+        case 'smp-listen': if (this.sampler.draft) this._auditionPad(this.sampler.draft.id, { meta: this.sampler.draft }); break;
+        case 'smp-autocut': {
+          const d = this.sampler.draft;
+          const buffer = this.sampler.draftBuffer;
+          if (!d || !buffer) break;
+          const { start, end } = autoTrimBounds(buffer.getChannelData(0), buffer.sampleRate);
+          d.trim = [Math.round(start * 1000) / 1000, Math.round(Math.min(end, start + SAMPLER_MAX_SEC[d.kind]) * 1000) / 1000];
+          this._paintEditor();
+          break;
+        }
+        case 'smp-reverse': { const d = this.sampler.draft; if (d) { d.reverse = !d.reverse; target?.setAttribute?.('aria-pressed', String(d.reverse)); } break; }
+        case 'smp-kind': this._editorKind(value); break;
+        case 'smp-tone-role': if (this.sampler.draft && SAMPLE_TONE_ROLES.includes(value)) { this.sampler.draft.toneRole = value; this._renderSampler(); } break;
+        case 'smp-track': if (this.sampler.draft && SAMPLE_TRACKS.includes(value)) { this.sampler.draft.track = value; this._renderSampler(); } break;
+        case 'smp-loop-bars': if (this.sampler.draft) { this.sampler.draft.loopBars = Number(value) === 2 ? 2 : 1; this._renderSampler(); } break;
+        case 'smp-delete': {
+          const d = this.sampler.draft;
+          if (!d) break;
+          this._confirm({ text: tf('lab.sampler.deleteConfirm', { name: d.name }), ok: t('lab.sampler.delete'), onOk: () => this._deleteSample(d.id) });
+          break;
+        }
+        case 'smp-lib-listen': this._auditionPad(value); break;
+        case 'smp-lib-use': this._assignPad(this.sampler.sel, value); this._primeSamples(); this._samplerGo('pads'); this._renderLive(); break;
+        case 'lane-cell': this._toggleLaneCell(Number(target.dataset.lane), Number(target.dataset.step)); break;
+        case 'lane-toggle': { const lane = s.sampleLanes[Number(value)]; if (lane) { lane.on = !lane.on; this._renderTracks(); } break; }
+        case 'lane-preview': this._auditionPad(s.sampleLanes[Number(value)]?.padId); break;
+        case 'drum-kit': this._pushHistory(); s.drumKit = DRUM_KITS.includes(value) ? value : 'auto'; this._renderBeat(); if (!this.playing) this._preview('snare', 1); break;
+        case 'chord-voicing': this._pushHistory(); s.chordVoicing = value === 'pop' ? 'pop' : 'satb'; this._renderHarmony(); this._renderSatb(); break;
+        case 'chord-sound': this._pushHistory(); s.chordSound = value === 'choir' ? 'choir' : 'synth'; this._syncEngine(); this._renderHarmony(); break;
+        case 'fills': this._pushHistory(); s.fills = FILL_LENGTHS.includes(Number(value)) ? Number(value) : 0; this._renderBeat(); break;
         case 'bass-sound': s.bassSoundId = value; this._renderBeat(); if (!this.playing) this._preview('bass', 0); break;
 
         // Harmonie
@@ -7106,6 +9494,8 @@
             s.progSevenths = own.sevenths;
             s.progDominant = !!own.dominant;
             s.progDom7 = !!own.dom7;
+            s.progAlter = own.alter ? [...own.alter] : null;
+            s.progBass = own.bass ? [...own.bass] : null;
             s.progName = own.name;
             s.progOwnId = own.id;
           } else if (PROGRESSIONS.some((p) => p.id === value)) {
@@ -7127,19 +9517,36 @@
         case 'prog-slot':
           this.ui.progSel = Number(value);
           this._renderChordStrip(); this._renderProgEditor();
-          this._previewChord(this._progression().degrees[this.ui.progSel]);
+          this._previewChord(this._progression().degrees[this.ui.progSel], this.ui.progSel);
           break;
         case 'prog-deg': {
           const degrees = this._progBegin();
           degrees[this.ui.progSel] = Number(value);
           this._progCommit();
-          this._previewChord(Number(value));
+          this._previewChord(Number(value), this.ui.progSel);
+          break;
+        }
+        // Akkord tauschen: normal | geliehen (aus der Gegen-Tonart) | Zwischendominante; Bass: Grundton | Terz | Quinte.
+        case 'prog-alter': {
+          const degrees = this._progBegin();
+          s.progAlter[this.ui.progSel] = PROG_ALTERS.includes(value) ? value : null;
+          this._progCommit();
+          this._previewChord(degrees[this.ui.progSel], this.ui.progSel);
+          break;
+        }
+        case 'prog-bass': {
+          const degrees = this._progBegin();
+          s.progBass[this.ui.progSel] = [1, 2].includes(Number(value)) ? Number(value) : 0;
+          this._progCommit();
+          this._previewChord(degrees[this.ui.progSel], this.ui.progSel);
           break;
         }
         case 'prog-add': {
           const degrees = this._progBegin();
           if (degrees.length < PROG_MAX_CHORDS) {
             degrees.splice(this.ui.progSel + 1, 0, degrees[this.ui.progSel]);
+            s.progAlter.splice(this.ui.progSel + 1, 0, s.progAlter[this.ui.progSel]);
+            s.progBass.splice(this.ui.progSel + 1, 0, s.progBass[this.ui.progSel]);
             this.ui.progSel++;
           }
           this._progCommit();
@@ -7147,7 +9554,7 @@
         }
         case 'prog-remove': {
           const degrees = this._progBegin();
-          if (degrees.length > 1) degrees.splice(this.ui.progSel, 1);
+          if (degrees.length > 1) { degrees.splice(this.ui.progSel, 1); s.progAlter.splice(this.ui.progSel, 1); s.progBass.splice(this.ui.progSel, 1); }
           this.ui.progSel = Math.max(0, this.ui.progSel - 1);
           this._progCommit();
           break;
@@ -7156,7 +9563,7 @@
           const to = this.ui.progSel + Number(value);
           const degrees = this._progBegin();
           if (to >= 0 && to < degrees.length) {
-            [degrees[this.ui.progSel], degrees[to]] = [degrees[to], degrees[this.ui.progSel]];
+            for (const list of [degrees, s.progAlter, s.progBass]) [list[this.ui.progSel], list[to]] = [list[to], list[this.ui.progSel]];
             this.ui.progSel = to;
           }
           this._progCommit();
@@ -7170,6 +9577,7 @@
           s.progSevenths = false;
           s.progDominant = false;
           s.progDom7 = false;
+          s.progAlter = null; s.progBass = null;
           s.progName = t('lab.newProg');
           s.progOwnId = null;
           this.ui.progSel = 0;
@@ -7177,7 +9585,7 @@
           break;
         case 'prog-original':
           this._progBegin();
-          s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false;
+          s.progDegrees = null; s.progSevenths = false; s.progDominant = false; s.progDom7 = false; s.progAlter = null; s.progBass = null;
           this._progCommit();
           break;
         case 'prog-save': this._progSaveOwn(); break;
@@ -7368,6 +9776,11 @@
         return;
       }
       if (event.repeat) return;
+      if (this.ui.tab === 'sampler' && this.sampler.view === 'pads' && /^(Digit|Numpad)[1-8]$/.test(event.code)) {
+        event.preventDefault();
+        this._tapPad(Number(event.code.slice(-1)) - 1, { fromKey: true });
+        return;
+      }
       const base = 12 * (this.state.octave + 1);
       if (this.state.keysLayout === 'scale') {
         const degree = SCALE_KEY_CODES.indexOf(event.code);
@@ -7556,6 +9969,115 @@
   .step-cell.is-soft { background: rgba(var(--accent-rgb), .45); }
   .step-cell[data-label]::after { content: attr(data-label); }
   .step-cell.is-now { outline: 2px solid var(--text); outline-offset: 1px; }
+  .prog-alter-row { margin-top: 8px; }
+  .voicing-chips, .chordsound-chips, .fill-chips, .kit-chips { margin-top: 8px; }
+  .add9-row { margin-top: 8px; }
+  /* Sampler (Paket 9) */
+  .sampler-root { display: block; }
+  .smp-panel { margin-bottom: 12px; }
+  .smp-hint { margin: 6px 0 0; font-size: .74rem; color: var(--muted); line-height: 1.45; }
+  .smp-warn { margin: 8px 0 0; padding: 8px 10px; border-radius: 12px; background: #fff0c4; color: #5c4400; font-size: .74rem; line-height: 1.45; }
+  .smp-note { margin: 0 0 12px; padding: 8px 10px; border-radius: 12px; background: #fff0c4; color: #5c4400; font-size: .76rem; line-height: 1.45; }
+  .smp-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .smp-title { flex: 1; margin: 0; font-size: 1.05rem; font-weight: 800; }
+  .smp-back { width: 44px; height: 44px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); display: grid; place-items: center; }
+  .smp-done { min-height: 44px; padding: 0 16px; border-radius: 12px; background: var(--accent); color: #fff; font-weight: 800; }
+  .pad-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .pad-btn { --pad: var(--muted); position: relative; height: 92px; padding: 9px; border-radius: 16px; text-align: left; display: flex; flex-direction: column; justify-content: space-between;
+    border: 0; background: color-mix(in srgb, var(--pad) 16%, var(--surface)); color: var(--text); box-shadow: inset 0 -3px 0 rgba(0,0,0,.06); touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  .pad-btn.is-hit { --pad: #A78BFA; }
+  .pad-btn.is-tone { --pad: #4ECDC4; }
+  .pad-btn.is-loop { --pad: #6BCB77; }
+  .pad-btn.is-factory { --pad: #c9a98c; }
+  .pad-btn[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--text); }
+  .pad-btn[data-pressed] { transform: scale(.97); }
+  .pad-btn.is-free { background: transparent; border: 1.5px dashed color-mix(in srgb, var(--accent) 45%, var(--line)); align-items: center; justify-content: center; gap: 4px; color: var(--accent); }
+  .pad-btn.is-missing { border: 1.5px dashed var(--bad); background: transparent; }
+  .pad-name { font-size: 1.05rem; font-weight: 800; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .pad-plus { font-size: 1.4rem; font-weight: 800; line-height: 1; }
+  .pad-kind { font-size: .62rem; font-weight: 700; opacity: .85; }
+  .pad-bars { display: flex; align-items: center; gap: 1.5px; height: 22px; }
+  .pad-bars i { width: 2.5px; border-radius: 2px; background: var(--pad); }
+  .smp-info { margin-top: 12px; padding: 12px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .smp-info-text { flex: 1; min-width: 140px; display: grid; gap: 2px; }
+  .smp-info-text strong { font-size: .92rem; }
+  .smp-info-text span { font-size: .74rem; color: var(--muted); }
+  .smp-kit-del { margin-top: 8px; }
+  .smp-source { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .smp-big { min-height: 52px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); font-weight: 800; font-size: .88rem; }
+  .smp-big.is-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .smp-ico svg { width: 18px; height: 18px; }
+  .smp-lane-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; font-size: .82rem; }
+  .smp-kinds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .smp-kind { min-height: 84px; padding: 10px 8px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); text-align: left; display: grid; align-content: start; gap: 4px; }
+  .smp-kind strong { font-size: .92rem; }
+  .smp-kind span { font-size: .68rem; line-height: 1.35; color: var(--muted); }
+  .smp-kind[aria-pressed="true"] { border: 2px solid var(--accent); background: rgba(var(--accent-rgb), .12); }
+  .smp-live { width: 100%; height: 96px; border-radius: 14px; background: var(--text); display: block; }
+  .smp-meter { position: relative; height: 8px; margin-top: 10px; border-radius: 4px; overflow: hidden; display: flex; background: var(--line); }
+  .smp-meter i { display: block; height: 100%; }
+  .smp-meter .low { width: 37.5%; background: #c9b9a8; }
+  .smp-meter .good { width: 31%; background: #3f9a4a; }
+  .smp-meter .high { flex: 1; background: #d9a300; }
+  .smp-meter b { position: absolute; top: -2px; bottom: -2px; width: 3px; border-radius: 2px; background: var(--text); left: 0; }
+  .smp-meter-ends { display: flex; justify-content: space-between; font-size: .66rem; color: var(--muted); margin-top: 4px; }
+  .smp-level-state { font-size: .76rem; font-weight: 700; color: var(--muted); }
+  .smp-level-state.is-good { color: #2c6a33; }
+  .smp-level-state.is-high { color: #8a5a00; }
+  .smp-opts { padding-top: 6px; padding-bottom: 6px; }
+  .smp-opt { display: flex; align-items: center; gap: 12px; min-height: 52px; border-bottom: 1px solid var(--line); }
+  .smp-opt:last-child { border-bottom: 0; }
+  .smp-opt > span { flex: 1; display: grid; gap: 1px; }
+  .smp-opt strong { font-size: .84rem; }
+  .smp-opt span span { font-size: .72rem; color: var(--muted); }
+  .smp-opt input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent); }
+  .smp-rec-foot { display: grid; justify-items: center; gap: 8px; padding: 8px 0 16px; }
+  .smp-rec-btn { width: 88px; height: 88px; border-radius: 50%; border: 6px solid color-mix(in srgb, var(--bad) 25%, #fff); background: var(--bad); display: grid; place-items: center; padding: 0; }
+  .smp-rec-btn i { width: 30px; height: 30px; border-radius: 50%; background: #fff; transition: border-radius .15s; }
+  .smp-rec-btn.is-on i { border-radius: 6px; }
+  .smp-rec-label { font-size: .8rem; font-weight: 700; color: var(--muted); }
+  .smp-wave { position: relative; height: 104px; border-radius: 14px; background: var(--text); overflow: hidden; touch-action: none; }
+  .smp-wave canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .smp-shade { position: absolute; top: 0; bottom: 0; background: rgba(36,27,61,.72); pointer-events: none; }
+  .smp-shade.is-start { left: 0; }
+  .smp-trim { position: absolute; top: 0; bottom: 0; width: 28px; margin-left: -14px; cursor: ew-resize; touch-action: none; display: flex; justify-content: center; }
+  .smp-trim::before { content: ""; width: 4px; background: var(--bg); border-radius: 2px; }
+  .smp-trim::after { content: ""; position: absolute; width: 22px; height: 22px; border-radius: 6px; background: var(--bg); }
+  .smp-trim.is-start::after { top: 4px; }
+  .smp-trim.is-end::after { bottom: 4px; }
+  .smp-tools { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .smp-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); }
+  .smp-seg-btn { min-height: 40px; border-radius: 10px; font-weight: 800; font-size: .86rem; color: var(--muted); }
+  .smp-seg-btn[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(36,27,61,.18); }
+  .smp-detected { margin-top: 12px; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, #4ECDC4 22%, var(--surface)); }
+  .smp-detected strong { font-size: 1.3rem; }
+  .smp-detected span { font-size: .74rem; line-height: 1.4; }
+  .smp-sub { margin: 12px 0 6px; font-size: .68rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .smp-slider { display: grid; grid-template-columns: 96px 1fr 62px; align-items: center; gap: 10px; min-height: 46px; font-size: .82rem; font-weight: 700; }
+  .smp-slider input { width: 100%; accent-color: var(--accent); }
+  .smp-slider output { font-size: .74rem; color: var(--muted); text-align: right; font-weight: 400; }
+  .smp-field { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 10px; min-height: 48px; font-size: .82rem; font-weight: 700; }
+  .smp-field input { min-height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); padding: 0 10px; }
+  .smp-foot { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .chip.is-danger { color: var(--bad); border-color: var(--bad); }
+  .smp-lib { display: grid; gap: 6px; margin-top: 8px; }
+  .smp-lib-row { display: flex; gap: 8px; align-items: stretch; }
+  .smp-lib-use { flex: 1; text-align: left; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); display: grid; gap: 1px; }
+  .smp-lib-use strong { font-size: .88rem; }
+  .smp-lib-use span { font-size: .7rem; color: var(--muted); }
+  .live-pads { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+  .live-pad { height: 72px; align-items: center; justify-content: center; }
+  .live-switch { margin-left: auto; }
+  .track-row.is-lane .track-name { color: #5b3fa8; }
+  .track-row.is-lane .step-cell.is-hit { background: #A78BFA; }
+  .track-row.is-lane .step-cell.is-hit::after { content: attr(data-label); font-size: .55rem; font-weight: 800; color: #fff; }
+  .step-cell.is-missing { background: repeating-linear-gradient(45deg, var(--bad), var(--bad) 3px, transparent 3px, transparent 6px) !important; }
+  .pick-more { grid-column: 1 / -1; margin-top: 4px; }
+  .pick-more > summary { cursor: pointer; font-size: .82rem; font-weight: 700; color: var(--muted); padding: 8px 2px; }
+  .pick-more-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .pick-chosen { color: var(--accent); font-weight: 700; }
+  .sample-note { margin: 6px 0 0; font-size: .8rem; color: var(--muted); }
+  .step-cell.is-fill { opacity: .4; box-shadow: inset 0 0 0 1px var(--accent); }
 
   /* Lupe (Beat-Editor bildschirmfüllend, _setBeatZoom) */
   .zoom-btn {
@@ -8418,6 +10940,19 @@
         <div class="pill-row"><button class="chip" type="button" data-action="kit-reset">${t('lab.kitReset')}</button></div>
       </details>
     </section>
+    <section class="panel dc-bass-panel live-panel">
+      <div class="panel-head"><h2>${t('lab.sampler.liveTitle')}</h2>${help('helpLive')}<label class="switch live-switch"><input type="checkbox" role="switch" data-switch="liveWrite" checked><span class="switch-track" aria-hidden="true"></span><span>${t('lab.sampler.liveWrite')}</span></label></div>
+      ${helpText('helpLive')}
+      <div class="live-pads" role="group" aria-label="${t('lab.sampler.liveTitle')}"></div>
+    </section>
+    <section class="panel dc-bass-panel kit-panel">
+      <div class="panel-head"><h2>${t('lab.drumKit')}</h2>${help('helpKit')}</div>
+      ${helpText('helpKit')}
+      <div class="chip-row kit-chips" role="group" aria-label="${t('lab.drumKit')}"></div>
+      <div class="panel-head"><h2>${t('lab.fills')}</h2>${help('helpFills')}</div>
+      ${helpText('helpFills')}
+      <div class="chip-row fill-chips" role="group" aria-label="${t('lab.fills')}"></div>
+    </section>
     <section class="panel dc-bass-panel">
       <div class="panel-head"><h2>${t('lab.bassSound')}</h2>${help('helpBass')}</div>
       ${helpText('helpBass')}
@@ -8463,6 +10998,8 @@
           <button class="chip" type="button" data-action="prog-remove">− ${t('lab.progRemove')}</button>
         </div>
         <div class="switch-row" style="margin-top:10px">${toggle('progSevenths', 'lab.progSevenths')}${toggle('progDominant', 'lab.progDominant')}</div>
+        <div class="prog-alter-row"><span class="chip-label">${t('lab.alterLabel')}</span><div class="chip-row prog-alter-chips" role="group" aria-label="${t('lab.alterLabel')}"></div></div>
+        <div class="prog-alter-row"><span class="chip-label">${t('lab.bassLabel')}</span><div class="chip-row prog-bass-chips" role="group" aria-label="${t('lab.bassLabel')}"></div></div>
         <label class="prog-name-row" hidden><span>${t('lab.melName')}</span><input class="mel-name-input prog-name" type="text" maxlength="40" autocomplete="off"></label>
         <div class="mel-foot">
           <button class="chip" type="button" data-action="prog-original">${t('lab.melOriginal')}</button>
@@ -8479,6 +11016,9 @@
       <div class="panel-head"><h2>${t('lab.satbTitle')}</h2>${help('satbHint')}</div>
       ${helpText('satbHint')}
       <div class="switch-row">${toggle('chordsOn', 'lab.chordsPlay')}</div>
+      <div class="chip-row voicing-chips" role="group" aria-label="${t('lab.voicing')}"></div>
+      <div class="switch-row add9-row">${toggle('chordAdd9', 'lab.chordAdd9')}</div>
+      <div class="chip-row chordsound-chips" role="group" aria-label="${t('lab.chordSoundLabel')}"></div>
       <div class="satb-list"></div>
     </section>
     <section class="panel">
@@ -8486,6 +11026,10 @@
       ${helpText('droneHint')}
       <div class="switch-row">${toggle('droneOn', 'lab.droneOn')}${toggle('droneFifth', 'lab.droneFifth')}</div>
     </section>
+  </section>
+
+  <section class="tab-panel" data-tab-panel="sampler" hidden>
+    <div class="sampler-root"></div>
   </section>
 
   <section class="tab-panel" data-tab-panel="melody" hidden>
@@ -8538,6 +11082,7 @@
       ${helpText('helpSound')}
       ${pickerTrigger('sound')}
       <div class="reset-sound-row"><button class="chip" type="button" data-action="reset-sound">${t('lab.resetSound')}</button></div>
+      <p class="sample-note" role="status" hidden>${t('lab.sampleFallback')}</p>
       <div class="knob-row macro-knobs"></div>
       <div class="auto-box">
         <div class="auto-row">
@@ -8558,40 +11103,40 @@
       <details class="expert">
         <summary>${pictogramIcon('sliders')} ${t('lab.allControls')}</summary>
         <div class="module-grid">
-          <div class="module">
+          <div class="module" data-mod="osc">
             <div class="module-head"><span class="module-icon">${pictogramIcon('pulse')}</span><h3>${t('lab.oscillator')}</h3>${help('helpOsc')}</div>
             ${helpText('helpOsc')}
             <div class="wave-row" role="group" aria-label="${t('lab.waveformAria')}"></div>
           </div>
-          <div class="module">
+          <div class="module" data-mod="env">
             <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>${t('lab.envelope')}</h3>${help('helpEnv')}</div>
             ${helpText('helpEnv')}
             <svg class="envelope-graph" viewBox="0 0 92 40" preserveAspectRatio="none"><path class="envelope-path" d=""/></svg>
             <div class="adsr-sliders"></div>
           </div>
-          <div class="module">
+          <div class="module" data-mod="filter">
             <div class="module-head"><span class="module-icon">${pictogramIcon('target')}</span><h3>${t('lab.filter')}</h3>${help('helpFilter')}</div>
             ${helpText('helpFilter')}
             <div class="chip-row filter-type-chips"></div>
             <div class="knob-row filter-knobs"></div>
           </div>
-          <div class="module">
+          <div class="module" data-mod="lfo">
             <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>${t('lab.lfo')}</h3>${help('helpLfo')}</div>
             ${helpText('helpLfo')}
             <div class="knob-row lfo-knobs"></div>
             <label class="select-line"><span>${t('lab.lfoSyncLabel')}</span><select data-field="lfoSync"></select></label>
           </div>
-          <div class="module">
+          <div class="module" data-mod="char">
             <div class="module-head"><span class="module-icon">${pictogramIcon('star')}</span><h3>${t('lab.character')}</h3>${help('helpCharacter')}</div>
             ${helpText('helpCharacter')}
             <div class="knob-row character-knobs"></div>
           </div>
-          <div class="module">
+          <div class="module" data-mod="vib">
             <div class="module-head"><span class="module-icon">${pictogramIcon('wave')}</span><h3>${t('lab.vibrato')}</h3>${help('helpVibrato')}</div>
             ${helpText('helpVibrato')}
             <div class="knob-row vibrato-knobs"></div>
           </div>
-          <div class="module">
+          <div class="module" data-mod="glide">
             <div class="module-head"><span class="module-icon">${pictogramIcon('stairs')}</span><h3>${t('lab.glide')}</h3>${help('helpGlide')}</div>
             ${helpText('helpGlide')}
             <div class="knob-row glide-knobs"></div>
@@ -8786,11 +11331,12 @@
   const TEST_EXPORT = {
     MODES, PROGRESSIONS, MELODIES, DRUM_PATTERNS, METERS, SATB_RANGES,
     voiceChord, voicePairs, voiceProgressionSatb, leadingToneOf, VOICING_STATS, chordPitchClasses, chordSteps, degreeSemis, progFitsMode, modeForProg, progsForRandom,
-    eighthsPerBeat, tempoSymbol, stepSecondsFor,
-    melodyOffset, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree,
+    eighthsPerBeat, tempoSymbol, stepSecondsFor, sanitizeSound, PROG_ALTERS, normAlter, normBass, sanitizeProgAlter, sanitizeProgBass, bassNoteMidi,
+    SAMPLER_MAX_SAMPLES, SAMPLER_MAX_SEC, SAMPLER_MAX_LANES, SAMPLER_PADS, FACTORY_SAMPLES, FACTORY_KITS, sanitizeSampleMeta, sanitizeSampler, sanitizeSampleLanes, autoTrimBounds, wavePeaks, detectPitch, sampleToneTarget, sampleToneRate, quantizeTapStep, loopRate, MELODY_ORDER, BEAT_ORDER, PRESET_ORDER, orderIndexes, firstPatternOfMeter, firstMelodyOfMeter, SAMPLE_INSTRUMENTS, SAMPLE_FALLBACK, LAB_INST, hatAccent, fillAt, bassNoteSteps, bassRootsFor, BASS_SOUNDS, FILL_HITS, FILL_LENGTHS, resolveKit, pinLegacySound, LabSamples, DRUM_KITS, PERC_SOUNDS, percOf,
+    melodyOffset, snapMelodyMidi, melodyBarShifts, melodyRefOf, arpRhythmLengths, chordArpNotes, ARP_RHYTHMS, foldDegree,
     spell, noteLabel, spellCheck, SPELL_CASES, romanNumeral, chordName, chordQuality,
     sanitizeProgLibrary, sanitizeState, defaultState, sanitizeMelodyLibrary, sanitizeMelodyBars, recNotesToBars, melodyMidi,
-    CHOIR_TASKS, choirTaskState, melodyNotesAt, choirTargetPc, patternIndexByName, beatFromPattern,
+    GrooveEngine, CHOIR_TASKS, choirTaskState, melodyNotesAt, choirTargetPc, patternIndexByName, beatFromPattern,
     // Workshop
     LESSON_TIERS, LESSON_AREAS, WORKSHOP_LESSONS, lessonState, applyTaskSet, sanitizeWorkshopProgress, focusKeyKnown,
     stepsOn, sameSteps, hitAt, progOf, progDegreesOf, progSeventhsOf, melodyBarsOf, lastPlayed, hasRun,

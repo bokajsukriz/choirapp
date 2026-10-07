@@ -24,6 +24,10 @@ Alles bleibt auf dem Gerät:
   (Typ `toolState`) und der Übe-Fortschritt (Datensatz `progress`: nur
   Tagesaggregate der letzten 180 Tage, die letzten Aufgaben je Bereich für
   Stufenvorschläge, Gewichtungen der Intervall-Übungen).
+- **Groove Lab, Sampler:** eigene Aufnahmen liegen als `labSample:<id>` in
+  `files` (Blob des MediaRecorders, unverändert) und als meta-Typ `labSample`
+  (Name, Art, Schnitt, Tonhöhe …). Details im Abschnitt „Groove Lab: Samples
+  und Sampler“.
 - **`localStorage`** — Fehlerprotokoll (`bvg-error-log`) und Diagnose-Log
   (`bvg-debug-log`), je bis zu einer festen Anzahl Einträge.
 - **Cache Storage** — die App-Shell (`index.html`, alle Skripte, `manifest.json`,
@@ -266,6 +270,59 @@ python3 -m http.server
 ```
 
 Danach `http://localhost:8000` im Browser öffnen.
+
+## Groove Lab: Samples und Sampler
+
+Das Groove Lab (`groove-lab.js`) klingt ohne geladene Samples rein synthetisch
+(offline, erster Start, Ladefehler); die Samples verbessern den Klang, sie sind
+keine Voraussetzung. Zwei getrennte Dinge:
+
+**Mitgelieferte Samples** (`samples/`, Herkunft und Lizenzen in
+`samples/LIZENZ.md`): Schlagzeug (VCSL, CC0) für das Kit „Auto/Synth/Akustik/
+Hybrid“, Percussion, Fills und Ride; Bass, Gitarre, Chor, Streicher, Brass
+(FluidR3_GM, CC BY 3.0) und das Klavier (`piano-samples.js`, Salamander) für die
+Sample-Klänge „Klavier“, „E-Gitarre“, „Chor Ooh“, „Streicher“, „Brass Stab“, den
+Finger-Bass und den Chor-Klang der Akkorde. Sie werden im Hintergrund nach dem
+Start des Audiokontexts geladen (`LabSamples`, `GrooveEngine.ensureInstrument`),
+liegen im Samples-Cache des Service Workers (`SAMPLES_CACHE`, bei geänderten
+Dateien hochzählen) und fehlen sie, übernimmt die Synthese (Ersatzklang, die
+Oberfläche sagt es). Chor-Aufgaben, Workshop und de:construct sind auf den
+früheren Klang gepinnt (`pinLegacySound`).
+
+**Sampler** (Reiter „Sampler“, nicht in Workshop und de:construct): eigene
+Aufnahmen als Pads.
+
+- *Datenhaltung:* Audio unverändert als Blob (Format des Geräts, wie die
+  REC-Aufnahmen) im IndexedDB-Store `files` unter `labSample:<id>`, Metadaten
+  (`sanitizeSampleMeta`) als meta-Typ `labSample`. Der Lab-Zustand hält nur
+  Verweise: `sampler` (Kits à 8 Pads, gewähltes Kit) und `sampleLanes`
+  (Sample-Spuren im Raster, höchstens vier). Die App reicht dem Lab
+  `options.storage.samples` (`list/get/put/remove`) und `options.mic`
+  (`open/close/quality`, dieselben Aufnahme-Einstellungen wie der REC: Echo-
+  Unterdrückung, Rauschfilter und Automatikpegel aus).
+- *Grenzen:* höchstens 64 Samples; Schlag ≤ 2 s, Ton ≤ 4 s, Loop ≤ 2 Takte und
+  ≤ 10 s.
+- *Aufnehmen:* Art Schlag/Ton/Phrase, Live-Wellenform und Pegelanzeige („Pegel
+  gut“ −18…−3 dBFS), Einzählen (bei Phrase Pflicht), Klick, Auto-Schnitt (−45 dB
+  relativ zum Spitzenwert, 2 ms Vorlauf, 10 ms Ausblenden); Ton: Tonhöhe per
+  YIN, ohne erkennbare Tonhöhe wird als Schlag gespeichert; Phrase: ab Takt-Eins,
+  um `outputLatency + baseLatency` versetzt, im Editor nachjustierbar.
+- *Wiedergabe:* Schlag über den Drum-Bus (mit Pumpen bei Kick-Spur), Ton über
+  die Ebene `keys` — Zielton je Akkord (`sampleToneTarget`: automatisch der
+  nächste Akkordton, Umstimmung auf ±7 Halbtöne begrenzt), Loop nur auf einer
+  Takt-Eins und taktweise. **Loops laufen in v1 nur im Aufnahmetempo ±3 %**
+  (`playbackRate`); sonst schweigt der Loop und die Oberfläche nennt das Tempo
+  — nie wird die Tonhöhe verschoben. (Strecken mit `signalsmith-stretch.js`
+  wäre ein größerer Umbau und steht offen, siehe `TODO.md`.)
+- *Ins Raster:* „Ins Raster legen“ erzeugt eine Sample-Spur unter der Zielspur
+  (Schritte werden kopiert, die Zielspur schweigt, mit „Originalklang leise
+  darunter“ spielt sie mit 35 %); „Live einspielen“ rastet Anschläge auf die
+  nächste Sechzehntel ein (`quantizeTapStep`, minus Ausgabe-Latenz). Alles ist
+  über „Rückgängig“ zurücknehmbar.
+- *Teilen/Löschen:* Samples reisen **nicht** in einem `GL1.`-Code und nicht im
+  Backup. Fehlt ein Sample auf dem Gerät, bleibt die Spur stumm und zeigt
+  „Sample fehlt auf diesem Gerät“. „Alle Daten löschen“ (`DB.wipe`) leert beide
+  Stores und nimmt die Samples mit.
 
 ## Selbsttests
 

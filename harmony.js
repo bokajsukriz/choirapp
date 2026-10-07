@@ -91,6 +91,9 @@
     ['spell', [10, null, 'major', 'de'], 'B'], ['spell', [11, null, 'major', 'en'], 'B'], ['spell', [1, null, 'major', 'de'], 'Cis'],
     ['spell', [3, null, 'major', 'en'], 'E♭'], ['spell', [8, 9, 'minor', 'de'], 'Gis'], ['spell', [1, 1, 'major', 'pl'], 'Des'],
     ['noteLabel', [60, null, 'major', 'de'], 'c′'], ['noteLabel', [60, null, 'major', 'en'], 'C4'], ['noteLabel', [48, null, 'major', 'de'], 'c'],
+    // Geliehene Akkorde (in C-Dur aus der Moll-Schreibung der Gegen-Tonart) und Zwischendominanten/Umkehrungen:
+    ['spell', [10, 0, 'minor', 'de'], 'B'], ['spell', [10, 0, 'minor', 'en'], 'B♭'], ['spell', [8, 0, 'minor', 'de'], 'As'], ['spell', [8, 0, 'minor', 'en'], 'A♭'],
+    ['spell', [3, 0, 'minor', 'de'], 'Es'], ['spell', [11, 0, 'major', 'de'], 'H'], ['spell', [4, 0, 'major', 'de'], 'E'], ['spell', [9, 0, 'major', 'de'], 'A'], ['spell', [2, 0, 'major', 'de'], 'D'],
     ['noteLabel', [36, null, 'major', 'de'], 'C'], ['noteLabel', [24, null, 'major', 'de'], 'C₁'], ['noteLabel', [72, null, 'major', 'de'], 'c″'],
     ['noteLabel', [84, null, 'major', 'de'], 'c‴'], ['noteLabel', [61, 1, 'major', 'de'], 'des′'], ['noteLabel', [47, 7, 'major', 'de'], 'H'],
     ['noteLabel', [70, 5, 'major', 'en'], 'B♭4'], ['noteLabel', [69, null, 'major', 'de'], 'a′'], ['noteLabel', [40, null, 'major', 'de'], 'E'],
@@ -128,8 +131,13 @@
    * gegen gis). Nur Moll: Dorisch und Mixolydisch leben vom Moll-v und
    * behalten es (keine Leitton-Regeln dort).
    */
-  function chordSteps(steps, modeId, prog, deg) {
-    if (prog?.dom7) {
+  function chordSteps(steps, modeId, prog, deg, alter = null) {
+    // Geliehener Akkord: aus der gleichnamigen Gegen-Tonart (Dur ← Moll: iv, ♭VI, ♭VII,
+    // ♭III; Moll ← Dur: IV, V) — die Akkorde werden aus deren Tonleiter gebaut.
+    if (alter === 'borrow') return modeId === 'minor' || modeId === 'dorian' ? MAJOR : MINOR;
+    // Zwischendominante: Durdreiklang (mit Septime Dominantseptakkord) auf der Stufe, gebaut
+    // aus der Mixolydisch-Leiter über dem Grundton (wie der dom7-Zweig unten).
+    if (alter === 'secdom' || prog?.dom7) {
       // Blues: über jedem Akkordgrundton die Mixolydisch-Leiter, damit
       // Akkord (Septime klein), Arp und Melodie zum Dominantseptakkord
       // passen: C7 = C–E–G–B, F7 = F–A–C–Es, G7 = G–H–D–F. Die Stufen
@@ -265,7 +273,8 @@
    *  Dominantfunktion hat: Dur V/V7/vii° (7. Stufe), Moll mit Dur-Dominante
    *  V/V7 (erhöhte 7. Stufe). Sonst — natürliches Moll, Dorisch,
    *  Mixolydisch — null: dort gelten keine Leitton-Regeln. */
-  function leadingToneOf(keyRoot, modeId, prog, deg) {
+  function leadingToneOf(keyRoot, modeId, prog, deg, alter = null) {
+    if (alter) return null;
     const d = mod(deg, 7);
     if (modeId === 'major' && (d === 4 || d === 6)) return mod(keyRoot + 11, 12);
     if (modeId === 'minor' && prog?.dominant && d === 4) return mod(keyRoot + 11, 12);
@@ -282,11 +291,13 @@
     let list = [];
     for (let pass = 0; pass < 6; pass++) {
       const before = JSON.stringify(list);
-      list = prog.degrees.map((deg) => {
-        const steps = chordSteps(mode.steps, mode.id, prog, deg);
+      list = prog.degrees.map((deg, i) => {
+        const alter = prog.alter?.[i] || null;
+        const steps = chordSteps(mode.steps, mode.id, prog, deg, alter);
         const pcs = chordPitchClasses(keyRoot, steps, deg, prog.sevenths);
-        const leading = leadingToneOf(keyRoot, mode.id, prog, deg);
-        const bassIndex = chordQuality(steps, deg) === 'dim' ? 1 : 0;
+        const leading = leadingToneOf(keyRoot, mode.id, prog, deg, alter);
+        // Umkehrung der Folge (bass: 0 Grundton, 1 Terz, 2 Quinte); sonst steht der verminderte Akkord auf der Terz.
+        const bassIndex = prog.bass?.[i] || (chordQuality(steps, deg) === 'dim' ? 1 : 0);
         prev = voiceChord(pcs, prev, { leading, prevLeading, bassIndex });
         prevLeading = leading;
         return prev;
@@ -298,11 +309,79 @@
     const n = list.length;
     if (n > 1 && voicePairs(list[n - 1], list[0])) {
       const deg = prog.degrees[n - 1];
-      const steps = chordSteps(mode.steps, mode.id, prog, deg);
+      const alter = prog.alter?.[n - 1] || null;
+      const steps = chordSteps(mode.steps, mode.id, prog, deg, alter);
       list[n - 1] = voiceChord(chordPitchClasses(keyRoot, steps, deg, prog.sevenths), list[n - 2], {
-        leading: leadingToneOf(keyRoot, mode.id, prog, deg), prevLeading: leadingToneOf(keyRoot, mode.id, prog, prog.degrees[n - 2]),
-        bassIndex: chordQuality(steps, deg) === 'dim' ? 1 : 0, next: list[0],
+        leading: leadingToneOf(keyRoot, mode.id, prog, deg, alter), prevLeading: leadingToneOf(keyRoot, mode.id, prog, prog.degrees[n - 2], prog.alter?.[n - 2] || null),
+        bassIndex: prog.bass?.[n - 1] || (chordQuality(steps, deg) === 'dim' ? 1 : 0), next: list[0],
       });
+    }
+    return list;
+  }
+
+  /**
+   * Pop-Satz einer Folge (neben dem SATB-Satz): Bass auf dem Akkordgrundton
+   * (oder dem Basston `bassIndexes[i]`: 0 Grundton, 1 Terz, 2 Quinte) im Bereich
+   * 40–52, die drei Oberstimmen in enger Lage (alle innerhalb einer Oktave),
+   * Oberstimme in 60–`topMax`. Jede Stimme geht zum nächsten Akkordton mit
+   * kleinster Gesamtbewegung, ohne Stimmkreuzung und, wenn möglich, ohne
+   * offene Quint-/Oktavparallelen. Gleiches Format wie voiceProgressionSatb:
+   * Liste von { S, A, T, B } je Akkord (S = höchste, T = tiefste Oberstimme),
+   * deshalb gelten Fokus/Stumm je Stimme weiter.
+   * `add9`: bei Dur-/Moll-Dreiklängen ohne Septime ersetzt die None (in der
+   * Tonart) den verdoppelten Grundton in den Oberstimmen; nie bei vermindert,
+   * nie bei Dominantseptakkorden, nie bei Umkehrungen.
+   */
+  function voiceProgressionPop(keyRoot, mode, prog, { add9 = false, topMax = 69, bassIndexes = null } = {}) {
+    const chords = prog.degrees.map((deg, i) => {
+      const steps = chordSteps(mode.steps, mode.id, prog, deg, prog.alter?.[i] || null);
+      const pcs = chordPitchClasses(keyRoot, steps, deg, prog.sevenths);
+      const bi = Math.min(bassIndexes?.[i] ?? prog.bass?.[i] ?? 0, pcs.length - 1);
+      const quality = chordQuality(steps, deg);
+      let upper = pcs.length === 4 ? pcs.filter((_, k) => k !== bi) : pcs.slice();
+      if (add9 && bi === 0 && pcs.length === 3 && !prog.dom7 && (quality === 'maj' || quality === 'min')) {
+        upper = [mod(keyRoot + degreeSemis(steps, deg + 1), 12), pcs[1], pcs[2]];
+      }
+      return { bassPc: pcs[bi], upper };
+    });
+    const top = clamp(topMax, 60, 72);
+    let prev = { S: 64, A: 60, T: 55, B: 46 };
+    let list = [];
+    const voice = (chord, prior) => {
+      // Bass: Grundton (Oktavlage 40–52); Oberstimmen: oberste Stimme 60–top, die
+      // anderen als nächste tiefere Akkordtöne (enge Lage, höchstens eine Oktave
+      // zwischen T und S). Gewählt wird die kleinste Gesamtbewegung, möglichst
+      // ohne offene Quint-/Oktavparallelen (nur wenn es nicht anders geht, mit).
+      // Liegt unter einer niedrigen Obergrenze (Melodie an) kein Akkordton im
+      // Bereich 60–top, darf die Oberstimme ausnahmsweise bis 54 hinabgehen.
+      for (const lowest of [60, 54]) {
+        let best = null;
+        let bestScore = Infinity;
+        let fallback = null;
+        let fallbackScore = Infinity;
+        for (let B = 40; B <= 52; B++) {
+          if (mod(B, 12) !== chord.bassPc) continue;
+          for (let S = lowest; S <= top; S++) {
+            if (!chord.upper.includes(mod(S, 12))) continue;
+            const rest = chord.upper.filter((pc) => pc !== mod(S, 12));
+            const below = (from, pcs) => { let m = from - 1; while (!pcs.includes(mod(m, 12))) m--; return m; };
+            const A = below(S, rest);
+            const T = below(A, rest.filter((pc) => pc !== mod(A, 12)));
+            if (T <= B || S - T > 12) continue;
+            const next = { S, A, T, B };
+            const score = Math.abs(S - prior.S) + Math.abs(A - prior.A) + Math.abs(T - prior.T) + Math.abs(B - prior.B) * .5 + (B + 100) * 1e-6;
+            if (score < fallbackScore) { fallbackScore = score; fallback = next; }
+            if (voicePairs(prior, next) === 0 && score < bestScore) { bestScore = score; best = next; }
+          }
+        }
+        if (best || fallback) return best || fallback;
+      }
+      return { S: prior.S, A: prior.A, T: prior.T, B: prior.B };
+    };
+    for (let pass = 0; pass < 6; pass++) {
+      const before = JSON.stringify(list);
+      list = chords.map((chord) => { prev = voice(chord, prev); return prev; });
+      if (pass > 0 && JSON.stringify(list) === before) break;
     }
     return list;
   }
@@ -361,7 +440,7 @@
     spell, noteLabel, SPELL_CASES, spellCheck,
     chordQuality, chordPitchClasses, chordSteps, CHORD_SHAPES,
     SATB, VOICE_RANGES, PRACTICE_RANGES, practiceRange,
-    VOICING_STATS, voicePairs, voiceChord, leadingToneOf, voiceProgressionSatb,
+    VOICING_STATS, voicePairs, voiceChord, leadingToneOf, voiceProgressionSatb, voiceProgressionPop,
     parallelCount, voiceUpperClose,
   });
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -20624,8 +20624,8 @@ async function runMusicSelfTests({ log = true } = {}) {
     if (arpF.join() !== '65,69,72') failed.push(`Groove Lab: Arp im Akkord E über F = ${arpF}`);
     // Beats (Reihenfolge und Anzahl unverändert).
     const pat = (name) => T.DRUM_PATTERNS.find((p) => p.name === name);
-    if (T.DRUM_PATTERNS.length !== 23 || T.DRUM_PATTERNS[13].name !== 'Shuffle Roll' || T.DRUM_PATTERNS[19].name !== 'Folk Jig') failed.push('Groove Lab: Loop-Liste verschoben oder Shuffle Roll fehlt');
-    if (T.MELODIES.length !== 22) failed.push('Groove Lab: Melodie-Liste verändert');
+    if (T.DRUM_PATTERNS.length !== 27 || T.DRUM_PATTERNS[13].name !== 'Shuffle Roll' || T.DRUM_PATTERNS[19].name !== 'Folk Jig') failed.push('Groove Lab: Loop-Liste verschoben oder Shuffle Roll fehlt');
+    if (T.MELODIES.length !== 29 || T.MELODIES[21].name !== 'Jig Hop') failed.push('Groove Lab: Melodie-Liste verändert');
     const eighths = '0,2,4,6,8,10,12,14';
     if (pat('Swing Soul').hat.join() !== eighths || pat('Swing Soul').swingUnit !== 8) failed.push('Groove Lab: Swing Soul ohne Achtel-Hat/Achtel-Swing');
     if (pat('Deep House').hat.join() !== eighths || pat('Deep House').open.join() !== '2,6,10,14') failed.push('Groove Lab: Deep House Hats falsch');
@@ -20695,18 +20695,21 @@ async function runMusicSelfTests({ log = true } = {}) {
               changes++;
               if (H.voicePairs(list[(i - 1 + n) % n], cur)) parallels++;
             }
-            const lead = H.leadingToneOf(key, mode.id, p, p.degrees[i]);
+            const alter = p.alter?.[i] || null;
+            const lead = H.leadingToneOf(key, mode.id, p, p.degrees[i], alter);
             if (lead !== null && V.filter((v) => mod12(cur[v]) === lead).length > 1) doubled++;
             for (const v of V) if (cur[v] < T.SATB_RANGES[v][0] || cur[v] > T.SATB_RANGES[v][1]) range++;
             if (!(cur.B < cur.T && cur.T < cur.A && cur.A < cur.S)) crossing++;
-            const steps = T.chordSteps(mode.steps, mode.id, p, p.degrees[i]);
-            if (T.chordQuality(steps, p.degrees[i]) === 'dim' && mod12(cur.B) !== T.chordPitchClasses(key, steps, p.degrees[i], p.sevenths)[1]) failed.push(`Groove Lab: ${p.id} ${mode.id} ${key}: verminderter Akkord nicht als Sextakkord`);
+            const steps = T.chordSteps(mode.steps, mode.id, p, p.degrees[i], alter);
+            const pcsHere = T.chordPitchClasses(key, steps, p.degrees[i], p.sevenths);
+            const wantBass = p.bass?.[i] || (T.chordQuality(steps, p.degrees[i]) === 'dim' ? 1 : 0);
+            if (mod12(cur.B) !== pcsHere[wantBass]) failed.push(`Groove Lab: ${p.id} ${mode.id} ${key}: Basston stimmt nicht (Umkehrung/verminderter Sextakkord)`);
           });
         }
       }
     }
     const fallbacks = H.VOICING_STATS.fallbacks - fallbacksBefore;
-    if (changes !== 4320) failed.push(`Groove Lab: ${changes} statt 4320 Akkordwechsel geprüft`);
+    if (changes !== 5088) failed.push(`Groove Lab: ${changes} statt 5088 Akkordwechsel geprüft`);
     if (parallels) failed.push(`Groove Lab: ${parallels} Akkordwechsel mit Quint-/Oktavparallelen (${fallbacks} ohne regelkonforme Lösung)`);
     if (doubled) failed.push(`Groove Lab: ${doubled}× Leitton verdoppelt`);
     if (range) failed.push(`Groove Lab: ${range} Stimmen außerhalb des Umfangs`);
@@ -20779,8 +20782,8 @@ async function runMusicSelfTests({ log = true } = {}) {
       if (icons.has(p.icon)) failed.push(`Loop ${p.name}: Icon ${p.icon} doppelt`);
       icons.add(p.icon);
     }
-    const names = T.DRUM_PATTERNS.slice(20).map((p) => p.name).join();
-    if (names !== 'Gospel Shuffle,Swing Ride,Vocal Perc Basic' || T.DRUM_PATTERNS.slice(20).some((p) => p.cat !== 'calm')) failed.push(`Groove Lab: neue Grooves ${names}`);
+    const names = T.DRUM_PATTERNS.slice(20, 23).map((p) => p.name).join();
+    if (names !== 'Gospel Shuffle,Swing Ride,Vocal Perc Basic' || T.DRUM_PATTERNS.slice(20, 23).some((p) => p.cat !== 'calm')) failed.push(`Groove Lab: neue Grooves ${names}`);
     // Jede Aufgabe setzt nur bestehende Felder mit gültigen Werten.
     const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
     const base = T.defaultState();
@@ -21407,6 +21410,397 @@ async function runMusicSelfTests({ log = true } = {}) {
     if (!same(T.sanitizeDeconstruct({ song: 'e2', revealedEls: 'x' }).revealedEls, {}) || !same(T.sanitizeDeconstruct({ song: 'e2' }).revealedEls, {})) failed.push('de:construct: alte Ablage ohne revealedEls');
     const savedView = T.sanitizeState(clone({ ...T.defaultState(), view: 'deconstruct' })).view;
     if (savedView !== 'deconstruct') failed.push('de:construct: view geht beim Speichern verloren');
+  }
+
+  // GROOVE-LAB-KLANG-TESTS (ARBEITSANWEISUNG-GROOVE-LAB-KLANG-UND-SAMPLER) — weitere Pakete hängen hier an.
+  {
+    const clone = (x) => JSON.parse(JSON.stringify(x));
+    // Paket 3: Kit, Feel, Percussion.
+    const pat = (name) => T.DRUM_PATTERNS[T.patternIndexByName(name)];
+    for (const [cat, want] of [['dance', 'synth'], ['breaks', 'hybrid'], ['calm', 'acoustic'], ['funky', 'acoustic']]) {
+      if (T.resolveKit('auto', { cat }) !== want) failed.push(`Groove Lab: Kit auto/${cat} ≠ ${want}`);
+    }
+    if (T.resolveKit('synth', { cat: 'calm' }) !== 'synth' || T.resolveKit('hybrid', { cat: 'dance' }) !== 'hybrid') failed.push('Groove Lab: festes Kit wird überschrieben');
+    const accents = [0, 1, 2, 3, 4, 6].map((st) => T.hatAccent(st, '4/4'));
+    if (accents.join() !== '1,0.55,0.72,0.55,1,0.72') failed.push(`Groove Lab: Hi-Hat-Akzente 4/4 = ${accents}`);
+    if (T.hatAccent(4, '3/4') !== 1 || T.hatAccent(2, '3/4') !== .6 || [0, 1, 2, 3, 4, 5, 6, 8].map((st) => T.hatAccent(st, '6/8')).join() !== '1,0.55,0.72,0.55,0.72,0.55,1,0.72') failed.push('Groove Lab: Hi-Hat-Akzente 3/4 und 6/8 (punktierte Viertel)');
+    const fresh = T.defaultState();
+    if (fresh.drumKit !== 'auto' || fresh.feel !== true || fresh.percSound !== 'tamb' || fresh.trackOn.perc !== true) failed.push('Groove Lab: Standard für Kit/Feel/Percussion');
+    const old = clone(fresh); delete old.drumKit; delete old.feel; delete old.percSound; delete old.trackOn.perc; delete old.beat.perc;
+    const loaded = T.sanitizeState(old);
+    if (loaded.drumKit !== 'auto' || loaded.feel !== true || loaded.percSound !== 'tamb' || !loaded.beat.perc) failed.push('Groove Lab: alter Stand ohne Kit-Felder lädt nicht');
+    const oldChoir = T.sanitizeState({ ...old, view: 'choir' });
+    if (oldChoir.drumKit !== 'synth' || oldChoir.feel !== false) failed.push('Groove Lab: alter Chor-Stand klingt nicht mehr wie früher');
+    const junk = T.sanitizeState({ ...clone(fresh), drumKit: 'laut', feel: 'ja', percSound: 'gong' });
+    if (junk.drumKit !== 'auto' || junk.feel !== true || junk.percSound !== 'tamb') failed.push('Groove Lab: ungültiges Kit/Feel/Percussion wird übernommen');
+    if (!T.beatFromPattern(pat('Pulse Basic')).perc || Object.keys(T.beatFromPattern(pat('Pulse Basic')).perc).length) failed.push('Groove Lab: Beat ohne perc-Spur');
+    if (pat('Swing Ride').hatSound !== 'ride') failed.push('Groove Lab: Swing Ride ohne hatSound');
+    // Pinning: Chor-Aufgaben, Workshop und de:construct klingen wie zuvor (Synthese, kein Feel, keine Percussion).
+    const pinned = (st, what) => { if (st.drumKit !== 'synth' || st.feel !== false || st.trackOn.perc !== false) failed.push(`Groove Lab: ${what} nicht auf Synthese gepinnt`); };
+    for (const task of T.CHOIR_TASKS) pinned(T.choirTaskState(clone(fresh), task, 'S'), `Chor-Aufgabe ${task.id}`);
+    for (const lesson of T.WORKSHOP_LESSONS) pinned(T.lessonState(clone(fresh), lesson), `Workshop ${lesson.id}`);
+    for (const song of T.DC_SONGS) { const b = T.dcBuild(song.id); pinned(b.original, `de:construct ${song.id} Original`); pinned(b.mine, `de:construct ${song.id} Meine`); }
+    // Nachträge: de:construct hält den Bass (Round Finger), Workshop/Chor bleiben bei Square Pluck; Ride-Choke.
+    {
+      const dc = T.dcBuild('e1');
+      if (dc.original.bassSoundId !== 'round' || dc.mine.bassSoundId !== 'round') failed.push('Groove Lab: de:construct nicht auf Round Finger');
+      if (T.lessonState(T.defaultState(), T.WORKSHOP_LESSONS[0]).bassSoundId !== 'pluck' || T.choirTaskState(T.defaultState(), T.CHOIR_TASKS[0], 'S').bassSoundId !== 'pluck') failed.push('Groove Lab: Workshop/Chor nicht bei Square Pluck');
+      const sustain = T.BASS_SOUNDS.find((b) => b.id === 'round').sustain;
+      const lh = T.DC_SONGS.find((x) => x.id === 'e1');
+      const hits = Object.keys(T.dcBeat(lh).bass);
+      if (!(sustain > 0) || hits.join() !== '0,8' || T.bassNoteSteps(T.dcBeat(lh).bass, 0, 16) !== 8) failed.push('Groove Lab: Lighthouse Hands hält den Bass nicht als halbe Noten');
+      const engine = Object.create(T.GrooveEngine.prototype);
+      const ramps = [];
+      const node = () => ({ gain: { value: .16, setValueAtTime: (v, t) => ramps.push(['set', v, t]), linearRampToValueAtTime: (v, t) => ramps.push(['ramp', Math.round(v * 1000) / 1000, t]) } });
+      engine.labSamples = { get: () => ({ id: 'ride' }) };
+      engine.playSample = () => node();
+      engine.hitTrack('hat', 1, 1, undefined, { mode: 'acoustic', hat: 'ride' });
+      engine.hitTrack('hat', 2, 1, undefined, { mode: 'acoustic', hat: 'ride' });
+      if (ramps.length !== 2 || ramps[1][1] !== Math.round(.16 * .3 * 1000) / 1000 || Math.abs(ramps[1][2] - 2.08) > 1e-9) failed.push(`Groove Lab: Ride-Choke ${JSON.stringify(ramps)}`);
+    }
+    // Paket 4: Fills.
+    {
+      const f = (g, steps, n) => T.fillAt(g, steps, n);
+      if (f(15, 16, 0).idx !== -1 || f(63, 16, 0).crash) failed.push('Groove Lab: Fill bei fills = 0');
+      if (f(12 + 48, 16, 4).idx !== 0 || f(15 + 48, 16, 4).idx !== 3 || f(11 + 48, 16, 4).idx !== -1) failed.push('Groove Lab: Fill-Schritte 4/4 (alle 4 Takte)');
+      if (f(15 + 16, 16, 4).idx !== -1 || f(15, 16, 4).idx !== -1) failed.push('Groove Lab: Fill zu früh');
+      if (f(8 + 24, 12, 4).idx !== 0 && f(8 + 36, 12, 4).idx !== 0) failed.push('Groove Lab: Fill-Schritte 3/4');
+      if (f(8 + 36, 12, 4).idx !== 0 || f(11 + 36, 12, 4).idx !== 3) failed.push('Groove Lab: Fill-Schritte 3/4 und 6/8 (8–11)');
+      if (!f(64, 16, 4).crash || f(65, 16, 4).crash || f(0, 16, 4).crash) failed.push('Groove Lab: Crash nach dem Fill');
+      if (!f(16 * 8, 16, 8).crash || f(16 * 4, 16, 8).crash) failed.push('Groove Lab: Crash nach 8-Takte-Fill');
+      if (T.defaultState().fills !== 8 || T.sanitizeState({ ...T.defaultState(), fills: 5 }).fills !== 8) failed.push('Groove Lab: Fill-Standard/Müll');
+      if (T.sanitizeState({ ...clone(T.defaultState()), fills: 4 }).fills !== 4) failed.push('Groove Lab: fills 4 geht verloren');
+      // Der Fill ersetzt nur Snare/Clap/Hat/Open/Perc, nie Kick und Bass (Konstante).
+      if (T.FILL_HITS.map((h) => h.join(':')).join() !== 'tom-hi:1,tom-hi:0.7,tom-lo:1,tom-lo:0.85') failed.push('Groove Lab: Fill-Toms');
+    }
+    // Paket 5: Bass — Gate, Lage mit Stimmführung, Finger Bass.
+    {
+      const sustains = Object.fromEntries(T.BASS_SOUNDS.map((b) => [b.id, b.sustain]));
+      if (sustains.pluck !== 0 || sustains.sub !== .8 || sustains.growl !== .6 || sustains.round !== .7 || !(sustains.finger > .8)) failed.push(`Groove Lab: Bass-Sustain ${JSON.stringify(sustains)}`);
+      if (T.defaultState().bassSoundId !== 'finger') failed.push('Groove Lab: neuer Stand startet nicht mit Finger Bass');
+      if (T.sanitizeState({ ...clone(T.defaultState()), bassSoundId: 'sub' }).bassSoundId !== 'sub') failed.push('Groove Lab: gespeicherter Bass-Klang geht verloren');
+      if (T.lessonState(T.defaultState(), T.WORKSHOP_LESSONS[0]).bassSoundId !== 'pluck') failed.push('Groove Lab: Workshop nicht auf Square Pluck gepinnt');
+      if (T.bassNoteSteps({ 0: 0, 6: 0, 8: 4 }, 0, 16) !== 6 || T.bassNoteSteps({ 0: 0, 6: 0, 8: 4 }, 8, 16) !== 8 || T.bassNoteSteps({ 15: 0 }, 15, 16) !== 1 || T.bassNoteSteps({ 0: 0, 3: 0 }, 0, 12) !== 3) failed.push('Groove Lab: Länge der Basstöne');
+      const major = modeSteps('major');
+      const pop = prog('pop');
+      for (let key = 0; key < 12; key++) {
+        const pcs = pop.degrees.map((deg) => mod12(key + T.degreeSemis(T.chordSteps(major, 'major', pop, deg), deg)));
+        const roots = T.bassRootsFor(pcs);
+        if (roots.some((m, i) => mod12(m) !== pcs[i])) failed.push(`Groove Lab: Bass-Grundtöne Tonart ${key}: falsche Tonhöhenklasse`);
+        if (roots[0] < 36 || roots[0] > 47 || roots.some((m) => m < 28 || m > 47)) failed.push(`Groove Lab: Bass-Grundtöne Tonart ${key} außerhalb 28–47: ${roots}`);
+        for (let i = 1; i < roots.length; i++) if (Math.abs(roots[i] - roots[i - 1]) > 7) failed.push(`Groove Lab: Bass-Grundton-Sprung > 7 in Tonart ${key}: ${roots}`);
+        // Terz (+4) und Quinte (+7) über dem Grundton bleiben im Bassbereich.
+        if (roots.some((m) => m + 7 > 54)) failed.push(`Groove Lab: Bass über 54 in Tonart ${key}`);
+      }
+    }
+    // Paket 6: Melodien mit Tonart-Bezug, Akkord-Anpassung, Oktavlage.
+    {
+      const keyed = T.MELODIES.filter((m) => m.ref === 'key');
+      const names = keyed.map((m) => m.name).join();
+      if (names !== 'Pop Hook,Ballad Line,Offbeat Chant,Gospel Call,Synco Verse,Anthem Oh,Guide Tones') failed.push(`Groove Lab: Tonart-Vorlagen ${names}`);
+      if (keyed.some((m) => m.meter !== '4/4' || !Array.isArray(m.bars) || m.bars.length !== 4)) failed.push('Groove Lab: Tonart-Vorlagen unvollständig');
+      if (T.melodyRefOf(T.melodyIndexByName('Pop Hook')) !== 'key' || T.melodyRefOf(T.melodyIndexByName('Hook Line')) !== 'chord') failed.push('Groove Lab: melodyRefOf');
+      // snapMelodyMidi: kleine None über einem Akkordton fällt auf ihn; sonst unverändert.
+      if (T.snapMelodyMidi(65, [0, 4, 7]) !== 64 || T.snapMelodyMidi(72 + 5, [0, 4, 7]) !== 76 || T.snapMelodyMidi(69, [0, 4, 7]) !== 69 || T.snapMelodyMidi(71, [0, 4, 7]) !== 71 || T.snapMelodyMidi(65, [9, 0, 4]) !== 64) failed.push('Groove Lab: snapMelodyMidi');
+      const combos = [[0, 'major', 'pop'], [0, 'major', 'sad'], [0, 'major', 'fifties'], [9, 'minor', 'pop'], [9, 'minor', 'sad'], [9, 'minor', 'fifties']];
+      const mod12b = (n) => ((n % 12) + 12) % 12;
+      for (const mel of keyed) {
+        for (const [kr, mode, progId] of combos) {
+          const st = T.defaultState();
+          st.keyRoot = kr; st.modeId = mode; st.progId = progId; st.melodyIndex = T.melodyIndexByName(mel.name); st.chordBars = 1;
+          const bar = (n) => T.harmonyOfState(st, n * 16);
+          const pcsOf = (n) => { const h = bar(n); return T.chordPitchClasses(h.keyRoot, h.steps, h.deg, h.sevenths); };
+          const mid = (n, [at, deg, , alt = 0]) => {
+            const m = T.melodyMidi(deg, alt, bar(n), 'key', modeSteps(mode), 4);
+            return at % 4 === 0 ? T.snapMelodyMidi(m, pcsOf(n)) : m;
+          };
+          for (let n = 0; n < 4; n++) {
+            const notes = mel.bars[n];
+            for (const note of notes) if (note[0] % 4 === 0 && pcsOf(n).includes(mod12b(mid(n, note) - 1))) failed.push(`Groove Lab: ${mel.name} (${kr}/${mode}/${progId}) Takt ${n + 1}: Halbton über Akkordton auf dem Schlag`);
+            const jump = Math.abs(mid(n + 1, mel.bars[(n + 1) % 4][0]) - mid(n, notes[notes.length - 1]));
+            if (jump > 9) failed.push(`Groove Lab: ${mel.name} (${kr}/${mode}/${progId}) Takt ${n + 1} → ${(n + 1) % 4 + 1}: Sprung ${jump} > 9`);
+          }
+        }
+      }
+      // 6c: Oktavlage über die Periode — nie schlechter als die alte Lage (foldDegree), und die Summe der Sprünge schrumpft.
+      const lcmb = (a, b) => { const g = (x, y) => (y ? g(y, x % y) : x); return (a * b) / g(a, b); };
+      for (const mel of T.MELODIES.filter((m) => !m.ref && m.meter === '4/4')) {
+        for (const [kr, mode, progId] of combos) {
+          const st = T.defaultState();
+          st.keyRoot = kr; st.modeId = mode; st.progId = progId; st.chordBars = 1;
+          const cnt = lcmb(mel.bars.length, T.progressionOfState(st).degrees.length);
+          const at = (n, deg, alt) => T.melodyMidi(deg, alt, T.harmonyOfState(st, n * 16), 'chord', modeSteps(mode), 4);
+          const sh = T.melodyBarShifts(mel.bars, cnt, at, false);
+          if (sh.some((x) => ![-12, 0, 12].includes(x))) failed.push(`Groove Lab: Oktavlage ${mel.name}: ${sh}`);
+          let sumOld = 0;
+          let sumNew = 0;
+          for (let n = 0; n < cnt; n++) {
+            const a = mel.bars[n % mel.bars.length];
+            const b = mel.bars[(n + 1) % mel.bars.length];
+            const l = a[a.length - 1];
+            const f = b[0];
+            sumOld += Math.abs(at(n + 1, f[1], f[3] || 0) - at(n, l[1], l[3] || 0));
+            sumNew += Math.abs(at(n + 1, f[1], f[3] || 0) + sh[(n + 1) % cnt] - at(n, l[1], l[3] || 0) - sh[n % cnt]);
+          }
+          if (sumNew > sumOld) failed.push(`Groove Lab: Oktavlage ${mel.name} (${kr}/${mode}/${progId}) verschlechtert ${sumOld} → ${sumNew}`);
+        }
+      }
+      if (T.melodyBarShifts([[[0, 0, 4]]], 1, () => 60, false).join() !== '0') failed.push('Groove Lab: Oktavlage ohne Vergleichstakt');
+      // Neuer Klang der Melodie: Tape Keys, Workshop/de:construct bleiben bei Velvet Choir.
+      if (T.defaultState().sound.presetIndex !== T.presetIndexByName('Klavier')) failed.push('Groove Lab: Standard-Klang der Melodie');
+      if (T.lessonState(T.defaultState(), T.WORKSHOP_LESSONS[0]).sound.presetIndex !== T.presetIndexByName('Velvet Choir') && !T.WORKSHOP_LESSONS[0].preset) failed.push('Groove Lab: Workshop nicht auf Velvet Choir gepinnt');
+      // Gespeicherter Stand mit Tonart-Vorlage lädt, ein alter Stand behält seinen Klang.
+      const withKey = T.sanitizeState({ ...clone(T.defaultState()), melodyIndex: T.melodyIndexByName('Anthem Oh') });
+      if (withKey.melodyIndex !== T.melodyIndexByName('Anthem Oh')) failed.push('Groove Lab: Stand mit Tonart-Vorlage lädt nicht');
+      const oldSound = T.sanitizeState({ ...clone(T.defaultState()), sound: { presetIndex: T.presetIndexByName('Velvet Choir') } });
+      if (oldSound.sound.presetIndex !== T.presetIndexByName('Velvet Choir')) failed.push('Groove Lab: gespeicherter Klang geht verloren');
+    }
+    // Paket 7: Pop-Satz, Grooves, Sample-Klänge, Studio-Standard, kuratierte Auswahl.
+    {
+      // 7a: voiceProgressionPop — Ambitus, enge Lage, keine Kreuzung, Pop-Satz in allen Folgen/Modi/Tonarten.
+      let bad = 0;
+      let first = '';
+      for (const p of T.PROGRESSIONS) {
+        for (const mode of H.MODES) {
+          for (let key = 0; key < 12; key++) {
+            for (const [add9, topMax] of [[false, 69], [true, 64]]) {
+              const list = H.voiceProgressionPop(key, mode, p, { add9, topMax });
+              if (list.length !== p.degrees.length) { bad++; continue; }
+              list.forEach((v, i) => {
+                const ok = v.S >= (topMax >= 69 ? 60 : 54) && v.S <= topMax && v.S > v.A && v.A > v.T && v.T > v.B && v.S - v.T <= 12 && v.B >= 40 && v.B <= 52;
+                const stepsHere = T.chordSteps(mode.steps, mode.id, p, p.degrees[i], p.alter?.[i] || null);
+                const pcs = T.chordPitchClasses(key, stepsHere, p.degrees[i], p.sevenths);
+                const tones = [v.T, v.A, v.S].every((m) => pcs.includes(mod12(m)) || (add9 && mod12(m) === mod12(key + T.degreeSemis(stepsHere, p.degrees[i] + 1)))) && pcs[p.bass?.[i] || 0] === mod12(v.B);
+                if (!ok || !tones) { bad++; first ||= `${p.id}/${mode.id}/${key}/${i}`; }
+              });
+            }
+          }
+        }
+      }
+      if (bad) failed.push(`Pop-Satz: ${bad} fehlerhafte Klänge (erster: ${first})`);
+      // add9 ersetzt nur den verdoppelten Grundton bei Dur/Moll-Dreiklängen, nie bei vermindert und Septakkorden.
+      const major = H.MODES.find((m) => m.id === 'major');
+      const plain = H.voiceProgressionPop(0, major, T.PROGRESSIONS.find((p) => p.id === 'pop'), { add9: false });
+      const nine = H.voiceProgressionPop(0, major, T.PROGRESSIONS.find((p) => p.id === 'pop'), { add9: true });
+      if (![nine[0].S, nine[0].A, nine[0].T].some((m) => mod12(m) === 2) || [plain[0].S, plain[0].A, plain[0].T].some((m) => mod12(m) === 2)) failed.push('Pop-Satz: add9 setzt die None nicht (C-Dur: d)');
+      const dimProg = { degrees: [6, 0] };
+      const dimPlain = H.voiceProgressionPop(0, major, dimProg, { add9: false });
+      const dimNine = H.voiceProgressionPop(0, major, dimProg, { add9: true });
+      if (JSON.stringify(dimPlain[0]) !== JSON.stringify(dimNine[0])) failed.push('Pop-Satz: add9 verändert den verminderten Akkord');
+      const sevenProg = T.PROGRESSIONS.find((p) => p.sevenths && !p.dom7);
+      if (sevenProg && JSON.stringify(H.voiceProgressionPop(0, major, sevenProg, { add9: false })) !== JSON.stringify(H.voiceProgressionPop(0, major, sevenProg, { add9: true }))) failed.push('Pop-Satz: add9 verändert Septakkorde');
+      const dom7Prog = T.PROGRESSIONS.find((p) => p.dom7);
+      if (dom7Prog && JSON.stringify(H.voiceProgressionPop(0, major, dom7Prog, { add9: false })) !== JSON.stringify(H.voiceProgressionPop(0, major, dom7Prog, { add9: true }))) failed.push('Pop-Satz: add9 verändert Dominantseptakkorde');
+      // 7b: neue Grooves (Raster im Takt, Icons eindeutig auch zu den Klang-Presets).
+      const names = T.DRUM_PATTERNS.slice(23).map((p) => p.name).join();
+      if (names !== 'Pop Ballad,Pop Stomp,Motown Stomp,Halftime Pop') failed.push(`Groove Lab: Popchor-Grooves ${names}`);
+      for (const p of T.DRUM_PATTERNS) for (const track of ['kick', 'snare', 'clap', 'hat', 'open', 'perc', 'ghost']) if ((p[track] || []).some((st) => !Number.isInteger(st) || st < 0 || st >= T.METERS[p.meter].steps)) failed.push(`Loop ${p.name}: ${track} außerhalb des Takts`);
+      if (T.DRUM_PATTERNS.some((p) => p.percSound && !T.PERC_SOUNDS.includes(p.percSound))) failed.push('Groove Lab: unbekannter percSound');
+      if (T.DRUM_PATTERNS[T.patternIndexByName('Gospel Shuffle')].perc?.join() !== '4,12') failed.push('Groove Lab: Gospel Shuffle ohne Percussion');
+      const iconsAll = [...T.DRUM_PATTERNS.map((p) => p.icon), ...T.SYNTH_PRESETS.map((p) => p.icon)];
+      const seenIcon = new Set();
+      for (const icon of iconsAll) {
+        if (seenIcon.has(icon) && !['users', 'wind', 'moon', 'sun', 'target', 'horn'].includes(icon)) failed.push(`Groove Lab: Icon ${icon} mehrfach vergeben`);
+        seenIcon.add(icon);
+      }
+      // 7c: Sample-Klänge.
+      const sampled = T.SYNTH_PRESETS.filter((p) => p.sample);
+      if (sampled.map((p) => `${p.name}:${p.sample}`).join() !== 'Klavier:piano,E-Gitarre:guitar,Chor Ooh:choir,Streicher:strings,Brass Stab:brass') failed.push('Groove Lab: Sample-Presets');
+      for (const [inst, name] of Object.entries(T.SAMPLE_FALLBACK)) if (T.presetIndexByName(name) < 0 || T.SYNTH_PRESETS[T.presetIndexByName(name)].name !== name || T.SYNTH_PRESETS[T.presetIndexByName(name)].sample) failed.push(`Groove Lab: Ersatzklang für ${inst}`);
+      const piano = T.soundFromPreset(T.presetIndexByName('Klavier'));
+      if (T.sanitizeSound(clone(piano), piano).sample !== 'piano') failed.push('Groove Lab: sample geht beim Laden verloren');
+      if (T.sanitizeSound({ ...clone(piano), sample: '../x' }, piano).sample !== undefined) failed.push('Groove Lab: ungültiges sample wird übernommen');
+      if ('sample' in T.sanitizeSound(clone(T.soundFromPreset(0)), piano)) failed.push('Groove Lab: Synth-Klang bekommt ein sample');
+      for (const [inst, cfg] of Object.entries(T.LAB_INST)) if (!T.SAMPLE_INSTRUMENTS.includes(inst) || !cfg.notes.length) failed.push(`Groove Lab: LAB_INST ${inst}`);
+      // 7a/7c/7d: Standard für neue Stände, alte Stände unverändert, Aufgaben/Workshop gepinnt.
+      const studio = T.defaultState();
+      if (studio.chordVoicing !== 'pop' || studio.chordSound !== 'choir' || studio.chordsOn !== true || studio.mix.chords !== .45 || studio.chordAdd9 !== false) failed.push('Groove Lab: Studio-Standard Akkorde');
+      if (T.DRUM_PATTERNS[studio.patternIndex].name !== 'Pop Stomp' || T.MELODIES[studio.melodyIndex].name !== 'Pop Hook' || T.SYNTH_PRESETS[studio.sound.presetIndex].name !== 'Klavier') failed.push('Groove Lab: Studio-Standard Loop/Melodie/Klang');
+      const legacyState = clone(studio);
+      for (const key of ['chordVoicing', 'chordAdd9', 'chordSound']) delete legacyState[key];
+      const legacyLoaded = T.sanitizeState(legacyState);
+      if (legacyLoaded.chordVoicing !== 'satb' || legacyLoaded.chordSound !== 'synth' || legacyLoaded.chordAdd9 !== false) failed.push('Groove Lab: alter Stand bekommt Pop-Satz/Chor');
+      const kept = T.sanitizeState({ ...clone(studio), patternIndex: T.patternIndexByName('Circuit Pulse'), melodyIndex: T.melodyIndexByName('Afterglow') });
+      if (T.DRUM_PATTERNS[kept.patternIndex].name !== 'Circuit Pulse' || T.MELODIES[kept.melodyIndex].name !== 'Afterglow') failed.push('Groove Lab: Stand mit ausgeblendeter Vorlage lädt nicht');
+      for (const task of T.CHOIR_TASKS) { const st = T.choirTaskState(clone(studio), task, 'S'); if (st.chordVoicing !== 'satb' || st.chordSound !== 'synth' || st.chordAdd9 !== false) failed.push(`Groove Lab: Chor-Aufgabe ${task.id} nicht auf SATB/Synth gepinnt`); }
+      for (const lesson of T.WORKSHOP_LESSONS) { const st = T.lessonState(clone(studio), lesson); if (st.chordVoicing !== 'satb' || st.chordSound !== 'synth' || st.mix.chords !== .55) failed.push(`Groove Lab: Workshop ${lesson.id} nicht gepinnt`); }
+      // 7e: kuratierte Auswahl — Namen vorhanden, keine doppelt, je Taktart mindestens zwei sichtbare Einträge.
+      const checkOrder = (label, order, list, meterOf) => {
+        const seen = new Set();
+        for (const name of order) {
+          if (seen.has(name)) failed.push(`Groove Lab: ${label} nennt ${name} doppelt`);
+          seen.add(name);
+          if (!list.some((x) => x.name === name)) failed.push(`Groove Lab: ${label} nennt unbekannten Namen ${name}`);
+        }
+        if (meterOf) for (const meter of Object.keys(T.METERS)) if (order.filter((name) => list.find((x) => x.name === name)?.meter === meter).length < 2) failed.push(`Groove Lab: ${label} hat für ${meter} weniger als zwei sichtbare Einträge`);
+      };
+      checkOrder('MELODY_ORDER', T.MELODY_ORDER, T.MELODIES, true);
+      checkOrder('BEAT_ORDER', T.BEAT_ORDER, T.DRUM_PATTERNS, true);
+      checkOrder('PRESET_ORDER', T.PRESET_ORDER, T.SYNTH_PRESETS, false);
+      if (T.DRUM_PATTERNS[T.firstPatternOfMeter('4/4')].name !== 'Pop Stomp' || T.MELODIES[T.firstMelodyOfMeter('4/4')].name !== 'Pop Hook' || T.DRUM_PATTERNS[T.firstPatternOfMeter('6/8')].name !== '6/8 Ballad') failed.push('Groove Lab: erster sichtbarer Eintrag je Taktart');
+      // Ausgeblendetes bleibt ladbar: Workshop „Klang nachbauen“ nennt Soft Brass und Warm Sub weiter per Name.
+      for (const name of ['Soft Brass', 'Warm Sub', 'Velvet Choir', 'Airy Choir', 'Pulse Basic']) if (T.presetIndexByName(name) < 0 && !T.DRUM_PATTERNS.some((p) => p.name === name)) failed.push(`Groove Lab: ${name} nicht mehr vorhanden`);
+      for (const hidden of ['Velvet Choir', 'Airy Choir', 'Deep Pad', 'Soft Brass', 'Square Bell', 'Warm Sub', 'Growl Bass', 'Wobble', 'Dub Chamber', 'Hollow Band']) if (T.PRESET_ORDER.includes(hidden)) failed.push(`Groove Lab: ${hidden} sollte ausgeblendet sein`);
+    }
+    // Paket 8: geliehene Akkorde, Zwischendominanten, Umkehrungen.
+    {
+      const major8 = modeSteps('major');
+      const minor8 = modeSteps('minor');
+      const pcsOf = (key, steps, deg, alter, sevenths = false) => T.chordPitchClasses(key, T.chordSteps(steps, steps === major8 ? 'major' : 'minor', {}, deg, alter), deg, sevenths);
+      const cases = [
+        [major8, 3, 'borrow', [5, 8, 0], 'iv (F–As–C)'], [major8, 5, 'borrow', [8, 0, 3], '♭VI'], [major8, 6, 'borrow', [10, 2, 5], '♭VII'], [major8, 2, 'borrow', [3, 7, 10], '♭III'],
+        [major8, 2, 'secdom', [4, 8, 11], 'V/vi (E-Dur)'], [major8, 1, 'secdom', [2, 6, 9], 'V/V (D-Dur)'], [major8, 5, 'secdom', [9, 1, 4], 'V/ii (A-Dur)'],
+        [minor8, 3, 'borrow', [2, 6, 9], 'IV aus Dur (a-Moll → D-Dur)'], [minor8, 4, 'borrow', [4, 8, 11], 'V aus Dur (a-Moll → E-Dur)'],
+      ];
+      for (const [steps, deg, alter, want, label] of cases) {
+        const key = steps === minor8 ? 9 : 0;
+        const got = pcsOf(key, steps, deg, alter);
+        if (!sameSet(got, want.map((pc) => mod12(pc)))) failed.push(`Groove Lab: ${label} = {${got}} statt {${want}}`);
+      }
+      if (!sameSet(pcsOf(0, major8, 2, 'secdom', true), [4, 8, 11, 2])) failed.push('Groove Lab: V7/vi ist kein Dominantseptakkord');
+      // Stufenzahlen und Namen.
+      const st = (deg, alter) => T.chordSteps(major8, 'major', {}, deg, alter);
+      const rn = (deg, alter, bass = 0, seventh = false) => T.romanNumeral(st(deg, alter), deg, seventh, alter, bass, major8);
+      const wantRoman = [[rn(2, 'secdom'), 'V/vi'], [rn(1, 'secdom'), 'V/V'], [rn(5, 'secdom'), 'V/ii'], [rn(3, 'borrow'), 'iv'], [rn(6, 'borrow'), '♭VII'], [rn(5, 'borrow'), '♭VI'], [rn(4, null, 1), 'V⁶'], [rn(0, null, 2), 'I⁶₄'], [rn(2, 'secdom', 0, true), 'V7/vi']];
+      for (const [got, want] of wantRoman) if (got !== want) failed.push(`Groove Lab: Stufenzahl ${got} statt ${want}`);
+      const nm = (deg, alter, bass = 0, lang = 'de') => T.chordName(0, st(deg, alter), deg, false, 'major', lang, alter, bass);
+      const wantNames = [[nm(2, 'secdom'), 'E'], [nm(3, 'borrow'), 'Fm'], [nm(6, 'borrow'), 'B'], [nm(6, 'borrow', 0, 'en'), 'B♭'], [nm(5, 'borrow', 0, 'en'), 'A♭'], [nm(4, null, 1), 'G/H'], [nm(4, null, 1, 'en'), 'G/B'], [nm(0, null, 2), 'C/G']];
+      for (const [got, want] of wantNames) if (got !== want) failed.push(`Groove Lab: Akkordname ${got} statt ${want}`);
+      // Neue Vorlagen: Parallel-Arrays passen, `degrees` bleiben Zahlen 0–6.
+      const wantProgs = { descend: [[0, 4, 5, 3], null, [0, 1, 0, 0]], gospelIv: [[0, 3, 3, 0], [null, null, 'borrow', null], null], mixFlat7: [[0, 6, 3, 0], [null, 'borrow', null, null], null], secDom: [[0, 2, 5, 3], [null, 'secdom', null, null], null] };
+      for (const [id, [degrees, alter, bass]] of Object.entries(wantProgs)) {
+        const p8 = T.PROGRESSIONS.find((x) => x.id === id);
+        if (!p8 || p8.cat !== 'pop' || p8.degrees.join() !== degrees.join() || JSON.stringify(p8.alter ?? null) !== JSON.stringify(alter) || JSON.stringify(p8.bass ?? null) !== JSON.stringify(bass)) failed.push(`Groove Lab: Vorlage ${id}`);
+        for (const lang of ['de', 'en', 'pl']) for (const kind of ['Name', 'Info']) if (!STRINGS[lang][`lab.prog${kind}${id[0].toUpperCase()}${id.slice(1)}`]) failed.push(`Groove Lab: Text lab.prog${kind}${id} (${lang}) fehlt`);
+      }
+      // Zustand: Tonart, Harmonie, Bearbeiten und Laden.
+      const sd = T.defaultState();
+      sd.progId = 'secDom';
+      const hs = T.harmonyOfState(sd, 16);
+      if (hs.alter !== 'secdom' || T.chordName(0, hs.steps, hs.deg, hs.sevenths, 'major', 'de', hs.alter, hs.bass) !== 'E') failed.push('Groove Lab: harmonyOfState ohne geliehenen Akkord');
+      const sd2 = T.defaultState();
+      sd2.progId = 'descend';
+      if (T.harmonyOfState(sd2, 16).bass !== 1) failed.push('Groove Lab: harmonyOfState ohne Umkehrung');
+      const edited = T.sanitizeState({ ...clone(T.defaultState()), progDegrees: [0, 3, 3, 0], progAlter: [null, null, 'borrow', 'quatsch'], progBass: [0, 5, 2, 0] });
+      if (edited.progAlter.join() !== ',,borrow,' || edited.progBass.join() !== '0,0,2,0') failed.push(`Groove Lab: progAlter/progBass ${edited.progAlter}/${edited.progBass}`);
+      const mism = T.sanitizeState({ ...clone(T.defaultState()), progDegrees: [0, 3], progAlter: ['borrow'], progBass: [1, 2, 1, 1, 1] });
+      if (mism.progAlter.length !== 2 || mism.progBass.length !== 2) failed.push('Groove Lab: progAlter/progBass falsche Länge');
+      const old8 = T.sanitizeState({ ...clone(T.defaultState()), progDegrees: [0, 4, 5, 3] });
+      if (old8.progAlter !== null || old8.progBass !== null) failed.push('Groove Lab: alte eigene Folge bekommt Umkehrungen');
+      const rawTpl = { ...clone(T.defaultState()), progId: 'gospelIv', progDegrees: [0, 3, 3, 0] };
+      delete rawTpl.progAlter; delete rawTpl.progBass; // Stand von vor Paket 8
+      const tpl = T.sanitizeState(rawTpl);
+      if (tpl.progAlter?.join() !== ',,borrow,') failed.push('Groove Lab: bearbeitete Vorlage erbt geliehene Akkorde nicht');
+      const lib8 = T.sanitizeProgLibrary([{ id: 'a', name: 'A', degrees: [0, 4], alter: [null, 'secdom'], bass: [0, 1] }, { id: 'b', name: 'B', degrees: [0, 4] }, { id: 'c', name: 'C', degrees: [0, 4], alter: 'x', bass: [9, 9] }]);
+      if (lib8[0].alter?.join() !== ',secdom' || lib8[0].bass?.join() !== '0,1' || 'alter' in lib8[1] || 'bass' in lib8[1] || 'alter' in lib8[2] || 'bass' in lib8[2]) failed.push('Groove Lab: Folgen-Bibliothek mit geliehenen Akkorden');
+      // Bass: Stufe 0 liegt auf dem Basston der Umkehrung, die übrigen bleiben über dem Grundton.
+      const gSteps = st(4);
+      const bn = (bass, deg) => T.bassNoteMidi(bass === 1 ? 35 : bass === 2 ? 38 : 43, gSteps, 4, bass, deg);
+      if (bn(0, 0) !== 43 || bn(1, 0) !== 35 || bn(2, 0) !== 38 || bn(1, 4) !== 38 || bn(1, 7) !== 43 || bn(0, 4) !== 50) failed.push(`Groove Lab: bassNoteMidi ${bn(0, 0)} ${bn(1, 0)} ${bn(2, 0)} ${bn(1, 4)} ${bn(1, 7)} ${bn(0, 4)}`);
+      for (const id of ['descend', 'gospelIv', 'mixFlat7', 'secDom']) {
+        const p8 = T.PROGRESSIONS.find((x) => x.id === id);
+        for (let key = 0; key < 12; key++) {
+          const roots = T.bassRootsFor(p8.degrees.map((deg, i) => mod12(key + T.degreeSemis(T.chordSteps(major8, 'major', p8, deg, p8.alter?.[i] || null), deg + 2 * (p8.bass?.[i] || 0)))));
+          p8.degrees.forEach((deg, i) => {
+            const steps8 = T.chordSteps(major8, 'major', p8, deg, p8.alter?.[i] || null);
+            for (const bassDeg of [0, 2, 4]) {
+              const m = T.bassNoteMidi(roots[i], steps8, deg, p8.bass?.[i] || 0, bassDeg);
+              if (m < 24 || m > 59) failed.push(`Groove Lab: Bass ${id} Tonart ${key} Akkord ${i}: ${m} außerhalb 24–59`);
+            }
+          });
+        }
+      }
+    }
+    // Paket 9: Sampler — Grenzen, Bereinigung, Tonziel, Quantisierung, Auto-Schnitt, Tonhöhe.
+    {
+      if (T.SAMPLER_MAX_SAMPLES !== 64 || T.SAMPLER_MAX_SEC.hit !== 2 || T.SAMPLER_MAX_SEC.tone !== 4 || T.SAMPLER_MAX_SEC.loop !== 10 || T.SAMPLER_MAX_LANES !== 4 || T.SAMPLER_PADS !== 8) failed.push('Sampler: Grenzen');
+      // Metadaten: ungültige Ids fallen weg, Längen/Bereiche werden begrenzt.
+      const good = { id: 's1', name: 'sehr langer Name über zwölf', kind: 'hit', trim: [0.5, 9], gainDb: 40, pitch: 30, decay: 99, reverb: 2, track: 'kick', toneRole: 'quinte', loopBars: 5, by: 'x'.repeat(50) };
+      const m1 = T.sanitizeSampleMeta(good);
+      if (!m1 || m1.name.length !== 12 || m1.trim[1] - m1.trim[0] > 2.0001 || m1.gainDb !== 6 || m1.pitch !== 12 || m1.reverb !== 1 || m1.toneRole !== 'auto' || m1.loopBars !== 1 || m1.by.length !== 24 || m1.track !== 'kick') failed.push(`Sampler: sanitizeSampleMeta ${JSON.stringify(m1)}`);
+      if (T.sanitizeSampleMeta({ ...good, id: '../x' }) || T.sanitizeSampleMeta({ ...good, id: 5 }) || T.sanitizeSampleMeta(null) || T.sanitizeSampleMeta({ ...good, id: 'a'.repeat(30) })) failed.push('Sampler: ungültige Sample-Id wird übernommen');
+      const tone = T.sanitizeSampleMeta({ id: 's2', name: 'ooh', kind: 'tone', trim: [0, 8], detectedMidi: 69.4, detectedCents: 80 });
+      if (tone.trim[1] > 4.0001 || tone.detectedMidi !== 69 || tone.detectedCents !== 50) failed.push(`Sampler: Ton-Sample ${JSON.stringify(tone)}`);
+      const loop = T.sanitizeSampleMeta({ id: 's3', name: 'hey', kind: 'loop', trim: [0, 30], loopBars: 2, bpmAtRec: 106, meterAtRec: '4/4' });
+      if (loop.trim[1] > 10.0001 || loop.loopBars !== 2 || loop.bpmAtRec !== 106) failed.push('Sampler: Loop-Sample');
+      // Kits und Spuren.
+      const sam = T.sanitizeSampler({ kits: [{ id: 'k1', name: 'A', pads: ['s1', 'f:kick', '../x', 5, null] }, { id: 'k1', name: 'doppelt' }, { id: 'k2', pads: [] }], kitId: 'f-electro' });
+      if (sam.kits.length !== 2 || sam.kits[0].pads.length !== 8 || sam.kits[0].pads.join() !== 's1,f:kick,,,,,,' || sam.kitId !== 'f-electro') failed.push(`Sampler: sanitizeSampler ${JSON.stringify(sam)}`);
+      if (T.sanitizeSampler(null).kits.length !== 1 || T.sanitizeSampler({ kits: [], kitId: 'zz' }).kitId !== 'k1') failed.push('Sampler: Standard-Kit');
+      if (T.sanitizeSampler({ kits: Array.from({ length: 12 }, (_, i) => ({ id: `k${i}` })) }).kits.length !== 8) failed.push('Sampler: mehr als acht Kits');
+      for (const kit of T.FACTORY_KITS) for (const id of kit.pads) if (!T.FACTORY_SAMPLES.some((x) => x.id === id)) failed.push(`Sampler: Werks-Kit ${kit.id} kennt ${id} nicht`);
+      const lanes = T.sanitizeSampleLanes([{ padId: 's1', steps: { 0: 1, 4: 0.6, 99: 1, x: 1, 8: 'laut', 12: 5 } }, { padId: 's1', steps: { 1: 1 } }, { padId: 'f:kick' }, { padId: 'a' }, { padId: 'b' }, { padId: 'c' }, { padId: '../x' }], 16);
+      if (lanes.length !== 4 || Object.keys(lanes[0].steps).join() !== '0,4,12' || lanes[0].steps[12] !== 1 || lanes[0].on !== true) failed.push(`Sampler: sanitizeSampleLanes ${JSON.stringify(lanes)}`);
+      // Zustand: fehlende/ungültige Sample-Ids sind kein Fehler, die Spur bleibt (stumm) stehen, alte Stände laden.
+      const withSamples = T.sanitizeState({ ...clone(T.defaultState()), sampler: { kits: [{ id: 'k1', name: 'Chor', pads: ['s9', null] }], kitId: 'k1' }, sampleLanes: [{ padId: 's9', steps: { 0: 1, 8: 1 } }] });
+      if (withSamples.sampler.kits[0].pads[0] !== 's9' || withSamples.sampleLanes[0].padId !== 's9') failed.push('Sampler: unbekannte Sample-Id geht beim Laden verloren');
+      const oldNoSampler = clone(T.defaultState()); delete oldNoSampler.sampler; delete oldNoSampler.sampleLanes;
+      const loadedOld = T.sanitizeState(oldNoSampler);
+      if (loadedOld.sampler.kits.length !== 1 || loadedOld.sampleLanes.length !== 0) failed.push('Sampler: alter Stand ohne Sampler lädt nicht');
+      const shortMeter = T.sanitizeState({ ...clone(T.defaultState()), patternIndex: T.patternIndexByName('Waltz Step'), sampleLanes: [{ padId: 's9', steps: { 3: 1, 14: 1 } }] });
+      if (Object.keys(shortMeter.sampleLanes[0].steps).join() !== '3') failed.push('Sampler: Schritte außerhalb des Takts bleiben stehen');
+      for (const pinned of [T.lessonState(T.defaultState(), T.WORKSHOP_LESSONS[0]), T.dcBuild(T.DC_SONGS[0].id).original]) if (pinned.sampleLanes.length) failed.push('Sampler: Workshop/de:construct starten mit Sample-Spuren');
+      // Tonziel: automatisch der Akkordton (Grundton/Terz/Quinte) mit dem kleinsten Abstand.
+      const cmaj = [0, 4, 7];
+      const gmaj = [7, 11, 2];
+      const targets = [[T.sampleToneTarget('auto', 69, cmaj), 67], [T.sampleToneTarget('auto', 66, cmaj), 67], [T.sampleToneTarget('auto', 62, cmaj), 60], [T.sampleToneTarget('auto', 70, gmaj), 71], [T.sampleToneTarget('root', 69, cmaj), 72], [T.sampleToneTarget('third', 69, cmaj), 64], [T.sampleToneTarget('fifth', 50, [2, 6, 9]), 45]];
+      for (const [got, want] of targets) if (got !== want) failed.push(`Sampler: Tonziel ${got} statt ${want}`);
+      for (let detected = 48; detected <= 80; detected++) for (const pcs of [cmaj, gmaj, [9, 0, 4]]) {
+        const target = T.sampleToneTarget('auto', detected, pcs);
+        if (Math.abs(target - detected) > 3) failed.push(`Sampler: Tonziel über ${pcs} von ${detected} springt ${target - detected}`);
+      }
+      for (const [target, detected, cents] of [[80, 60, 0], [40, 70, 0], [64, 69, 8], [72, 60, -30]]) {
+        const semis = 12 * Math.log2(T.sampleToneRate(target, detected, cents, 0));
+        if (Math.abs(semis) > 7.0001) failed.push(`Sampler: Umstimmung ${semis.toFixed(2)} über ±7 (${target}/${detected})`);
+      }
+      if (Math.abs(12 * Math.log2(T.sampleToneRate(64, 69, 8, 0)) - (-5 - .08)) > 1e-6 || Math.abs(12 * Math.log2(T.sampleToneRate(60, 60, 0, 2)) - 2) > 1e-6) failed.push('Sampler: Rate = 2^((Ziel − erkannt − Cent/100 + Feinstimmung)/12)');
+      // Quantisierung und Loop-Tempo.
+      if (T.quantizeTapStep(10.52, 10, 0, .125, .02) !== 4 || T.quantizeTapStep(10.49, 10, 3, .125, 0) !== 7 || T.quantizeTapStep(9.9, 10, 0, .125, 0) !== -1) failed.push('Sampler: Quantisierung');
+      if (T.loopRate(106, 106) !== 1 || T.loopRate(108, 106) === null || T.loopRate(120, 106) !== null || T.loopRate(100, null) !== 1) failed.push('Sampler: Loop-Tempo ±3 %');
+      // Auto-Schnitt und Tonhöhe an künstlichen Signalen.
+      const sr = 44100;
+      const burst = new Float32Array(sr);
+      for (let i = 10000; i < 20000; i++) burst[i] = Math.sin(i / 9) * Math.exp(-(i - 10000) / 3000);
+      const cut = T.autoTrimBounds(burst, sr);
+      if (!(cut.start > .2 && cut.start < .2268) || !(cut.end > .3 && cut.end < sr / sr)) failed.push(`Sampler: Auto-Schnitt ${JSON.stringify(cut)}`);
+      const sine = (hz, cents, noise = 0) => { const a = new Float32Array(Math.floor(sr * 1.5)); const f = hz * Math.pow(2, cents / 1200); for (let i = 0; i < a.length; i++) a[i] = (Math.sin(2 * Math.PI * f * i / sr) + .5 * Math.sin(4 * Math.PI * f * i / sr)) / 2 + (Math.random() * 2 - 1) * noise; return a; };
+      for (const [hz, cents, midi] of [[220, 0, 57], [220, -8, 57], [440, 12, 69], [130.81, 0, 48], [880, 0, 81]]) {
+        const found = T.detectPitch(sine(hz, cents, .03), sr);
+        if (!found || found.midi !== midi || Math.abs(found.cents - cents) > 6) failed.push(`Sampler: Tonhöhe ${hz} Hz ${cents} ¢ → ${JSON.stringify(found)}`);
+      }
+      const noise = new Float32Array(sr);
+      for (let i = 0; i < noise.length; i++) noise[i] = (Math.random() * 2 - 1) * Math.exp(-i / 3000);
+      if (T.detectPitch(noise, sr) !== null) failed.push('Sampler: Geräusch hat keine Tonhöhe');
+      const peaks = T.wavePeaks(burst, 14);
+      if (peaks.length !== 14 || Math.max(...peaks) !== 1) failed.push('Sampler: Mini-Wellenform');
+    }
+    // Engine-Weiche je Spur (ohne AudioContext, mit Spionen).
+    {
+      const calls = [];
+      const engine = Object.create(T.GrooveEngine.prototype);
+      const have = new Set(['kick', 'snare', 'snare-soft', 'hat', 'hat-soft', 'open', 'clap', 'ride', 'tamb']);
+      engine.labSamples = { get: (id) => (have.has(id) ? { id } : null) };
+      engine.playSample = (buffer) => { calls.push(`sample:${buffer.id}`); return { gain: { value: 1, setValueAtTime() {}, linearRampToValueAtTime() {} } }; };
+      for (const fn of ['playKick', 'playSnare', 'playClap', 'playHat', 'playNoise', 'playTom']) engine[fn] = () => calls.push(`synth:${fn}`);
+      const run = (track, v, o) => { calls.length = 0; engine.hitTrack(track, 0, v, undefined, o); return calls.join(); };
+      const expect = (got, want, label) => { if (got !== want) failed.push(`Groove Lab: Engine ${label}: ${got} statt ${want}`); };
+      expect(run('kick', 1, { mode: 'acoustic' }), 'sample:kick', 'Kick akustisch');
+      expect(run('kick', 1, { mode: 'hybrid' }), 'synth:playKick', 'Kick hybrid');
+      expect(run('snare', 1, { mode: 'hybrid' }), 'sample:snare', 'Snare hybrid');
+      expect(run('snare', .45, { mode: 'acoustic' }), 'sample:snare-soft', 'Ghost-Snare');
+      expect(run('snare', 1, { mode: 'synth' }), 'synth:playSnare', 'Snare synth');
+      expect(run('hat', 1, { mode: 'acoustic', soft: true }), 'sample:hat-soft', 'leise Hi-Hat');
+      expect(run('hat', 1, { mode: 'acoustic', hat: 'ride' }), 'sample:ride', 'Ride');
+      expect(run('hat', 1, { mode: 'synth', hat: 'ride' }), 'synth:playHat', 'Ride ohne Kit');
+      expect(run('perc', 1, { mode: 'acoustic', perc: 'tamb' }), 'sample:tamb', 'Percussion');
+      expect(run('perc', 1, { mode: 'acoustic', perc: 'snap' }), 'sample:clap', 'Snap ohne Sample → Clap-Sample');
+      have.delete('clap');
+      expect(run('perc', 1, { mode: 'acoustic', perc: 'snap' }), 'synth:playNoise', 'Snap ohne Sample und ohne Clap → Rauschen');
+      have.add('clap');
+      expect(run('tom-hi', 1, { mode: 'acoustic' }), 'synth:playTom', 'Tom ohne Sample');
+      engine.labSamples = null;
+      expect(run('snare', 1, { mode: 'acoustic' }), 'synth:playSnare', 'Snare ohne Samples');
+    }
   }
 
   if (log) {
@@ -23480,6 +23874,8 @@ function loadGrooveLab() {
     document.head.append(script);
   });
   grooveLabLoadPromise = loadScript('./harmony.js', () => !!window.ChorHarmony, 'Harmonik (harmony.js)')
+    // Das Klavier des Labs (Salamander); fehlt es, klingt „Klavier“ mit dem Ersatzklang.
+    .then(() => loadScript('./piano-samples.js', () => !!window.ChorPiano, 'Klavier (piano-samples.js)').catch(() => {}))
     .then(() => loadScript('./groove-lab.js', () => !!window.ChorGrooveLab, 'Groove Lab'))
     .then(() => window.ChorGrooveLab)
     .catch((err) => {
@@ -23512,6 +23908,34 @@ async function openGrooveLab(entry = 'egg') {
       storage: {
         load: () => DB.metaGet('grooveLab').then((record) => record?.data ?? null),
         save: (data) => DB.metaPut({ key: 'grooveLab', type: 'grooveLab', data, updatedAt: Date.now() }),
+        // Eigene Samples des Samplers (Paket 9): Audio unverändert (Blob des MediaRecorders, wie die REC-
+        // Aufnahmen) in `files`, Metadaten als meta-Typ `labSample`. „Alle Daten löschen“ (DB.wipe) leert
+        // beide Stores und nimmt sie damit mit; sie reisen nicht in GL1.-Codes.
+        samples: {
+          list: () => DB.metaByType('labSample').then((records) => records.map((r) => r.data)),
+          get: async (id) => {
+            const rec = await DB.fileGet(`labSample:${id}`);
+            return rec ? recordBlob(rec, rec.mime || 'audio/webm') : null;
+          },
+          // Mit Blob: Audio und Metadaten in einer Transaktion; ohne: nur die Metadaten ändern.
+          put: async (data, blob) => {
+            const meta = { key: `labSample:${data.id}`, type: 'labSample', data, updatedAt: Date.now() };
+            if (!blob) { await DB.metaPut(meta); return; }
+            await DB.putFileAndMeta({ ...(await fileRecord(`labSample:${data.id}`, blob, `${data.name}`)), mime: blob.type || 'audio/webm' }, meta);
+          },
+          remove: (id) => DB.deleteMetaAndFiles(`labSample:${id}`, [`labSample:${id}`]),
+        },
+      },
+      // Mikrofon für den Sampler: dieselben Aufnahme-Einstellungen wie der REC (Echo-Unterdrückung, Rauschfilter
+      // und Automatikpegel aus, siehe RECORDING_CONSTRAINTS) und derselbe Ausweichplan weg vom Bluetooth-Mikrofon.
+      mic: {
+        open: async () => {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: recordingAudioConstraints() });
+          return preferWideBandMic(stream);
+        },
+        close: (stream) => { for (const track of stream?.getTracks?.() || []) track.stop(); },
+        // 'ok' | Bluetooth/Schmalband — das Lab zeigt dann denselben Hinweis wie der Player.
+        quality: (stream) => recInputQuality(recStreamInfo(stream)),
       },
     });
     // Schließen per Zurück-Geste und Wischen vom linken Rand (siehe
