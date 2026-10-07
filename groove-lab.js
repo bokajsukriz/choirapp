@@ -3822,7 +3822,7 @@
 
       // Überlastungsanzeige: Zeitpunkte erkannter Aussetzer, letzter Scheduler-
       // Tick, letzter Vergleich Audiozeit/Wanduhr, Zähler der Browser-Statistik.
-      this._ovl = { events: [], lastEvent: 0, lastTick: 0, ratioWall: 0, ratioAudio: 0, underruns: 0, underrunDuration: 0, visibleSince: performance.now() };
+      this._ovl = { events: [], lastEvent: 0, lastTick: 0, ratioWall: 0, ratioAudio: 0, underruns: 0, underrunDuration: 0, warn: false, visibleSince: performance.now() };
       document.addEventListener('visibilitychange', () => { this._ovl.visibleSince = performance.now(); this._ovl.lastTick = 0; this._ovl.ratioWall = 0; });
 
       this.playing = false;
@@ -5714,17 +5714,35 @@
       if (o.events.length >= OVERLOAD_EVENTS) this._renderOverload();
     }
 
+    /** Warnung (roter Knopf mit „!“) oder neutral (gedämpfter Knopf „Audio & Leistung“). */
+    _overloadWarn() { return !!this._ovl.warn; }
+
     _renderOverload() {
       this._ovl.cleared = false;
-      const btn = this.$('.ovl-btn');
-      if (btn) btn.hidden = false;
+      this._ovl.warn = true;
+      this._renderOverloadBtn();
       this._renderOverloadPop();
+    }
+
+    /** Der Knopf am Titel ist immer da; nur Aussehen und Beschriftung wechseln. */
+    _renderOverloadBtn() {
+      const btn = this.$('.ovl-btn');
+      if (!btn) return;
+      const warn = this._overloadWarn();
+      const label = t(warn ? 'lab.ovl.aria' : 'lab.ovl.ariaIdle');
+      btn.classList.toggle('is-warn', warn);
+      btn.setAttribute('aria-label', label);
+      btn.title = label;
     }
 
     _renderOverloadPop() {
       const pop = this.$('.ovl-pop');
       if (!pop) return;
       const current = this._saved.latency;
+      const warn = this._overloadWarn();
+      this.$('.ovl-pop').setAttribute('aria-label', t(warn ? 'lab.ovl.title' : 'lab.ovl.titleIdle'));
+      this.$('.ovl-title').textContent = t(warn ? 'lab.ovl.title' : 'lab.ovl.titleIdle');
+      this.$('.ovl-text').textContent = t(warn ? 'lab.ovl.text' : 'lab.ovl.textIdle');
       this.$all('.ovl-pop [data-action="latency"]').forEach((chip) => chip.setAttribute('aria-pressed', String(chip.dataset.value === current)));
       const ctx = this.engine.ctx;
       const ms = ctx ? Math.round(((ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000) : 0;
@@ -5748,8 +5766,8 @@
       this._saved.latency = hint;
       this._persist();
       this.engine.latencyHint = hint;
-      this._ovl.events = []; this._ovl.cleared = true;
-      this.$('.ovl-btn').hidden = true;
+      this._ovl.events = []; this._ovl.cleared = true; this._ovl.warn = false;
+      this._renderOverloadBtn();
       if (this.engine.ready) {
         this.stop();
         this._releaseAllKeys();
@@ -9875,6 +9893,7 @@
         if (!this.$('.confirm').hidden) this._closeConfirm();
         else if (this.ui.picker) this._closePicker();
         else if (!this.$('.dc-sheet').hidden) this._dcSheetClose();
+        else if (!this.$('.ovl-pop').hidden) this._toggleOverloadPop(false);
         else if (this.ui.dc.menu) { this.ui.dc.menu = false; this.ui.dc.revealAsk = false; this._renderDeconstruct(); this.$('.dc-more')?.focus(); }
         else if (!this.$('.sheet').hidden) this._closeSheet();
         else if (this.ui.beatZoom) this._setBeatZoom(false);
@@ -9986,9 +10005,13 @@
   }
   .lab-head-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; position: relative; }
   .ovl-btn {
-    width: 26px; height: 26px; flex: 0 0 auto; border-radius: 50%; background: var(--bad); color: #fff;
-    font-weight: 900; font-size: .95rem; line-height: 1; margin-top: .15em; box-shadow: 0 0 0 3px rgba(224, 68, 90, .25);
+    width: 26px; height: 26px; flex: 0 0 auto; border-radius: 50%; background: transparent; color: var(--muted);
+    border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 900; font-size: .95rem; line-height: 1; margin-top: .15em; padding: 0;
   }
+  .ovl-btn .ovl-ico { width: 16px; height: 16px; }
+  .ovl-btn.is-warn .ovl-ico, .ovl-btn:not(.is-warn) .ovl-bang { display: none; }
+  .ovl-btn.is-warn { background: var(--bad); border-color: var(--bad); color: #fff; box-shadow: 0 0 0 3px rgba(224, 68, 90, .25); }
   .ovl-pop {
     position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; width: min(92vw, 340px);
     background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px;
@@ -10878,10 +10901,10 @@
 <header class="lab-head">
   <div class="lab-head-title">
     <h1><span>Groove</span> Lab</h1>
-    <button class="ovl-btn" type="button" data-action="overload" hidden aria-expanded="false" aria-label="${t('lab.ovl.aria')}" title="${t('lab.ovl.aria')}">!</button>
-    <div class="ovl-pop" role="dialog" aria-label="${t('lab.ovl.title')}" hidden>
-      <strong>${t('lab.ovl.title')}</strong>
-      <p>${t('lab.ovl.text')}</p>
+    <button class="ovl-btn" type="button" data-action="overload" aria-expanded="false" aria-label="${t('lab.ovl.ariaIdle')}" title="${t('lab.ovl.ariaIdle')}"><svg class="ovl-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-5"/></svg><span class="ovl-bang" aria-hidden="true">!</span></button>
+    <div class="ovl-pop" role="dialog" aria-label="${t('lab.ovl.titleIdle')}" hidden>
+      <strong class="ovl-title">${t('lab.ovl.titleIdle')}</strong>
+      <p class="ovl-text">${t('lab.ovl.textIdle')}</p>
       <span class="sub-label">${t('lab.ovl.buffer')}</span>
       <div class="chip-row">
         ${LATENCY_HINTS.map((hint) => `<button class="chip" type="button" data-action="latency" data-value="${hint}" aria-pressed="false">${t(`lab.ovl.${hint}`)}</button>`).join('')}

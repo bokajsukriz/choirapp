@@ -21361,6 +21361,35 @@ async function runMusicSelfTests({ log = true } = {}) {
     } catch (err) {
       failed.push(`Überlastung (Statistik): ${err?.message || err}`);
     }
+    // Überlastungsanzeige, Paket B: der Knopf ist immer da — neutral → Warnung → nach Pufferwechsel wieder neutral.
+    try {
+      const view = document.createElement('chor-groove-lab');
+      const btn = view.$('.ovl-btn'), pop = view.$('.ovl-pop');
+      if (!btn || btn.hidden || btn.hasAttribute('hidden')) failed.push('Überlastung: Knopf ist am Anfang nicht sichtbar');
+      if (btn.classList.contains('is-warn')) failed.push('Überlastung: Knopf startet nicht neutral');
+      const idleLabel = btn.getAttribute('aria-label');
+      view._toggleOverloadPop(true);
+      if (pop.hidden) failed.push('Überlastung: Panel öffnet im neutralen Zustand nicht');
+      const idleTitle = view.$('.ovl-title').textContent;
+      view._toggleOverloadPop(false);
+      if (!pop.hidden) failed.push('Überlastung: Panel schließt nicht');
+      view._ovl.visibleSince = 0;
+      for (let i = 0; i < 3; i++) { view._ovl.lastEvent = 0; view._noteOverload('gap'); }
+      if (!btn.classList.contains('is-warn') || view._ovl.warn !== true) failed.push('Überlastung: drei Aussetzer schalten nicht auf Warnung');
+      if (btn.getAttribute('aria-label') === idleLabel) failed.push('Überlastung: aria-label folgt dem Zustand nicht');
+      view._toggleOverloadPop(true);
+      if (view.$('.ovl-title').textContent === idleTitle) failed.push('Überlastung: Panel-Titel folgt dem Zustand nicht');
+      view._toggleOverloadPop(false);
+      view._saved.latency = 'interactive';
+      await view._setLatency('balanced');
+      if (btn.classList.contains('is-warn') || view._ovl.warn || btn.hidden || btn.getAttribute('aria-label') !== idleLabel) failed.push('Überlastung: nach Pufferwechsel nicht wieder neutral');
+      // Escape schließt das offene Panel, ohne die Ansicht zu schließen.
+      view._toggleOverloadPop(true);
+      view._handleKeydown({ key: 'Escape', preventDefault() {} });
+      if (!pop.hidden) failed.push('Überlastung: Escape schließt das Panel nicht');
+    } catch (err) {
+      failed.push(`Überlastung (Knopf): ${err?.message || err}`);
+    }
     // Beat-Lupe und Rückfrage vor „Raster leeren“/„Original“ (echte, nicht eingehängte Ansicht).
     try {
       const z = document.createElement('chor-groove-lab');
