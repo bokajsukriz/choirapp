@@ -8,7 +8,7 @@ Auftrag: `ARBEITSANWEISUNG-GROOVELAB-REDESIGN.md`. Basis: `main` @ `2ea07a7`
 |---|---|---|
 | 0 | Quellen, Basis, Bestandsaufnahme | fertig (Entwurf gelesen, Bestandsaufnahme im Bericht) |
 | 1 | Zustandsmodell + reine Funktionen + Selbsttests | fertig |
-| 2 | Kopfleiste mit Ansichts-Dropdown, Menü-Umbau | offen |
+| 2 | Kopfleiste mit Ansichts-Dropdown, Menü-Umbau | fertig (Lernen-Übersicht D4 schon mit drin) |
 | 3 | Chor-Ansicht (D1, D5), Anfangstöne, Einzähler, Hören auf | offen |
 | 4 | Akkordfolgen-Editor (D6) | offen |
 | 5 | Studio mit Spuren (D2, D3, B2) | offen |
@@ -19,9 +19,13 @@ Auftrag: `ARBEITSANWEISUNG-GROOVELAB-REDESIGN.md`. Basis: `main` @ `2ea07a7`
 
 ## Nächster Schritt
 
-Phase 2: Kopfleiste mit Ansichts-Dropdown (Chor · Studio · Lernen), Menü-Umbau.
-Stubs `_renderViewMenu/_renderChor/_renderLearn` und leere `.chor-view`/`.learn-view`
-sind schon im Markup (Phase 1), werden in Phase 2/3/8 gefüllt.
+Phase 3: Chor-Ansicht (D1/D5) in `.chor-view`, `_renderChor()` (Stub vorhanden).
+Phase 2 erledigt: `.view-btn`/`.view-pop` (role menu, menuitemradio, Pfeiltasten,
+Escape, Klick außerhalb), Leiste 44 px, Statuszeile ≤ 400 px ausgeblendet →
+`_toast()`; Menü: Wiedergabe (Gesamtlautstärke, Einzählen), Meine Sounds (bis
+Phase 7: Studio/Sampler-Bibliothek), Zufällig nur im Studio, Audio & Leistung
+(+ Bluetooth-Hinweis im Panel); Ebenen-Stapel `_openLayer/_closeLayer` für alle
+neuen Blätter; Lernen-Übersicht mit Kacheln.
 
 Phase 1 erledigt: STYLES/ENERGY/ROOMS/HEAR_FOCUS/SWING_LEVELS, chordTimeline +
 chordAtStep (Länge/Vorziehen, Loop-Grenze, erster Takt), bassVariant/thinBeat/

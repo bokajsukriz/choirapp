@@ -936,6 +936,8 @@
     { id: 'beatbox', set: { chordsOn: false, melodyOn: false, arpOn: false, bpm: 84 }, display: 'vocalPerc', groove: 'Vocal Perc Basic', fadeDrums: true },
   ];
   const CHOIR_PARTS = ['S', 'A', 'T', 'B'];
+  // Lernen/Aufgaben (D4): Gruppen der Chor-Aufgaben.
+  const LEARN_TASK_GROUPS = [['sing', ['meineStimme', 'bass', 'terzen', 'liegeton']], ['hear', ['minusEins', 'echo', 'pentatonik']], ['rhythm', ['zweiVier', 'swing', 'beatbox']]];
   const patternIndexByName = (name) => DRUM_PATTERNS.findIndex((p) => p.name === name);
   const melodyIndexByName = (name) => MELODIES.findIndex((m) => m.name === name);
 
@@ -2899,6 +2901,9 @@
     reset: svg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'),
     speaker: svg('<path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>'),
     speakerOff: svg('<path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9l5 6M21 9l-5 6"/>'),
+    chevron: svg('<path d="m6 9 6 6 6-6"/>'),
+    piano: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 5v8M12 5v8M16 5v8M8 13v6M12 13v6M16 13v6"/>'),
+    waves: svg('<path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 11v2"/>'),
   };
 
   // Ein Piktogramm je Drumloop und Klang-Preset (siehe `icon`) plus die
@@ -4357,6 +4362,8 @@
 
     async close() {
       this._toggleOverloadPop(false, { focus: false });
+      this._toggleViewMenu(false, { focus: false });
+      this._closeAllLayers();
       this._smpRecAbort();
       this._closeConfirm();
       this._setBeatZoom(false);
@@ -4486,9 +4493,55 @@
     /* ---- Ansicht: Chor · Studio (Didaktik Paket 8) ---- */
 
     /* Redesign: Ansichts-Auswahl, Chor-Ansicht und Lernen (siehe Phase 2/3/8). */
-    _renderViewMenu() {}
+    /** Ansichts-Auswahl in der Kopfleiste: Name, Häkchen, „Zufällig“ nur im Studio. */
+    _renderViewMenu() {
+      const v = this.state.view || 'studio';
+      this.$('.view-name').textContent = t(VIEW_LABEL[v]);
+      this.$('.view-btn').setAttribute('aria-label', tf('lab.viewCurrent', { name: t(VIEW_LABEL[v]) }));
+      this.$all('.view-opt').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === v)));
+      const random = this.$('.menu-random');
+      if (random) random.hidden = this._uiMode() !== 'studio';
+    }
+    _toggleViewMenu(open = this.$('.view-pop').hidden, { focus = true } = {}) {
+      const pop = this.$('.view-pop');
+      if (pop.hidden === !open) return;
+      pop.hidden = !open;
+      this.$('.view-btn').setAttribute('aria-expanded', String(open));
+      if (open) (this.$('.view-opt[aria-checked="true"]') || this.$('.view-opt')).focus();
+      else if (focus) this.$('.view-btn').focus();
+    }
     _renderChor() {}
-    _renderLearn() {}
+    /** Lernen (D4): drei aufklappbare Kacheln — Aufgaben (Gruppen Singen · Hören · Rhythmus),
+     *  Kurs (Fortschritt, Weiterlernen) und de:construct (Fortschritt, Öffnen). */
+    _renderLearn() {
+      const host = this.$('.learn-view');
+      if (!host || host.hidden) return;
+      const open = this.ui.learnOpen || 'tasks';
+      const tile = (id, mark, title, sub, body) => `<section class="learn-tile${open === id ? ' is-open' : ''}">
+        <button class="learn-head" type="button" data-action="learn-toggle" data-value="${id}" aria-expanded="${open === id}" aria-controls="learn-body-${id}">
+          <span class="learn-mark" aria-hidden="true">${mark}</span><span class="learn-heads"><strong>${title}</strong><span>${sub}</span></span>${UI_ICON.chevron}</button>
+        <div class="learn-body" id="learn-body-${id}"${open === id ? '' : ' hidden'}>${body}</div></section>`;
+      const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+      const groups = LEARN_TASK_GROUPS.map(([g, ids]) => `<div class="learn-group"><span class="sub-label">${t(`lab.learn.group.${g}`)}</span><div class="chip-row">${ids
+        .map((id) => `<button class="chip" type="button" data-action="learn-task" data-value="${id}" aria-pressed="${this.state.choirTask === id}">${esc(t(`lab.task.${id}.title`))}</button>`).join('')}</div></div>`).join('');
+      const ws = this._saved.workshop;
+      const tour = WORKSHOP_LESSONS.filter((l) => l.tier === 'tour');
+      const doneTour = tour.filter((l) => ws.done[l.id]).length;
+      const next = Math.min(tour.length, doneTour + 1);
+      const dc = this._saved.deconstruct;
+      const solved = dc?.solved || {};
+      const solvedN = DC_SONGS.filter((x) => solved[x.id]).length;
+      const bar = (n, total) => `<div class="learn-prog" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${n}"><i style="width:${Math.round(100 * n / Math.max(1, total))}%"></i></div>`;
+      host.innerHTML = `<div class="learn-list">
+        ${tile('tasks', UI_ICON.waves, t('lab.learn.tasks'), tf('lab.learn.tasksSub', { n: CHOIR_TASKS.length }), groups)}
+        ${tile('course', `1–${tour.length}`, t('lab.viewWorkshop'), t('lab.menu.modeDesc.workshop'),
+          `<div class="learn-row">${bar(doneTour, tour.length)}<span>${tf('lab.ws.stepOf', { n: next, total: tour.length })}</span></div>
+           <button class="chip learn-go" type="button" data-action="learn-area" data-value="course">${t(doneTour ? 'lab.learn.continue' : 'lab.learn.start')} ›</button>`)}
+        ${tile('dc', 'de:', t('lab.viewDeconstruct'), t('lab.menu.modeDesc.deconstruct'),
+          `<div class="learn-row">${bar(solvedN, DC_SONGS.length)}<span>${tf('lab.learn.dcSolved', { n: solvedN, total: DC_SONGS.length })}</span></div>
+           <button class="chip learn-go" type="button" data-action="learn-area" data-value="dc">${t(dc ? 'lab.learn.continue' : 'lab.learn.start')} ›</button>`)}
+      </div>`;
+    }
 
     /** Betriebsart: was gerade zu sehen ist ('choir' | 'studio' | 'learn' | 'tasks' | 'workshop' | 'deconstruct'). */
     _uiMode() { return uiModeOf(this.state); }
@@ -5230,7 +5283,7 @@
       const on = this._uiMode() === 'deconstruct' && !!this._saved.deconstruct && !this.ui.dc.choosing;
       btn.hidden = !on;
       // Würfeln würde in de:construct auch Vorgegebenes (Grundton) verstellen.
-      this.$('[data-action="randomize"]').hidden = this._uiMode() === 'deconstruct';
+      this.$('[data-action="randomize"]').hidden = this._uiMode() !== 'studio';
       if (!on) return;
       const orig = this.ui.dc.listen === 'orig';
       btn.setAttribute('aria-pressed', String(orig));
@@ -6994,7 +7047,47 @@
       else if (this._uiMode() === 'workshop') this._wsChShow(g);
     }
 
-    _setStatus(text) { this.$all('.status-line').forEach((el) => { el.textContent = text; }); }
+    _setStatus(text) {
+      this.$all('.status-line').forEach((el) => { el.textContent = text; });
+      // Schmale Leiste ohne Statuszeile: Wichtiges kurz als Toast (Routine-Meldungen nicht).
+      const line = this.$('.transport-bar .status-line');
+      if (!text || !line || line.offsetParent !== null || this.hidden) return;
+      if ([t('lab.statusRunning'), t('lab.statusReady')].includes(text) || text.startsWith(t('lab.countIn').split('{')[0])) return;
+      this._toast(text);
+    }
+    _toast(text) {
+      const el = this.$('.toast');
+      el.textContent = text;
+      el.hidden = false;
+      clearTimeout(this._toastTimer);
+      this._toastTimer = global.setTimeout(() => { el.hidden = true; }, 2600);
+    }
+    /* Blätter und Dialoge des Redesigns (Akkordfolge, Tonart, Spur-Blätter, Spielfläche …):
+       ein Stapel — Escape und der Hintergrund schließen das oberste, Tab bleibt darin
+       (_trapFocus), danach kehrt der Fokus zum Auslöser zurück. */
+    _openLayer(el, { onClose = null, focus = null } = {}) {
+      this._layers = this._layers || [];
+      if (this._layers.some((l) => l.el === el)) return;
+      this._layers.push({ el, onClose, back: this.shadowRoot.activeElement });
+      el.hidden = false;
+      requestAnimationFrame(() => (focus ? el.querySelector(focus) : el.querySelector('[data-autofocus], button, input, select'))?.focus());
+    }
+    _closeLayer(el = this._layers?.[this._layers.length - 1]?.el, { focus = true } = {}) {
+      const i = (this._layers || []).findIndex((l) => l.el === el);
+      if (i < 0) return;
+      const [layer] = this._layers.splice(i, 1);
+      layer.el.hidden = true;
+      layer.onClose?.();
+      if (focus && layer.back?.isConnected) layer.back.focus();
+    }
+    _closeAllLayers() { while (this._layers?.length) this._closeLayer(undefined, { focus: false }); }
+
+    /** „Meine Sounds“ (Sampler-Bibliothek). Bis zur eigenen Ansicht: Studio, Reiter Sampler. */
+    _openSounds() {
+      if (this._uiMode() !== 'studio') this._applyView('studio');
+      this._setTab('sampler');
+      this._samplerGo('library');
+    }
 
     /* ---- Halten-Roll: eine je Loop eigene, artikulierte Rhythmuszelle nur
        solange der Pad-Knopf gedrückt ist (siehe DRUM_PATTERNS.roll). ---- */
@@ -9621,6 +9714,11 @@
         return row;
       }));
       this.$('.code-out').value = encodeState(this.state);
+      const master = this.$('.menu-master input');
+      master.value = String(this.state.mix.master);
+      this.$('.menu-master output').textContent = `${Math.round(this.state.mix.master * 100)} %`;
+      this.$('[data-switch="countIn"]').checked = !!this.state.countIn;
+      this._renderViewMenu();
       this.$('.storage-hint').textContent = t(this._storage ? 'lab.autoSaveHint' : 'lab.noStorageHint');
     }
 
@@ -10220,6 +10318,7 @@
     _wireControls() {
       this.shadowRoot.addEventListener('click', (event) => {
         // Ein Tipp außerhalb schließt das „⋯“-Menü.
+        if (!this.$('.view-pop').hidden && !event.target.closest('.view-wrap')) this._toggleViewMenu(false, { focus: false });
         if (this.ui.dc.menu && !event.target.closest('.dc-menu-wrap')) { this.ui.dc.menu = false; this.ui.dc.revealAsk = false; this._renderDeconstruct(); }
         const target = event.target.closest('[data-action]');
         if (!target || target.disabled) return;
@@ -10240,6 +10339,7 @@
           this._renderKit();
         } else if (el.dataset.mix) {
           s.mix[el.dataset.mix] = Number(el.value);
+          if (el.dataset.mix === 'master') this.$all('[data-out="master"]').forEach((o) => { o.textContent = `${Math.round(s.mix.master * 100)} %`; });
           this._paintLevel(el);
           if (el.dataset.mix === 'master') this.engine.setMaster(s.mix.master * (ENERGY_TRIM[s.energy]?.all ?? 1));
           else this.engine.setBusLevel(el.dataset.mix, s.mute[el.dataset.mix] ? 0 : s.mix[el.dataset.mix] * busFactor(s, el.dataset.mix));
@@ -10339,7 +10439,13 @@
       const s = this.state;
       switch (action) {
         case 'close': this.close(); break;
-        case 'view': this._applyView(value); this._closeSheet(); break;
+        case 'view': this._toggleViewMenu(false); this._applyView(value, null); this._closeSheet({ focus: false }); this.$('.view-btn').focus(); break;
+        case 'view-menu': this._toggleViewMenu(); break;
+        case 'learn-home': this._applyView('learn', null); break;
+        case 'learn-area': this._applyView('learn', value); break;
+        case 'learn-toggle': this.ui.learnOpen = (this.ui.learnOpen || 'tasks') === value ? 'none' : value; this._renderLearn(); this.$(`.learn-head[data-value="${value}"]`)?.focus(); break;
+        case 'learn-task': this._applyView('learn', 'tasks'); this._applyChoirTask(value); break;
+        case 'my-sounds': this._closeSheet({ focus: false }); this._openSounds(); break;
         case 'choir-task': this._applyChoirTask(value); break;
         case 'choir-part': {
           this.ui.choirPart = value;
@@ -10825,6 +10931,8 @@
       if (event.key === 'Escape') {
         event.preventDefault();
         if (!this.$('.confirm').hidden) this._closeConfirm();
+        else if (!this.$('.view-pop').hidden) this._toggleViewMenu(false);
+        else if (this._layers?.length) this._closeLayer();
         else if (this.ui.picker) this._closePicker();
         else if (!this.$('.dc-sheet').hidden) this._dcSheetClose();
         else if (!this.$('.ovl-pop').hidden) this._toggleOverloadPop(false);
@@ -10834,6 +10942,15 @@
         else this.close();
         return;
       }
+      if (!this.$('.view-pop').hidden && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+        event.preventDefault();
+        const opts = this.$all('.view-opt');
+        const i = opts.indexOf(this.shadowRoot.activeElement);
+        const n = event.key === 'Home' ? 0 : event.key === 'End' ? opts.length - 1 : mod(i + (event.key === 'ArrowDown' ? 1 : -1), opts.length);
+        opts[n].focus();
+        return;
+      }
+      if (event.key === 'Tab' && !this.$('.view-pop').hidden) this._toggleViewMenu(false, { focus: false });
       if (event.key === 'Tab') { this._trapFocus(event); return; }
       if (this._isTyping() || event.metaKey || event.ctrlKey || event.altKey) return;
 
@@ -10873,7 +10990,7 @@
     }
 
     _trapFocus(event) {
-      const scope = [this.$('.confirm-card'), this.$('.picker-card'), this.$('.sheet'), this.$('.dc-sheet-card')].find((el) => !el.closest('[hidden]')) || this.shadowRoot;
+      const scope = [this.$('.confirm-card'), this._layers?.[this._layers.length - 1]?.el, this.$('.picker-card'), this.$('.sheet'), this.$('.dc-sheet-card')].find((el) => el && !el.closest('[hidden]')) || this.shadowRoot;
       const focusable = Array.from(scope.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea, summary'))
         .filter((el) => el.offsetParent !== null || el === this.shadowRoot.activeElement)
         .filter((el) => scope !== this.shadowRoot || !el.closest('.sheet, .picker'));
@@ -10921,7 +11038,7 @@
     --surface-2: #fff1e2;
     --line: #f1ddd0;
     --text: #241b3d;
-    --muted: #8c81a6;
+    --muted: #6b5f86; /* Redesign: 4,5:1 auf Weiß (vorher #8c81a6) */
     --bad: #e0445a;
     --warn: #a86a00;
     position: fixed; inset: 0; z-index: 2147483000;
@@ -10988,6 +11105,62 @@
   .icon-btn {
     width: 40px; height: 40px; flex: 0 0 auto; display: grid; place-items: center;
     border: 1px solid var(--line); border-radius: 13px; background: var(--surface-2); color: var(--muted);
+  }
+  /* Redesign: Kopfleiste mit 44-px-Tippflächen und Ansichts-Auswahl (Chor · Studio · Lernen). */
+  .transport-bar .icon-btn { width: 44px; height: 44px; }
+  .transport-bar .ovl-btn { width: 44px; height: 44px; border-radius: 13px; }
+  .transport-bar .ovl-btn .ovl-ico { width: 20px; height: 20px; }
+  .view-wrap { flex: 0 0 auto; } /* Menü hängt an der Leiste (rechtsbündig), nicht am Knopf */
+  .view-btn {
+    min-height: 44px; padding: 0 8px 0 13px; border-radius: 13px; border: 1px solid var(--text); background: var(--text); color: #fff;
+    display: inline-flex; align-items: center; gap: 4px; font-size: .86rem; font-weight: 800; white-space: nowrap;
+  }
+  .view-btn svg { width: 16px; height: 16px; stroke-width: 2.2; }
+  .view-pop {
+    position: absolute; top: calc(100% + 6px); right: max(12px, env(safe-area-inset-right)); z-index: 21; width: min(calc(100% - 24px), 300px); display: grid; gap: 4px; padding: 6px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(36, 27, 61, .22);
+  }
+  .view-opt { display: grid; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 10px; min-height: 44px; }
+  .view-opt strong { font-size: .88rem; }
+  .view-opt span { font-size: .7rem; color: var(--muted); line-height: 1.35; }
+  .view-opt[aria-checked="true"] { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--accent); }
+  .view-opt[aria-checked="true"] strong { color: var(--accent); }
+  .view-opt:hover { background: var(--surface-2); }
+  .beat-dots i.is-count { background: var(--text); }
+  .ovl-bt { color: var(--muted); }
+  .menu-master { margin: 0 0 8px; grid-template-columns: 1fr 44px; row-gap: 4px; }
+  .menu-master > span { grid-column: 1 / -1; }
+  .learn-back { padding: 0 0 8px; }
+  .learn-list { display: grid; gap: 10px; }
+  .learn-tile { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 12px 14px; display: grid; gap: 10px; }
+  .learn-tile.is-open { border: 2px solid var(--accent); padding: 11px 13px; }
+  .learn-head { display: flex; align-items: center; gap: 12px; text-align: left; min-height: 44px; width: 100%; }
+  .learn-head > svg { width: 20px; height: 20px; color: var(--muted); transition: transform .2s; }
+  .learn-tile.is-open .learn-head > svg { transform: rotate(180deg); }
+  .learn-mark { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 12px; background: var(--surface-2); color: var(--text); display: grid; place-items: center; font-size: .8rem; font-weight: 900; }
+  .learn-mark svg { width: 22px; height: 22px; }
+  .learn-heads { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .learn-heads strong { font-size: 1.02rem; }
+  .learn-heads span { font-size: .74rem; color: var(--muted); line-height: 1.35; }
+  .learn-body { display: grid; gap: 10px; }
+  .learn-group { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+  .learn-group .chip { min-height: 40px; }
+  .learn-row { display: flex; align-items: center; gap: 10px; font-size: .76rem; font-weight: 700; color: var(--muted); }
+  .learn-prog { flex: 1; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .learn-prog i { display: block; height: 100%; background: var(--accent); }
+  .learn-go { justify-self: start; min-height: 44px; }
+  @media (prefers-reduced-motion: reduce) { .learn-head > svg { transition: none; } }
+  .toast {
+    position: absolute; left: 50%; top: calc(max(8px, env(safe-area-inset-top)) + 54px); transform: translateX(-50%); z-index: 30;
+    max-width: calc(100% - 32px); margin: 0; padding: 8px 14px; border-radius: 999px; background: var(--text); color: #fff;
+    font-size: .76rem; font-weight: 700; box-shadow: 0 8px 20px -8px rgba(36, 27, 61, .6);
+  }
+  /* Wird es eng: erst Statuszeile, dann Akkordname weglassen — nie Play, Ansicht, Menü. */
+  @media (max-width: 400px) { .transport-bar { gap: 6px; } .transport-bar .status-line { display: none; } }
+  @media (max-width: 359px) {
+    .transport-bar { gap: 4px; padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+    .transport-bar .now-chord { display: none; }
+    .view-btn { padding: 0 6px 0 10px; }
   }
 
   .tab-bar {
@@ -11877,6 +12050,12 @@
     <div class="now-line"><div class="beat-dots" aria-hidden="true"></div><strong class="now-chord"></strong></div>
     <p class="status-line" role="status">${t('lab.statusReady')}</p>
   </div>
+  <div class="view-wrap">
+    <button class="view-btn" type="button" data-action="view-menu" aria-haspopup="menu" aria-expanded="false"><span class="view-name"></span>${UI_ICON.chevron}</button>
+    <div class="view-pop" role="menu" aria-label="${t('lab.viewAria')}" hidden>
+      ${VIEWS.map((v) => `<button class="view-opt" type="button" role="menuitemradio" aria-checked="false" data-action="view" data-value="${v}"><strong>${t(VIEW_LABEL[v])}</strong><span>${t(`lab.menu.modeDesc.${v}`)}</span></button>`).join('')}
+    </div>
+  </div>
   <button class="ovl-btn" type="button" data-action="overload" aria-expanded="false" aria-label="${t('lab.ovl.ariaIdle')}" title="${t('lab.ovl.ariaIdle')}"><svg class="ovl-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-5"/></svg><span class="ovl-bang" aria-hidden="true">!</span></button>
   <div class="ovl-pop" role="dialog" aria-label="${t('lab.ovl.titleIdle')}" hidden>
     <strong class="ovl-title">${t('lab.ovl.titleIdle')}</strong>
@@ -11896,6 +12075,7 @@
     </div>
     <p class="ovl-test" role="status"></p>
     <p class="ovl-note" role="status"></p>
+    <p class="ovl-bt">${t('lab.ovl.bluetooth')}</p>
     <button class="chip" type="button" data-action="overload-close">${t('lab.ovl.close')}</button>
   </div>
   <button class="dc-check-btn" type="button" data-action="dc-check-active"></button>
@@ -12407,19 +12587,21 @@
       </details>
       <p class="foot-note storage-hint"></p>
     </section>
-    <section class="menu-sec" aria-labelledby="gl-menu-mode">
-      <h3 class="menu-sec-title" id="gl-menu-mode">${t('lab.menu.mode')}</h3>
-      <div class="mode-list" role="group" aria-labelledby="gl-menu-mode">
-        ${VIEWS.map((v) => `<button class="mode-item" type="button" data-action="view" data-value="${v}" aria-pressed="false"><strong>${t(VIEW_LABEL[v])}</strong><span>${t(`lab.menu.modeDesc.${v}`)}</span></button>`).join('')}
-      </div>
+    <section class="menu-sec" aria-labelledby="gl-menu-play">
+      <h3 class="menu-sec-title" id="gl-menu-play">${t('lab.menu.play')}</h3>
+      <label class="slider-line menu-master"><span>${t('lab.menu.master')}</span><input type="range" data-mix="master" min="0" max="1" step=".01"><output data-out="master"></output></label>
+      <div class="switch-row">${toggle('countIn', 'lab.menu.countIn')}</div>
     </section>
     <section class="menu-sec menu-actions">
+      <button class="menu-item" type="button" data-action="my-sounds">${UI_ICON.waves}<span>${t('lab.menu.sounds')}</span></button>
+      <button class="menu-item menu-random" type="button" data-action="randomize">${UI_ICON.dice}<span>${t('lab.menu.random')}</span></button>
       <button class="menu-item" type="button" data-action="menu-audio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-5"/></svg><span>${t('lab.ovl.titleIdle')}</span></button>
-      <button class="menu-item" type="button" data-action="randomize">${UI_ICON.dice}<span>${t('lab.randomAria')}</span></button>
       <button class="menu-item" type="button" data-action="close">${UI_ICON.close}<span>${t('lab.closeAria')}</span></button>
     </section>
   </div>
 </div>
+
+<p class="toast" role="status" aria-live="polite" hidden></p>
 
 <div class="confirm" hidden>
   <div class="confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="gl-confirm-text">
