@@ -9,7 +9,7 @@ Auftrag: `ARBEITSANWEISUNG-GROOVELAB-REDESIGN.md`. Basis: `main` @ `2ea07a7`
 | 0 | Quellen, Basis, Bestandsaufnahme | fertig (Entwurf gelesen, Bestandsaufnahme im Bericht) |
 | 1 | Zustandsmodell + reine Funktionen + Selbsttests | fertig |
 | 2 | Kopfleiste mit Ansichts-Dropdown, Menü-Umbau | fertig (Lernen-Übersicht D4 schon mit drin) |
-| 3 | Chor-Ansicht (D1, D5), Anfangstöne, Einzähler, Hören auf | offen |
+| 3 | Chor-Ansicht (D1, D5), Anfangstöne, Einzähler, Hören auf | fertig |
 | 4 | Akkordfolgen-Editor (D6) | offen |
 | 5 | Studio mit Spuren (D2, D3, B2) | offen |
 | 6 | Spielflächen (E1, E5, E2) mit vereinter Aufnahme | offen |
@@ -19,7 +19,14 @@ Auftrag: `ARBEITSANWEISUNG-GROOVELAB-REDESIGN.md`. Basis: `main` @ `2ea07a7`
 
 ## Nächster Schritt
 
-Phase 3: Chor-Ansicht (D1/D5) in `.chor-view`, `_renderChor()` (Stub vorhanden).
+Phase 4: Akkordfolgen-Editor als Blatt (D6), `_openProgSheet()` (Stub, von Chor
+„Akkorde“ aufgerufen). Danach Phase 5 (Studio-Spuren), Phase 6 `_openSurface()`.
+
+Phase 3 erledigt: `.chor-view` (Markup statisch, `_renderChor`), Tonart ± /
+Tonart-Blatt `.key-layer`, Anfangstöne (`_giveStartNotes`), Tempo ± / Tap / Swing-
+Stufen, Stil ‹ › (`applyStyle`), Energie/Raum/Hören auf als Radiogruppen, Elemente
+‹ › (`_chorStep`), D5: Hinweis, „angepasst“, weitere Spuren + Stumm, Zurücksetzen.
+Einzähler-Schalter steht im Menü (D-Entscheidung). Test: `redesignViewTest()`.
 Phase 2 erledigt: `.view-btn`/`.view-pop` (role menu, menuitemradio, Pfeiltasten,
 Escape, Klick außerhalb), Leiste 44 px, Statuszeile ≤ 400 px ausgeblendet →
 `_toast()`; Menü: Wiedergabe (Gesamtlautstärke, Einzählen), Meine Sounds (bis

@@ -4510,7 +4510,258 @@
       if (open) (this.$('.view-opt[aria-checked="true"]') || this.$('.view-opt')).focus();
       else if (focus) this.$('.view-btn').focus();
     }
-    _renderChor() {}
+    /* ---- Chor (D1, D5): Tonart, Tempo, Stil mit Energie und Raum, dann die Elemente
+       zum Durchklicken. Zeigt denselben Stand wie das Studio; was Chor nicht abbilden
+       kann, steht als „Eigene Einstellung (Studio)“ daneben — nie still verworfen. ---- */
+
+    /** Tonart als Text („G-Dur“, „e-Moll“, „D dorisch“). */
+    _keyLabel(s = this.state) {
+      let root = spell(s.keyRoot, s.keyRoot, s.modeId, labLang);
+      if (labLang === 'de' && (s.modeId === 'minor' || s.modeId === 'dorian')) root = root.charAt(0).toLowerCase() + root.slice(1);
+      return tf(`lab.chor.keyFmt.${s.modeId}`, { root });
+    }
+    /** Folgen-Vorlagen, die zum Modus passen (Akkorde ‹ ›). */
+    _progCycle() { return PROGRESSIONS.filter((p) => p.id !== 'drone' && progFitsMode(p, this.state.modeId)); }
+    /** Rhythmen zum Durchklicken: erst die Leiter des Stils, dann die übrigen Loops gleicher Taktart. */
+    _rhythmCycle() {
+      const meter = this._meter();
+      const style = styleOf(this.state.styleId);
+      const first = style ? style.drums.filter(Boolean).map(([name]) => patternIndexByName(name)) : [];
+      const rest = [...orderIndexes(BEAT_ORDER, patternIndexByName), ...DRUM_PATTERNS.map((_, i) => i)];
+      return [...new Set([...first, ...rest])].filter((i) => i >= 0 && DRUM_PATTERNS[i].meter === meter);
+    }
+    _bassCycle() { return BASS_PLAYS.filter((p) => p !== 'offbeat' || this._meter() === '4/4'); }
+    _melodyCycle() {
+      const meter = this._meter();
+      return [-1, ...[...new Set([...orderIndexes(MELODY_ORDER, melodyIndexByName), ...MELODIES.map((_, i) => i)])].filter((i) => MELODIES[i].meter === meter)];
+    }
+    /** Vorziehen, das der Stil (sonst nichts) für neue Akkorde vorgibt. */
+    _stylePush() { const st = styleOf(this.state.styleId); return st ? PUSH_OF[st.push] : 0; }
+    /** Länge/Vorziehen an eine geänderte Akkordzahl anpassen (Vorlagenwechsel, Editor). */
+    _normChordArrays({ fresh = false } = {}) {
+      const s = this.state;
+      const n = this._progression().degrees.length;
+      if (fresh) { s.chordLen = null; s.chordPush = normChordPush(Array(n).fill(this._stylePush()), n); return; }
+      if (s.chordLen && s.chordLen.length !== n) Object.assign(s, foldChordLens(s.chordLen, n, s.chordBars));
+      if (s.chordPush && s.chordPush.length !== n) s.chordPush = normChordPush(Array.from({ length: n }, (_, i) => s.chordPush[i] ?? this._stylePush()), n);
+    }
+    /** Ganzen Stand ersetzen (Stil, Zurücksetzen) — Ansicht und Liegeton bleiben, ein Undo-Schritt. */
+    _replaceState(next) {
+      const meterBefore = this._meter();
+      this._applyState(next);
+      if (this.playing && this._meter() !== meterBefore) this.globalStep = Math.ceil(this.globalStep / this._barSteps()) * this._barSteps();
+    }
+    /** Weitere Spuren, die Chor nicht zeigt (Liegeton, 2. Akkorde-Spur, Aufnahmen). */
+    _extraTracks() {
+      const s = this.state;
+      const list = [];
+      if (s.droneOn) list.push(['drone', t('lab.track.drone')]);
+      if (s.arpOn) list.push(['arp', t('lab.track.arp')]);
+      s.sampleLanes.forEach((l) => list.push(['lane', this._sampleMeta(l.padId)?.name || t('lab.track.rec')]));
+      return list;
+    }
+
+    _renderChor() {
+      const host = this.$('.chor-view');
+      if (!host || host.hidden) return;
+      const s = this.state;
+      const meter = this._meter();
+      const diff = styleDiff(s);
+      const style = styleOf(s.styleId);
+      const check = (sel, value) => this.$all(`${sel} [role="radio"]`).forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === value)));
+      this.$('.chor-note').hidden = !(style && diff.any);
+      this.$('.chor-key-name').textContent = this._keyLabel();
+      this.$('.chor-key-name').setAttribute('aria-label', tf('lab.chor.keyAria', { key: this._keyLabel() }));
+      this.$('.chor-bpm').textContent = `${tempoSymbol(meter)} ${s.bpm}`;
+      const swingBox = this.$('.chor-swing');
+      swingBox.hidden = !swingOffered(meter);
+      check('.chor-swing', swingLevelOf(s.swing));
+      const styleBpm = style && Math.round(style.bpm);
+      const far = style && Math.abs(s.bpm - styleBpm) / styleBpm > .25;
+      const chip = this.$('.chor-style-bpm');
+      chip.hidden = !far;
+      if (far) chip.textContent = tf('lab.chor.styleBpm', { bpm: styleBpm });
+      this.$('.chor-style-name').textContent = style ? t(`lab.style.${style.id}.name`) : t('lab.chor.styleNone');
+      this.$('.chor-style-desc').textContent = style ? (diff.any ? t('lab.chor.styleAdjusted') : t(`lab.style.${style.id}.desc`)) : t('lab.chor.styleNoneDesc');
+      this.$('.chor-style-desc').classList.toggle('is-own', !!style && diff.any);
+      const energyCustom = !!style && (diff.rhythm || diff.bass);
+      this.$('.chor-energy-badge').hidden = !energyCustom;
+      this.$('.chor-energy-hint').hidden = !energyCustom;
+      this.$('.chor-energy').classList.toggle('is-off', !style);
+      this.$all('.chor-energy [role="radio"]').forEach((b) => { b.disabled = !style; });
+      check('.chor-energy', this._pendingEnergy || s.energy);
+      check('.chor-room', s.room);
+      check('.chor-hear', s.hearFocus);
+      // Akkorde: die Folge in der Tonart, ← an vorgezogenen Wechseln.
+      const prog = this._progression();
+      const tl = this._chordTimeline(prog);
+      const chords = this.$('.chor-chords');
+      chords.replaceChildren(...prog.degrees.map((_, i) => {
+        const chipEl = document.createElement('span');
+        chipEl.className = 'chor-chord';
+        // ← an vorgezogenen Wechseln; der erste Akkord kommt nach dem Einzähler immer auf der Eins.
+        chipEl.textContent = `${i && tl.push[i] ? '←' : ''}${this._nameAt(prog, i)}`;
+        return chipEl;
+      }));
+      chords.setAttribute('aria-label', tf('lab.chor.chordsAria', { list: prog.degrees.map((_, i) => `${this._nameAt(prog, i)}${tl.push[i] ? ` (${t('lab.chor.pushedShort')})` : ''}`).join(', ') }));
+      // Elemente.
+      const pattern = this._pattern();
+      const row = (el, name, sub, own = false) => {
+        const r = this.$(`.chor-el[data-el="${el}"]`);
+        r.querySelector('.chor-el-name').textContent = name;
+        const subEl = r.querySelector('.chor-el-sub');
+        subEl.textContent = sub;
+        subEl.classList.toggle('is-own', own);
+        r.classList.toggle('is-off', el === 'melody' && !s.melodyOn);
+      };
+      // Eigenes Muster: weder der Loop selbst noch die Fassung des Stils bei dieser Energie.
+      const drumsOf = (b) => JSON.stringify(DRUM_TRACKS.map((tr) => Object.entries(b[tr] || {}).sort(([x], [y]) => x - y)));
+      const resolved = style && resolveEnergy(s.styleId, s.energy);
+      const fromStyle = !!resolved && resolved.patternIndex === s.patternIndex;
+      const rhythmOwn = s.beatEdited || (drumsOf(s.beat) !== drumsOf(beatFromPattern(pattern)) && !(fromStyle && drumsOf(s.beat) === drumsOf(resolved.beat)));
+      row('rhythm', pattern.name, rhythmOwn ? t('lab.chor.ownStudio') : `${pattern.meter} · ${t(fromStyle && !diff.rhythm ? 'lab.chor.fromStyle' : 'lab.chor.loop')}`, rhythmOwn);
+      const bassMatch = s.bassPlay && JSON.stringify(Object.entries(bassVariant(pattern, s.bassPlay)).sort()) === JSON.stringify(Object.entries(s.beat.bass || {}).sort());
+      row('bass', !s.trackOn.bass || s.mute.bass ? t('lab.chor.off') : bassMatch ? t(`lab.bassPlay.${s.bassPlay}`) : t('lab.chor.ownLine'), BASS_SOUNDS.find((b) => b.id === s.bassSoundId)?.name || '', !bassMatch);
+      const soundName = `${t(`lab.chordSound.${s.chordSound}`)}${s.chordPad ? ` + ${t('lab.chor.pad')}` : ''}`;
+      row('sound', s.chordsOn ? soundName : t('lab.chor.off'), t(s.chordVoicing === 'satb' ? 'lab.chor.voicingSatb' : 'lab.chor.voicingPop'));
+      const mel = this._melody();
+      row('melody', s.melodyOn ? mel.name : t('lab.chor.off'), s.melodyOn ? SYNTH_PRESETS[s.sound.presetIndex]?.name || '' : tf('lab.chor.melodyHint', { name: MELODIES[s.melodyIndex].name }), s.melodyOn && !!s.melodyBars);
+      // Weitere Spuren und Zurücksetzen (D5).
+      const extra = this._extraTracks();
+      const extraBox = this.$('.chor-extra');
+      extraBox.hidden = !extra.length;
+      if (extra.length) {
+        this.$('.chor-extra-text').textContent = tf(extra.length === 1 ? 'lab.chor.extraOne' : 'lab.chor.extraMany', { n: extra.length, list: extra.map(([, name]) => name).join(', ') });
+        const muted = (!s.arpOn || s.mute.arp) && (!s.droneOn || s.mute.drone) && s.sampleLanes.every((l) => !l.on);
+        this.$('[data-action="chor-extra-mute"]').setAttribute('aria-pressed', String(muted));
+      }
+      this.$('.chor-reset').hidden = !(style && diff.any);
+    }
+
+    /** Akkorde, Rhythmus, Bass, Klang, Melodie ‹ › (Chor). */
+    _chorStep(el, dir) {
+      const s = this.state;
+      const step = (list, current) => { const i = list.indexOf(current); return list[mod((i < 0 ? (dir > 0 ? -1 : 0) : i) + dir, list.length)]; };
+      this._pushHistory();
+      if (el === 'rhythm') {
+        const idx = step(this._rhythmCycle(), s.patternIndex);
+        s.patternIndex = idx;
+        s.beat = beatFromPattern(this._pattern());
+        // Die Bass-Spielweise bleibt, sie wird aus der Linie des neuen Loops abgeleitet.
+        if (s.bassPlay) s.beat.bass = bassVariant(this._pattern(), s.bassPlay);
+        s.percSound = percOf(this._pattern());
+        s.beatEdited = false;
+      } else if (el === 'bass') {
+        const play = step(this._bassCycle(), s.bassPlay);
+        s.bassPlay = play;
+        s.beat.bass = bassVariant(this._pattern(), play);
+        s.trackOn.bass = true; s.mute.bass = false;
+      } else if (el === 'sound') {
+        s.chordSound = step(CHORD_SOUND_IDS, s.chordSound);
+        s.chordsOn = true;
+        this._loadInstruments();
+      } else if (el === 'melody') {
+        const cur = s.melodyOn ? s.melodyIndex : -1;
+        const next = step(this._melodyCycle(), s.melodyBars ? s.melodyIndex : cur);
+        if (next < 0) s.melodyOn = false;
+        else { this._clearMelodyEdit(); s.melodyIndex = next; s.melodyOn = true; }
+      }
+      this._afterStateChange();
+    }
+
+    _chorStyle(dir) {
+      const i = STYLE_IDS.indexOf(this.state.styleId);
+      const id = STYLE_IDS[mod((i < 0 ? (dir > 0 ? -1 : 0) : i) + dir, STYLE_IDS.length)];
+      this._replaceState(applyStyle(this.state, id));
+      this._setStatus(tf('lab.chor.styleSet', { name: t(`lab.style.${id}.name`) }));
+    }
+
+    _chorProg(dir) {
+      const s = this.state;
+      const list = this._progCycle();
+      const i = list.findIndex((p) => p.id === s.progId);
+      const next = list[mod((i < 0 ? (dir > 0 ? -1 : 0) : i) + dir, list.length)];
+      this._pushHistory();
+      this._clearProgEdit();
+      s.progId = next.id;
+      this._normChordArrays({ fresh: true });
+      this._onHarmonyChange();
+      this._setStatus(tf('lab.chor.progSet', { name: t(progKey('Name', next.id)) }));
+    }
+
+    /** Tonart-Auswahl (Antippen oder langes Drücken auf die Tonart): Grundton und Tongeschlecht. */
+    _openKeyLayer() {
+      const s = this.state;
+      const roots = this.$('.key-roots');
+      const names = Array.from({ length: 12 }, (_, pc) => spell(pc, pc, s.modeId, labLang));
+      roots.replaceChildren(...names.map((name, pc) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'chip'; b.setAttribute('role', 'radio');
+        b.dataset.action = 'key-root'; b.dataset.value = String(pc);
+        b.setAttribute('aria-checked', String(pc === s.keyRoot));
+        b.textContent = name;
+        return b;
+      }));
+      const modes = this.$('.key-modes');
+      modes.replaceChildren(...MODES.map((m) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'chip'; b.setAttribute('role', 'radio');
+        b.dataset.action = 'key-mode'; b.dataset.value = m.id;
+        b.setAttribute('aria-checked', String(m.id === s.modeId));
+        b.textContent = t(m.nameKey);
+        return b;
+      }));
+      this.$('.key-layer-now').textContent = this._keyLabel();
+      this._openLayer(this.$('.key-layer'), { focus: '[aria-checked="true"]' });
+    }
+
+    _openKeyLayerRefresh(group) {
+      if (this.$('.key-layer').hidden) return;
+      this._openKeyLayer();
+      this.$(`.key-${group} [aria-checked="true"]`)?.focus();
+    }
+    /** Spielfläche (Phase 6) und Akkordfolgen-Editor (Phase 4). */
+    _openSurface() {}
+    _openProgSheet() {}
+
+    /** Anfangstöne geben (Berater, E): Begleitung pausiert; Tonika-Dreiklang, dann die
+     *  Einsatztöne B → T → A → S aus dem SATB-Satz des ersten Akkords, Klavier. */
+    async _giveStartNotes() {
+      if (this.playing) this.stop();
+      try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
+      const s = this.state;
+      const eng = this.engine;
+      const prog = this._progression();
+      const first = voiceProgressionSatb(s.keyRoot, this._mode(), prog)[0];
+      if (!first) return;
+      const piano = soundFromPreset(presetIndexByName('Klavier'));
+      eng.ensureInstrument('piano');
+      eng.setLayerSound('keys', piano);
+      const t0 = eng.ctx.currentTime + .08;
+      let at = t0;
+      const opt = { layer: 'keys', glide: 0, stepSeconds: this._stepSeconds() };
+      if (prog.degrees[0] % 7 !== 0 || prog.alter?.[0] || prog.bass?.[0]) {
+        const tonic = voiceChord(chordPitchClasses(s.keyRoot, this._mode().steps, 0, false), first);
+        SATB.forEach((v) => eng.playTone(piano, tonic[v], at, .12, 1.6, opt));
+        at += 2;
+      }
+      const order = ['B', 'T', 'A', 'S'];
+      const focus = order.find((v) => s.satb[v] === 'focus');
+      const seq = focus ? [...order.filter((v) => v !== focus), focus] : order;
+      const [spellRoot, spellMode] = this._spellKeyAt(0);
+      const names = [];
+      seq.forEach((v) => {
+        const len = v === focus ? 1.4 : .9;
+        eng.playTone(piano, first[v], at, .2, len, opt);
+        names.push(`${v}: ${noteLabel(first[v], spellRoot, spellMode, labLang)}`);
+        at += len + .25;
+      });
+      SATB.forEach((v) => eng.playTone(piano, first[v], at, .12, 1.2, opt));
+      this._setStatus(names.join(' · '));
+      this.$('.chor-key-name')?.setAttribute('title', names.join(' · '));
+      global.setTimeout(() => this._syncEngine(), (at + 1.4 - t0) * 1000);
+    }
+
     /** Lernen (D4): drei aufklappbare Kacheln — Aufgaben (Gruppen Singen · Hören · Rhythmus),
      *  Kurs (Fortschritt, Weiterlernen) und de:construct (Fortschritt, Öffnen). */
     _renderLearn() {
@@ -7175,6 +7426,7 @@
       this._renderTransport();
       this._renderNow();
       this._renderChoir();
+      this._renderChor();
       this._renderWorkshop();
       this._renderDeconstruct();
       this._wsDecorate();
@@ -10396,6 +10648,8 @@
     }
 
     _onHarmonyChange() {
+      this._normChordArrays();
+      this._renderChor();
       this._voicingCache = null;
       this._renderHarmony();
       this._renderNow();
@@ -10446,6 +10700,32 @@
         case 'learn-toggle': this.ui.learnOpen = (this.ui.learnOpen || 'tasks') === value ? 'none' : value; this._renderLearn(); this.$(`.learn-head[data-value="${value}"]`)?.focus(); break;
         case 'learn-task': this._applyView('learn', 'tasks'); this._applyChoirTask(value); break;
         case 'my-sounds': this._closeSheet({ focus: false }); this._openSounds(); break;
+        case 'layer-close': this._closeLayer(target.closest('.layer')); break;
+        // Chor (D1, D5)
+        case 'chor-key': this._pushHistory(); s.keyRoot = mod(s.keyRoot + Number(value), 12); this._onHarmonyChange(); this._retuneDrone(); this._renderHarmony(); break;
+        case 'chor-key-pick': this._openKeyLayer(); break;
+        case 'key-root': this._pushHistory(); s.keyRoot = Number(value); this._onHarmonyChange(); this._retuneDrone(); this._renderHarmony(); this._openKeyLayerRefresh('roots'); break;
+        case 'key-mode': this._pushHistory(); s.modeId = value; this._onHarmonyChange(); this._renderHarmony(); this._openKeyLayerRefresh('modes'); break;
+        case 'chor-bpm': this._setBpm(s.bpm + Number(value)); this._onTempoChange(); this._renderChor(); break;
+        case 'chor-swing': this._pushHistory(); s.swing = swingValueOf(value); this._renderBeat(); this._renderChor(); break;
+        case 'chor-style-bpm': { const st = styleOf(s.styleId); if (st) { this._pushHistory(); this._setBpm(st.bpm); this._onTempoChange(); this._renderChor(); } break; }
+        case 'chor-style': this._chorStyle(Number(value)); break;
+        case 'chor-energy': this._setEnergy(value); this._renderChor(); break;
+        case 'chor-room': this._pushHistory(); setRoom(s, value); this._syncEngine(); this._renderFx(); this._renderChor(); break;
+        case 'chor-hear': this._pushHistory(); s.hearFocus = HEAR_IDS.includes(value) ? value : 'balanced'; this._syncEngine(); this._renderChor(); break;
+        case 'chor-prog': this._chorProg(Number(value)); break;
+        case 'chor-el': this._chorStep(target.dataset.el, Number(value)); break;
+        case 'chor-reset': if (s.styleId) { this._replaceState(applyStyle(s, s.styleId, s.energy)); this._setStatus(t('lab.chor.resetDone')); } break;
+        case 'chor-extra-mute': {
+          this._pushHistory();
+          const mute = target.getAttribute('aria-pressed') !== 'true';
+          s.mute.arp = mute; s.mute.drone = mute; s.sampleLanes.forEach((l) => { l.on = !mute; });
+          this._syncEngine(); this._renderMixer(); this._renderChor();
+          break;
+        }
+        case 'start-notes': this._giveStartNotes(); break;
+        case 'surface-open': this._openSurface(); break;
+        case 'prog-sheet': this._openProgSheet(); break;
         case 'choir-task': this._applyChoirTask(value); break;
         case 'choir-part': {
           this.ui.choirPart = value;
@@ -11992,6 +12272,79 @@
   .picker-done { padding: 11px 24px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .8rem; }
   @media (prefers-reduced-motion: reduce) { .picker-card, .picker-backdrop { transition: none; } }
 
+
+  /* ---- Chor (D1, D5) ---- */
+  .chor-view { display: grid; gap: 10px; }
+  .chor-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .chor-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .chor-label { font-size: .64rem; font-weight: 800; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+  .chor-label-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .chor-tap { min-height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); font-size: .66rem; font-weight: 800; color: var(--text); }
+  .chor-step { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+  .chor-pm { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 1.15rem; font-weight: 700; color: var(--text); }
+  .chor-val { flex: 1; min-width: 0; text-align: center; font-size: 1.04rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 40px; display: grid; place-items: center; }
+  button.chor-val { border-radius: 10px; }
+  .chor-dark { min-height: 40px; border-radius: 999px; background: var(--text); color: #fff; font-size: .74rem; font-weight: 800; padding: 0 10px; }
+  .chor-style-bpm { min-height: 36px; font-size: .68rem; }
+  .seg { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 3px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 3px; flex: 1; min-width: 0; }
+  .seg > button { min-height: 38px; border-radius: 9px; padding: 0 2px; font-size: .7rem; font-weight: 700; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seg > button[aria-checked="true"] { background: var(--surface); color: var(--text); font-weight: 800; box-shadow: 0 1px 3px rgba(36, 27, 61, .18); }
+  .seg-sm > button { min-height: 32px; font-size: .66rem; }
+  .seg.is-off { opacity: .5; }
+  .chor-row { display: flex; align-items: center; gap: 4px; min-height: 50px; }
+  .chor-row > .chor-label { width: 64px; flex: 0 0 auto; }
+  .chor-style-desc { white-space: normal !important; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
+  .chor-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .chor-text strong { font-size: .92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chor-text span { font-size: .7rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chor-text .is-own, .chor-el-sub.is-own { color: #2f5fb8; font-weight: 700; }
+  .chor-arrow { width: 40px; height: 44px; flex: 0 0 auto; font-size: 1.3rem; color: var(--text); border-radius: 10px; }
+  .chor-style .chor-seg-row { display: flex; align-items: center; gap: 8px; }
+  .chor-seg-row > .chor-label { width: 62px; flex: 0 0 auto; display: grid; gap: 2px; }
+  .chor-badge { font-size: .58rem; font-weight: 800; color: #2f5fb8; text-transform: none; letter-spacing: 0; }
+  .chor-energy-hint { margin: 0 0 0 70px; text-wrap: pretty; font-size: .66rem; color: var(--muted); }
+  .chor-elements { padding: 2px 4px 2px 12px; gap: 0; }
+  .chor-elements .chor-row + .chor-row { border-top: 1px solid var(--line); }
+  .chor-el.is-off .chor-el-name { color: var(--muted); }
+  .chor-chords { flex: 1; min-width: 0; display: flex; gap: 4px; align-items: center; overflow: hidden; min-height: 44px; border-radius: 10px; }
+  .chor-chord { flex: 0 0 auto; padding: 5px 6px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font-size: .86rem; font-weight: 800; color: var(--text); }
+  .chor-extra { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--surface); border: 1px dashed var(--line); border-radius: 14px; padding: 6px 8px 6px 12px; font-size: .74rem; font-weight: 700; color: var(--muted); }
+  .chor-extra .chip { min-height: 40px; }
+  .chor-reset { justify-self: start; min-height: 44px; }
+  .chor-note { display: flex; gap: 8px; align-items: flex-start; background: #eef3ff; border: 1px solid #b9cdf5; color: #1f3f7a; border-radius: 14px; padding: 8px 10px; }
+  .chor-note svg { width: 18px; height: 18px; flex: 0 0 auto; margin-top: 1px; }
+  .chor-note p { margin: 0; font-size: .74rem; line-height: 1.4; }
+  .chor-hear-row { display: flex; align-items: center; gap: 8px; }
+  .chor-hear-row > .chor-label { width: 62px; flex: 0 0 auto; }
+  .chor-hear > button { font-size: .66rem; }
+  .chor-piano { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 13px; background: var(--text); color: #fff; display: grid; place-items: center; }
+  @media (max-width: 359px) {
+    .chor-row > .chor-label, .chor-seg-row > .chor-label, .chor-hear-row > .chor-label { width: 54px; font-size: .58rem; }
+    .chor-energy-hint { margin-left: 54px; }
+    .chor-pm { width: 30px; height: 36px; font-size: 1rem; }
+    .chor-card { padding: 8px 7px; }
+    .chor-val { font-size: .9rem; }
+    .seg > button, .chor-hear > button { font-size: .58rem; }
+    .chor-chord { font-size: .78rem; padding: 4px 5px; }
+    .chor-text strong { font-size: .84rem; }
+  }
+
+  /* ---- Blätter des Redesigns (Bottom-Sheet, Ebenen-Stapel _openLayer) ---- */
+  .layer { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; justify-content: flex-end; }
+  .layer-backdrop { position: absolute; inset: 0; background: rgba(36, 27, 61, .42); }
+  .layer-card {
+    position: relative; max-height: 92%; overflow-y: auto; background: var(--bg); border-radius: 24px 24px 0 0;
+    padding: 10px max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    display: flex; flex-direction: column; gap: 10px; box-shadow: 0 -12px 30px -12px rgba(36, 27, 61, .4);
+  }
+  .layer-grab { align-self: center; width: 40px; height: 5px; border-radius: 3px; background: var(--line); flex: 0 0 auto; }
+  .layer-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+  .layer-head h2 { margin: 0; font-size: 1.08rem; }
+  .layer-sub { font-size: .74rem; color: var(--muted); }
+  .layer-done { min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--text); color: #fff; font-size: .8rem; font-weight: 800; flex: 0 0 auto; }
+  .layer .chip-row .chip { min-height: 40px; }
+  .layer .chip[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
   /* Menü: Schublade von rechts (auf dem Handy fast bildschirmbreit) */
   .sheet { position: absolute; inset: 0; z-index: 5; display: flex; justify-content: flex-end; }
   .sheet-backdrop { position: absolute; inset: 0; background: rgba(36,27,61,.35); }
@@ -12090,7 +12443,73 @@
 
 <div class="lab-body">
   <nav class="learn-back" hidden><button class="chip" type="button" data-action="learn-home">‹ ${t('lab.viewLearn')}</button></nav>
-  <section class="chor-view" hidden></section>
+  <section class="chor-view" hidden aria-label="${t('lab.viewChoir')}">
+    <!-- Chor (D1, D5): derselbe Stand wie im Studio, nur weniger Details. -->
+    <div class="chor-note" role="status" hidden>${UI_ICON.edit}<p>${t('lab.chor.adjusted')}</p></div>
+    <div class="chor-pair">
+      <section class="chor-card">
+        <span class="chor-label" id="chor-key-label">${t('lab.chor.key')}</span>
+        <div class="chor-step">
+          <button class="chor-pm" type="button" data-action="chor-key" data-value="-1" aria-label="${t('lab.chor.keyDown')}">−</button>
+          <button class="chor-val chor-key-name" type="button" data-action="chor-key-pick" aria-haspopup="dialog" aria-describedby="chor-key-label"></button>
+          <button class="chor-pm" type="button" data-action="chor-key" data-value="1" aria-label="${t('lab.chor.keyUp')}">+</button>
+        </div>
+        <button class="chor-dark" type="button" data-action="start-notes">${t('lab.chor.startNotes')}</button>
+      </section>
+      <section class="chor-card">
+        <div class="chor-label-row"><span class="chor-label" id="chor-tempo-label">${t('lab.chor.tempo')}</span><button class="chor-tap" type="button" data-action="tap-tempo">${t('lab.tapTempo')}</button></div>
+        <div class="chor-step">
+          <button class="chor-pm" type="button" data-action="chor-bpm" data-value="-1" aria-label="${t('lab.chor.slower')}">−</button>
+          <strong class="chor-val chor-bpm" aria-live="polite"></strong>
+          <button class="chor-pm" type="button" data-action="chor-bpm" data-value="1" aria-label="${t('lab.chor.faster')}">+</button>
+        </div>
+        <div class="seg seg-sm chor-swing" role="radiogroup" aria-label="${t('lab.swing')}">
+          ${SWING_LEVELS.map(([id]) => `<button type="button" role="radio" aria-checked="false" data-action="chor-swing" data-value="${id}">${t(`lab.swingLevel.${id}`)}</button>`).join('')}
+        </div>
+        <button class="chip chor-style-bpm" type="button" data-action="chor-style-bpm" hidden></button>
+      </section>
+    </div>
+    <section class="chor-card chor-style">
+      <div class="chor-row">
+        <span class="chor-label">${t('lab.chor.style')}</span>
+        <div class="chor-text"><strong class="chor-style-name"></strong><span class="chor-style-desc"></span></div>
+        <button class="chor-arrow" type="button" data-action="chor-style" data-value="-1" aria-label="${t('lab.chor.stylePrev')}">‹</button>
+        <button class="chor-arrow" type="button" data-action="chor-style" data-value="1" aria-label="${t('lab.chor.styleNext')}">›</button>
+      </div>
+      <div class="chor-seg-row"><span class="chor-label" id="chor-energy-label">${t('lab.chor.energy')}<b class="chor-badge chor-energy-badge" hidden>${t('lab.chor.adjustedShort')}</b></span>
+        <div class="seg chor-energy" role="radiogroup" aria-labelledby="chor-energy-label">
+          ${ENERGY_IDS.map((id) => `<button type="button" role="radio" aria-checked="false" data-action="chor-energy" data-value="${id}">${t(`lab.energy.${id}`)}</button>`).join('')}
+        </div></div>
+      <p class="chor-energy-hint" hidden>${t('lab.chor.energyReset')}</p>
+      <div class="chor-seg-row"><span class="chor-label" id="chor-room-label">${t('lab.chor.room')}</span>
+        <div class="seg chor-room" role="radiogroup" aria-labelledby="chor-room-label">
+          ${ROOM_IDS.map((id) => `<button type="button" role="radio" aria-checked="false" data-action="chor-room" data-value="${id}">${t(`lab.room.${id}`)}</button>`).join('')}
+        </div></div>
+    </section>
+    <section class="chor-card chor-elements">
+      <div class="chor-row chor-chords-row">
+        <span class="chor-label">${t('lab.chor.chords')}</span>
+        <button class="chor-chords" type="button" data-action="prog-sheet" aria-haspopup="dialog"></button>
+        <button class="chor-arrow" type="button" data-action="chor-prog" data-value="-1" aria-label="${t('lab.chor.progPrev')}">‹</button>
+        <button class="chor-arrow" type="button" data-action="chor-prog" data-value="1" aria-label="${t('lab.chor.progNext')}">›</button>
+      </div>
+      ${['rhythm', 'bass', 'sound', 'melody'].map((el) => `<div class="chor-row chor-el" data-el="${el}">
+        <span class="chor-label">${t(`lab.chor.el.${el}`)}</span>
+        <div class="chor-text"><strong class="chor-el-name"></strong><span class="chor-el-sub"></span></div>
+        <button class="chor-arrow" type="button" data-action="chor-el" data-el="${el}" data-value="-1" aria-label="${t(`lab.chor.el.${el}`)}: ${t('lab.prevAria')}">‹</button>
+        <button class="chor-arrow" type="button" data-action="chor-el" data-el="${el}" data-value="1" aria-label="${t(`lab.chor.el.${el}`)}: ${t('lab.nextAria')}">›</button>
+      </div>`).join('')}
+    </section>
+    <div class="chor-extra" hidden><span class="chor-extra-text"></span><button class="chip" type="button" data-action="chor-extra-mute" aria-pressed="false">${t('lab.chor.mute')}</button></div>
+    <button class="chip chor-reset" type="button" data-action="chor-reset" hidden>${t('lab.chor.reset')}</button>
+    <section class="chor-hear-row">
+      <span class="chor-label" id="chor-hear-label">${t('lab.chor.hear')}</span>
+      <div class="seg chor-hear" role="radiogroup" aria-labelledby="chor-hear-label">
+        ${HEAR_IDS.map((id) => `<button type="button" role="radio" aria-checked="false" data-action="chor-hear" data-value="${id}">${t(`lab.hear.${id}`)}</button>`).join('')}
+      </div>
+      <button class="chor-piano" type="button" data-action="surface-open" aria-label="${t('lab.chor.piano')}" title="${t('lab.chor.piano')}">${UI_ICON.piano}</button>
+    </section>
+  </section>
   <section class="learn-view" hidden></section>
   <section class="choir-view" hidden>
     <section class="panel">
@@ -12603,6 +13022,19 @@
 
 <p class="toast" role="status" aria-live="polite" hidden></p>
 
+<div class="layer key-layer" hidden>
+  <div class="layer-backdrop" data-action="layer-close"></div>
+  <section class="layer-card" role="dialog" aria-modal="true" aria-labelledby="key-layer-title">
+    <div class="layer-grab" aria-hidden="true"></div>
+    <div class="layer-head"><div><h2 id="key-layer-title">${t('lab.chor.key')}</h2><span class="layer-sub key-layer-now"></span></div>
+      <button class="layer-done" type="button" data-action="layer-close">${t('lab.pickerDone')}</button></div>
+    <span class="sub-label" id="key-roots-label">${t('lab.keyRoot')}</span>
+    <div class="chip-row key-roots" role="radiogroup" aria-labelledby="key-roots-label"></div>
+    <span class="sub-label" id="key-modes-label">${t('lab.keyMode')}</span>
+    <div class="chip-row key-modes" role="radiogroup" aria-labelledby="key-modes-label"></div>
+  </section>
+</div>
+
 <div class="confirm" hidden>
   <div class="confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="gl-confirm-text">
     <p class="confirm-text" id="gl-confirm-text"></p>
@@ -12791,6 +13223,74 @@
     return failed;
   }
 
+  /** Oberflächen-Selbsttest des Redesigns (braucht das DOM; eine nicht eingehängte
+   *  Ansicht ohne Ton). Aufruf aus runMusicSelfTests in app.js. */
+  function redesignViewTest() {
+    const failed = [];
+    const fail = (msg) => failed.push(`Redesign-Ansicht: ${msg}`);
+    const v = document.createElement('chor-groove-lab');
+    const shown = (sel) => !!v.$(sel) && !v.$(sel).closest('[hidden]');
+    // Ansichten: Chor · Studio · Lernen (+ Bereiche), Dropdown mit Häkchen.
+    v._applyView('choir');
+    if (!shown('.chor-view') || shown('.tab-bar') || v.state.view !== 'choir') fail('Chor zeigt nicht die Chor-Ansicht');
+    if (v.$('.view-btn').getAttribute('aria-haspopup') !== 'menu' || v.$all('.view-opt[aria-checked="true"]').length !== 1) fail('Ansichts-Auswahl');
+    v._applyView('studio');
+    if (!shown('.tab-bar') || shown('.chor-view') || !shown('.menu-random') && false) fail('Studio zeigt die Reiter nicht');
+    v._applyView('learn', null);
+    if (!shown('.learn-view') || v.$all('.learn-tile').length !== 3) fail('Lernen: drei Kacheln');
+    v._applyView('learn', 'course');
+    if (!shown('.workshop-view') || !shown('.learn-back') || v._uiMode() !== 'workshop') fail('Lernen/Kurs');
+    v._applyView('deconstruct');
+    if (v.state.view !== 'learn' || v.state.learnArea !== 'dc' || !v._dcActive) fail('de:construct über Lernen');
+    v._applyView('choir');
+    if (v._dcActive) fail('de:construct beim Wechsel nach Chor nicht verlassen');
+    // Chor: Stil ‹ › lässt Tonart und Tempo, Energie/Raum als Radiogruppen.
+    v.state.keyRoot = 7; v._setBpm(90);
+    v._chorStyle(1);
+    if (v.state.keyRoot !== 7 || v.state.styleId === 'pop' || Math.abs(v.state.eighths - 180) > 0) fail('Stilwechsel ändert Tonart/Tempo');
+    if (v.$all('.chor-energy [role="radio"][aria-checked="true"]').length !== 1 || v.$('.chor-energy').getAttribute('role') !== 'radiogroup') fail('Energie nicht als Radiogruppe');
+    v._chorStyle(-1);
+    v._setEnergy('full');
+    if (v.state.energy !== 'full' || styleDiff(v.state).any) fail('Energie im Stillstand nicht sofort');
+    v.state.beat.kick[3] = 1; v._renderChor();
+    if (v.$('.chor-energy-badge').hidden || v.$('.chor-reset').hidden || v.$('.chor-note').hidden) fail('Chor zeigt „angepasst“ nicht (D5)');
+    v._handleAction('chor-reset', null, v.$('.chor-reset'));
+    if (styleDiff(v.state).any || !v.history.length) fail('Auf Vorlage zurücksetzen');
+    v.undo();
+    if (v.state.beat.kick[3] !== 1) fail('Zurücksetzen nicht rückgängig zu machen');
+    v.state.droneOn = true; v._renderChor();
+    if (v.$('.chor-extra').hidden) fail('weitere Spur (Liegeton) nicht genannt');
+    v.state.droneOn = false;
+    // Swing nur in 4/4; Hören auf ändert state.mix nicht.
+    const mix = JSON.stringify(v.state.mix);
+    v._handleAction('chor-hear', 'harmony', null);
+    if (v.state.hearFocus !== 'harmony' || JSON.stringify(v.state.mix) !== mix) fail('Hören auf');
+    v._replaceState(applyStyle(v.state, 'waltz'));
+    v._renderChor();
+    if (!v.$('.chor-swing').hidden) fail('Swing bei 3/4 sichtbar');
+    // Element-Schritte: Rhythmus bleibt in der Taktart, Melodie beginnt mit „aus“.
+    for (let i = 0; i < 4; i++) v._chorStep('rhythm', 1);
+    if (v._meter() !== '3/4') fail('Rhythmus ‹ › verlässt die Taktart');
+    v.state.melodyOn = false; v._chorStep('melody', 1);
+    if (!v.state.melodyOn || MELODIES[v.state.melodyIndex].meter !== '3/4') fail('Melodie ‹ › nach „aus“');
+    v._chorStep('melody', -1);
+    if (v.state.melodyOn) fail('Melodie ‹ › zurück auf „aus“');
+    // Tonart-Blatt: Dialog mit Fokusfalle, Escape schließt.
+    v._openKeyLayer();
+    const card = v.$('.key-layer .layer-card');
+    if (v.$('.key-layer').hidden || card.getAttribute('role') !== 'dialog' || card.getAttribute('aria-modal') !== 'true') fail('Tonart-Blatt kein Dialog');
+    v._handleKeydown({ key: 'Escape', preventDefault() {} });
+    if (!v.$('.key-layer').hidden) fail('Escape schließt das Tonart-Blatt nicht');
+    // Einzähler: ein Takt, nicht in Workshop/de:construct.
+    if (v._countInSteps() !== -v._barSteps()) fail('Einzähler fehlt');
+    v._applyView('workshop');
+    if (v._countInSteps() !== 0) fail('Einzähler im Workshop');
+    v._applyView('studio');
+    v.state.countIn = false;
+    if (v._countInSteps() !== 0) fail('Einzähler lässt sich nicht abschalten');
+    return failed;
+  }
+
   // Für die Musik-Selbsttests in app.js (runMusicSelfTests) und die Konsole:
   // Daten und reine Funktionen, ohne die Oberfläche zu öffnen.
   const TEST_EXPORT = {
@@ -12812,7 +13312,7 @@
     VIEWS, DC_LEVELS, DC_ELEMENTS, DC_FOCUS, DC_TAB, DC_SONGS, DRUM_TRACKS, CELL_CYCLE, dcSongsOf, dcTempoFeel, dcFirstOpen, dcNextElement, dcBeat, dcBuild, dcCompare, dcSwitchStep, dcNewSong, sanitizeDeconstruct,
     progressionOfState, harmonyOfState, GrooveLabView, loadLevel,
     // Redesign (Chor · Studio · Lernen)
-    redesignSelfTest, STYLES, ENERGY_IDS, ROOMS, ROOM_IDS, HEAR_FOCUS, HEAR_IDS, ENERGY_TRIM, SWING_LEVELS, swingLevelOf, swingValueOf, swingRatio,
+    redesignSelfTest, redesignViewTest, STYLES, ENERGY_IDS, ROOMS, ROOM_IDS, HEAR_FOCUS, HEAR_IDS, ENERGY_TRIM, SWING_LEVELS, swingLevelOf, swingValueOf, swingRatio,
     chordTimeline, chordAtStep, chordCycleBars, foldChordLens, normChordPush, bassVariant, thinBeat, resolveEnergy, applyEnergy, applyStyle, styleDiff,
     chordCompAt, sanitizeHits, busFactor, baseState, uiModeOf, viewOfRaw, LEARN_AREAS, CHORD_SOUNDS,
   };

@@ -21670,6 +21670,7 @@ async function runMusicSelfTests({ log = true } = {}) {
   // Akkord-Länge/Vorziehen, Migration — reine Funktionen in groove-lab.js (redesignSelfTest).
   if (typeof T.redesignSelfTest === 'function') failed.push(...T.redesignSelfTest());
   else failed.push('Groove Lab: redesignSelfTest fehlt');
+  try { failed.push(...T.redesignViewTest()); } catch (err) { failed.push(`Groove Lab Redesign-Ansicht abgebrochen: ${err?.message || err}`); }
 
   // GROOVE-LAB-KLANG-TESTS (ARBEITSANWEISUNG-GROOVE-LAB-KLANG-UND-SAMPLER) — weitere Pakete hängen hier an.
   {
