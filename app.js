@@ -20965,8 +20965,9 @@ async function runMusicSelfTests({ log = true } = {}) {
     const normal = [0, 1].map((b) => Array.from({ length: 16 }, (_, i) => T.melodyNotesAt(b * 16 + i, bars, 16, false).length).reduce((x, y) => x + y, 0));
     if (!normal[1]) failed.push('Groove Lab: ohne Echo schweigt Takt 2');
     // Roundtrip view, melodyAltBars, gewählte Aufgabe.
-    const saved = T.sanitizeState(JSON.parse(JSON.stringify({ ...T.defaultState(), view: 'choir', melodyAltBars: true, choirTask: 'terzen' })));
-    if (saved.view !== 'choir' || !saved.melodyAltBars || saved.choirTask !== 'terzen') failed.push('Groove Lab: view/melodyAltBars/choirTask gehen verloren');
+    // Redesign: die Aufgaben stehen unter Lernen (view 'learn', learnArea 'tasks').
+    const saved = T.sanitizeState(JSON.parse(JSON.stringify({ ...T.defaultState(), view: 'learn', learnArea: 'tasks', melodyAltBars: true, choirTask: 'terzen' })));
+    if (T.uiModeOf(saved) !== 'tasks' || !saved.melodyAltBars || saved.choirTask !== 'terzen') failed.push('Groove Lab: view/melodyAltBars/choirTask gehen verloren');
     const oldState = T.sanitizeState({ patternIndex: 0 });
     if (oldState.view !== null || oldState.melodyAltBars !== false || oldState.choirTask !== null) failed.push('Groove Lab: alter Stand ohne neue Felder nicht auf Standard');
     const broken = T.sanitizeState({ view: 'kino', melodyAltBars: 'ja', choirTask: 'x' });
@@ -21106,8 +21107,8 @@ async function runMusicSelfTests({ log = true } = {}) {
     }
     // Roundtrip view/lessonId
     const lessonId = T.WORKSHOP_LESSONS[0]?.id;
-    const saved = T.sanitizeState(clone({ ...T.defaultState(), view: 'workshop', lessonId }));
-    if (saved.view !== 'workshop' || saved.lessonId !== lessonId) failed.push('Workshop: view/lessonId gehen verloren');
+    const saved = T.sanitizeState(clone({ ...T.defaultState(), view: 'learn', learnArea: 'course', lessonId }));
+    if (saved.view !== 'learn' || saved.learnArea !== 'course' || saved.lessonId !== lessonId) failed.push('Workshop: view/lessonId gehen verloren');
     if (T.sanitizeState({ patternIndex: 0 }).lessonId !== null) failed.push('Workshop: alter Stand ohne lessonId nicht auf Standard');
     if (T.sanitizeState({ view: 'kino', lessonId: 'gibtsNicht' }).lessonId !== null) failed.push('Workshop: kaputte lessonId übernommen');
     // Fortschritt: neu → gleich; alt/fehlend → Standard; Müll → Standard
@@ -21661,9 +21662,14 @@ async function runMusicSelfTests({ log = true } = {}) {
     const dirtyEls = T.sanitizeDeconstruct({ song: 'e2', revealedEls: { tempo: true, beat: 'ja', bass: 1, melody: true, zz: true } });
     if (!same(dirtyEls.revealedEls, { tempo: true })) failed.push(`de:construct: Müll in revealedEls → ${JSON.stringify(dirtyEls.revealedEls)}`);
     if (!same(T.sanitizeDeconstruct({ song: 'e2', revealedEls: 'x' }).revealedEls, {}) || !same(T.sanitizeDeconstruct({ song: 'e2' }).revealedEls, {})) failed.push('de:construct: alte Ablage ohne revealedEls');
-    const savedView = T.sanitizeState(clone({ ...T.defaultState(), view: 'deconstruct' })).view;
-    if (savedView !== 'deconstruct') failed.push('de:construct: view geht beim Speichern verloren');
+    const savedView = T.sanitizeState(clone({ ...T.defaultState(), view: 'learn', learnArea: 'dc' }));
+    if (T.uiModeOf(savedView) !== 'deconstruct') failed.push('de:construct: view geht beim Speichern verloren');
   }
+
+  // Groove Lab Redesign (Chor · Studio · Lernen): Stile, Energie, Raum, Hören auf, Swing-Stufen,
+  // Akkord-Länge/Vorziehen, Migration — reine Funktionen in groove-lab.js (redesignSelfTest).
+  if (typeof T.redesignSelfTest === 'function') failed.push(...T.redesignSelfTest());
+  else failed.push('Groove Lab: redesignSelfTest fehlt');
 
   // GROOVE-LAB-KLANG-TESTS (ARBEITSANWEISUNG-GROOVE-LAB-KLANG-UND-SAMPLER) — weitere Pakete hängen hier an.
   {
@@ -21682,7 +21688,7 @@ async function runMusicSelfTests({ log = true } = {}) {
     const old = clone(fresh); delete old.drumKit; delete old.feel; delete old.percSound; delete old.trackOn.perc; delete old.beat.perc;
     const loaded = T.sanitizeState(old);
     if (loaded.drumKit !== 'auto' || loaded.feel !== true || loaded.percSound !== 'tamb' || !loaded.beat.perc) failed.push('Groove Lab: alter Stand ohne Kit-Felder lädt nicht');
-    const oldChoir = T.sanitizeState({ ...old, view: 'choir' });
+    const oldChoir = T.sanitizeState({ ...old, view: 'choir', layout: undefined }); // Stand von vor dem Redesign
     if (oldChoir.drumKit !== 'synth' || oldChoir.feel !== false) failed.push('Groove Lab: alter Chor-Stand klingt nicht mehr wie früher');
     const junk = T.sanitizeState({ ...clone(fresh), drumKit: 'laut', feel: 'ja', percSound: 'gong' });
     if (junk.drumKit !== 'auto' || junk.feel !== true || junk.percSound !== 'tamb') failed.push('Groove Lab: ungültiges Kit/Feel/Percussion wird übernommen');
@@ -21866,7 +21872,9 @@ async function runMusicSelfTests({ log = true } = {}) {
       if ('sample' in T.sanitizeSound(clone(T.soundFromPreset(0)), piano)) failed.push('Groove Lab: Synth-Klang bekommt ein sample');
       for (const [inst, cfg] of Object.entries(T.LAB_INST)) if (!T.SAMPLE_INSTRUMENTS.includes(inst) || !cfg.notes.length) failed.push(`Groove Lab: LAB_INST ${inst}`);
       // 7a/7c/7d: Standard für neue Stände, alte Stände unverändert, Aufgaben/Workshop gepinnt.
-      const studio = T.defaultState();
+      // Redesign: neue Stände sind der Grundstand mit Stil Pop (siehe redesignSelfTest);
+      // der Grundstand selbst ist der bisherige Studio-Standard.
+      const studio = T.baseState();
       if (studio.chordVoicing !== 'pop' || studio.chordSound !== 'choir' || studio.chordsOn !== true || studio.mix.chords !== .45 || studio.chordAdd9 !== false) failed.push('Groove Lab: Studio-Standard Akkorde');
       if (T.DRUM_PATTERNS[studio.patternIndex].name !== 'Pop Stomp' || T.MELODIES[studio.melodyIndex].name !== 'Pop Hook' || T.SYNTH_PRESETS[studio.sound.presetIndex].name !== 'Klavier') failed.push('Groove Lab: Studio-Standard Loop/Melodie/Klang');
       const legacyState = clone(studio);

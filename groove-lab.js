@@ -235,6 +235,10 @@
   function pinLegacySound(s) {
     s.drumKit = 'synth'; s.feel = false; s.fills = 0; s.trackOn.perc = false; s.bassSoundId = 'pluck';
     s.chordVoicing = 'satb'; s.chordAdd9 = false; s.chordSound = 'synth'; s.mix.chords = .55;
+    // Ohne Stil, Raum-Makro, Vorziehen und Anschläge (Redesign) — wie früher.
+    s.styleId = null; s.energy = null; s.room = null; s.pump = 0; s.chordPush = null; s.chordLen = null;
+    s.chordPlay = 'held'; s.chordHits = null; s.chordPad = null; s.chordOctave = 0; s.bassPlay = null; s.bassHold = false;
+    s.fx.reverbLength = 1.8; s.fx.chorus = .2;
     return s;
   }
   /** Workshop und de:construct beginnen mit dem früheren Standard-Stand der Studio-Ansicht:
@@ -1418,7 +1422,7 @@
    *  Master-Pegel des aktuellen Stands. */
   function lessonState(current, lesson) {
     const s = pinLegacyStudio(pinLegacySound(defaultState()));
-    s.view = current.view; s.keysLayout = current.keysLayout; s.octave = current.octave;
+    s.view = current.view; s.learnArea = current.learnArea; s.keysLayout = current.keysLayout; s.octave = current.octave;
     s.mix.master = current.mix.master;
     s.chordsOn = false; s.melodyOn = false; s.arpOn = false;
     if (lesson.groove === null) { s.mute.drums = true; s.mute.bass = true; }
@@ -1765,6 +1769,93 @@
     return quarters < 80 ? 'calm' : quarters < 105 ? 'mid' : quarters < 125 ? 'brisk' : 'fast';
   }
 
+  /* ------------------------------------------------------------------------
+     AKKORD-ZEITLEISTE (Redesign, Akkordfolgen-Editor D6). Jeder Akkord der
+     Folge hat eine LÄNGE (½ · 1 · 2 Takte, `chordLen[i]`; fehlt das Feld,
+     gilt für alle `chordBars`) und einen WECHSEL (`chordPush[i]`: 0 auf der
+     Eins, 2 eine Achtel früher, 1 eine Sechzehntel früher — Zahl = Schritte).
+     Vorgezogen wird auch der Wechsel über die Loop-Grenze, der allererste
+     Takt (g = 0, nach dem Einzähler) nie. „Nachziehen“ gibt es nicht: das ist
+     eine Länge (½ Takt). Reine Funktionen, siehe redesignSelfTest.
+     ------------------------------------------------------------------------ */
+  const CHORD_LENS = [.5, 1, 2];
+  const CHORD_PUSHES = [0, 2, 1];
+  /** Länge/Vorziehen je Akkord auf `n` Akkorde normalisieren (null = überall Standard). */
+  /** Längen einlesen: überall gleich 1 oder 2 Takte → chordBars (wie früher), sonst je Akkord. */
+  function foldChordLens(raw, n, chordBars = 1) {
+    if (!Array.isArray(raw) || !raw.length) return { chordBars, chordLen: null };
+    const last = CHORD_LENS.includes(raw[raw.length - 1]) ? raw[raw.length - 1] : chordBars;
+    const list = Array.from({ length: n }, (_, i) => (CHORD_LENS.includes(raw[i]) ? raw[i] : last));
+    if (list.every((x) => x === list[0]) && (list[0] === 1 || list[0] === 2)) return { chordBars: list[0], chordLen: null };
+    return { chordBars, chordLen: list };
+  }
+  function normChordPush(raw, n) {
+    if (!Array.isArray(raw)) return null;
+    const list = Array.from({ length: n }, (_, i) => (CHORD_PUSHES.includes(raw[i]) ? raw[i] : 0));
+    return list.every((x) => !x) ? null : list;
+  }
+  /** Zeitleiste der Folge in Schritten: Anfang, Länge, Vorziehen je Akkord, Gesamtlänge. */
+  function chordTimeline(n, barSteps, chordBars = 1, chordLen = null, chordPush = null) {
+    const lens = Array.from({ length: n }, (_, i) => Math.max(1, Math.round((chordLen?.[i] ?? chordBars) * barSteps)));
+    const starts = [];
+    let at = 0;
+    for (const len of lens) { starts.push(at); at += len; }
+    // Vorziehen nur, wenn der vorige Akkord dafür lang genug ist; bei einem
+    // einzigen Akkord gibt es keinen Wechsel.
+    const push = Array.from({ length: n }, (_, i) => {
+      const p = n > 1 ? (chordPush?.[i] || 0) : 0;
+      return p < lens[(i + n - 1) % n] ? p : 0;
+    });
+    return { n, barSteps, lens, starts, push, total: at };
+  }
+  /** Welcher Akkord klingt im Schritt `g`? `pushed: false` = ohne Vorziehen
+   *  (für die Melodie, die über dem Takt-Akkord geschrieben ist). Liefert
+   *  Index, absoluten Anfang/Ende und ob hier ein Akkord neu anschlägt. */
+  function chordAtStep(tl, g, pushed = true) {
+    const { n, starts, total } = tl;
+    const push = pushed ? tl.push : tl.push.map(() => 0);
+    const gg = Math.max(0, g);
+    const cycle = Math.floor(gg / total);
+    const pos = gg - cycle * total;
+    const base = cycle * total;
+    // Wechselpunkte innerhalb eines Durchlaufs; der des ersten Akkords liegt
+    // (außer ganz am Anfang) am Ende des vorigen Durchlaufs.
+    const eff = starts.map((st, i) => (i ? st - push[i] : 0));
+    const wrap = total - push[0];
+    if (push[0] && pos >= wrap) {
+      const start = base + wrap;
+      const end = base + total + (n > 1 ? eff[1] : wrap);
+      return { index: 0, start, end, chordStart: gg === start };
+    }
+    let i = n - 1;
+    while (i > 0 && eff[i] > pos) i--;
+    const start = i === 0 ? (cycle === 0 ? 0 : base - push[0]) : base + eff[i];
+    const end = i + 1 < n ? base + eff[i + 1] : base + wrap;
+    return { index: i, start, end, chordStart: gg === start };
+  }
+  /** Takte, nach denen sich die Harmonie (auf Takt-Einsen) wiederholt. */
+  function chordCycleBars(tl) {
+    return tl.total % tl.barSteps === 0 ? tl.total / tl.barSteps : (2 * tl.total) / tl.barSteps;
+  }
+  const chordTimelineOf = (s, n, barSteps) => chordTimeline(n, barSteps, s.chordBars, s.chordLen, s.chordPush);
+
+  /* ------------------------------------------------------------------------
+     SWING-STUFEN (4.4). state.swing bleibt die eine Wahrheit (0 = gerade);
+     die Stufe ist daraus abgeleitet. Für Achtel- wie Sechzehntel-Swing gilt
+     dasselbe Verhältnis (1 + swing/2) / 2 (siehe _swingOffset): leicht ≈ 57 %,
+     Shuffle ≈ 67 % (Triole). Bei 3/4 und 6/8 nicht angeboten.
+     ------------------------------------------------------------------------ */
+  const SWING_LEVELS = [['straight', 0], ['light', .28], ['shuffle', .67]];
+  const swingRatio = (swing) => (1 + swing / 2) / 2;
+  /** Nächste Stufe zum Wert; null, wenn der Wert (Studio, exakt) zu weit weg liegt. */
+  function swingLevelOf(swing) {
+    let best = null;
+    for (const [id, v] of SWING_LEVELS) if (Math.abs(v - swing) <= .06 && (!best || Math.abs(v - swing) < Math.abs(best[1] - swing))) best = [id, v];
+    return best ? best[0] : null;
+  }
+  const swingValueOf = (level) => (SWING_LEVELS.find(([id]) => id === level) || SWING_LEVELS[0])[1];
+  const swingOffered = (meter) => meter === '4/4';
+
   /** Klingende Akkordfolge eines Stands (wie GrooveLabView._progression). */
   function progressionOfState(s) {
     const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
@@ -1778,10 +1869,10 @@
   const modeStepsOf = (s) => (MODES.find((m) => m.id === s.modeId) || MODES[0]).steps;
 
   /** Harmonie eines Stands am Schritt g (wie GrooveLabView._harmonyAt). */
-  function harmonyOfState(s, g) {
+  function harmonyOfState(s, g, pushed = true) {
     const prog = progressionOfState(s);
     const barSteps = METERS[meterOfState(s)].steps;
-    const index = Math.floor(Math.floor(g / barSteps) / s.chordBars) % prog.degrees.length;
+    const { index } = chordAtStep(chordTimelineOf(s, prog.degrees.length, barSteps), g, pushed);
     const deg = prog.degrees[index];
     const alter = prog.alter?.[index] || null;
     return { keyRoot: s.keyRoot, steps: chordSteps(modeStepsOf(s), s.modeId, prog, deg, alter), deg, sevenths: !!prog.sevenths, index, alter, bass: prog.bass?.[index] || 0 };
@@ -1832,13 +1923,13 @@
       o.melodyRef = 'chord';
     }
     if (song.sound) o.sound = soundFromPreset(presetIndexByName(song.sound));
-    o.view = 'deconstruct';
+    o.view = 'learn'; o.learnArea = 'dc';
 
     // „Meine Version“: Vorgegebenes wie im Original, Gesuchtes neutral —
     // leeres Raster, Tempo 100, ein einziger Akkord, Melodie aus.
     const m = pinLegacySound(defaultState());
     m.bassSoundId = 'round';
-    m.view = 'deconstruct';
+    m.view = 'learn'; m.learnArea = 'dc';
     m.keyRoot = o.keyRoot;
     m.patternIndex = 0;
     m.beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, perc: {}, bass: {} };
@@ -2033,7 +2124,7 @@
     const level = dcLevel(song.level);
     const fresh = dcBuild(song.id);
     const mine = sanitizeState(raw.mine && typeof raw.mine === 'object' ? raw.mine : fresh.mine);
-    mine.view = 'deconstruct';
+    mine.view = 'learn'; mine.learnArea = 'dc';
     const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
     const out = { v: 2, song: song.id, level: level.id, created: isDate(raw.created) ? raw.created : null,
       original: fresh.original, mine, checks: {}, done: {}, revealed: raw.revealed === true, revealedEls: {}, solved: {} };
@@ -2048,9 +2139,28 @@
     return out;
   }
 
-  // Ansichten des Labs (state.view); 'deconstruct' seit de:construct.
-  const VIEWS = ['choir', 'studio', 'workshop', 'deconstruct'];
-  const VIEW_LABEL = { choir: 'lab.viewChoir', studio: 'lab.viewStudio', workshop: 'lab.viewWorkshop', deconstruct: 'lab.viewDeconstruct' };
+  // Ansichten des Labs (Redesign): state.view 'choir' (einfach) | 'studio' (Spuren) |
+  // 'learn'; in Lernen nennt state.learnArea den Bereich: 'tasks' (Chor-Aufgaben),
+  // 'course' (Workshop/Kurs), 'dc' (de:construct), null = Übersicht der Kacheln.
+  // Bis zum Redesign (state.layout fehlt) hieß 'choir' die Aufgaben-Ansicht.
+  const VIEWS = ['choir', 'studio', 'learn'];
+  const VIEW_LABEL = { choir: 'lab.viewChoir', studio: 'lab.viewStudio', learn: 'lab.viewLearn' };
+  const LEARN_AREAS = ['tasks', 'course', 'dc'];
+  // Interne Betriebsart (was gerade läuft) je Lern-Bereich — so heißen sie im Code weiter.
+  const AREA_MODE = { tasks: 'tasks', course: 'workshop', dc: 'deconstruct' };
+  const MODE_AREA = { tasks: 'tasks', workshop: 'course', deconstruct: 'dc' };
+  /** Betriebsart eines Stands: 'choir' | 'studio' | 'learn' | 'tasks' | 'workshop' | 'deconstruct' | null. */
+  const uiModeOf = (s) => (s.view === 'learn' ? AREA_MODE[s.learnArea] || 'learn' : s.view);
+  /** Gespeicherte Ansicht (auch alte Werte) → [view, learnArea] (idempotent). */
+  function viewOfRaw(raw) {
+    const v = raw.view;
+    if (v === 'workshop') return ['learn', 'course'];
+    if (v === 'deconstruct') return ['learn', 'dc'];
+    if (v === 'tasks') return ['learn', 'tasks'];
+    if (v === 'choir' && raw.layout !== 2) return raw.choirTask ? ['learn', 'tasks'] : ['choir', null];
+    if (v === 'learn') return ['learn', LEARN_AREAS.includes(raw.learnArea) ? raw.learnArea : null];
+    return VIEWS.includes(v) ? [v, null] : [null, null];
+  }
 
   const TABS = [
     { id: 'beat', labelKey: 'lab.tabBeat' },
@@ -2063,12 +2173,298 @@
   ];
 
   /* ------------------------------------------------------------------------
+     STILE, ENERGIE, RAUM, HÖREN AUF (Redesign, Abschnitt 4 der Anweisung;
+     Inhalte vom Berater „Musikproduzent & -pädagoge“ festgelegt). Alles reine
+     Daten und Funktionen — die View schreibt das Ergebnis in den Zustand
+     (applyStyle/applyEnergy), danach ist es ein ganz normaler Stand, den das
+     Studio weiter bearbeiten kann. Ein Stil lässt Tonart und Tempo stehen.
+     ------------------------------------------------------------------------ */
+  const ENERGY_IDS = ['still', 'calm', 'drive', 'full'];
+  const ROOM_IDS = ['dry', 'rehearsal', 'hall', 'church'];
+  const HEAR_IDS = ['rhythm', 'balanced', 'harmony'];
+  /** Raum-Makro: Hallanteil (absoluter Send, ersetzt unter einem Raum den Anteil
+   *  der Klänge), Nachhall in s, Vorverzögerung in ms, Breite (→ fx.chorus). */
+  const ROOMS = {
+    dry: { wet: .12, length: .6, pre: 10, width: .1 },
+    rehearsal: { wet: .35, length: 1.4, pre: 20, width: .2 },
+    hall: { wet: .5, length: 2.3, pre: 30, width: .3 },
+    church: { wet: .65, length: 3.6, pre: 40, width: .35 },
+  };
+  /** Anteil am Raum je Ebene: Pad am meisten; Bass und Kick bleiben trocken (kein Send). */
+  const ROOM_SEND = { chordsPad: 1, chordsKeys: .6, melody: .7, arp: .6, drone: .7, keys: .5 };
+  /** „Hören auf“: Faktor auf state.mix je Bus (state.mix bleibt unverändert). */
+  const HEAR_FOCUS = {
+    rhythm: { drums: 1.18, bass: 1.12, chords: .6, drone: .6, melody: .85, arp: .7, keys: 1 },
+    balanced: {},
+    harmony: { drums: .45, bass: .8, chords: 1.33, drone: 1.33, melody: .85, arp: 1.1, keys: 1 },
+  };
+  /** Energie: „Voll“ = dichter, nicht lauter — Gesamtpegel und einzelne Busse ausgleichen. */
+  const ENERGY_TRIM = {
+    still: { all: 1.06, chords: 1.1, bass: .9 }, calm: { all: 1 }, drive: { all: .94 }, full: { all: .85, drums: .9, chords: .9 },
+  };
+  /** Helligkeit der Akkorde je Energie (Faktor auf den Filter). */
+  const ENERGY_BRIGHT = { still: .85, calm: .9, drive: 1, full: 1.25 };
+  /** Mix-Faktor eines Busses aus Hören auf und Energie. */
+  const busFactor = (s, bus) => (HEAR_FOCUS[s.hearFocus]?.[bus] ?? 1) * (ENERGY_TRIM[s.energy]?.[bus] ?? 1);
+
+  /** Klang der Akkorde-Spur (state.chordSound): Preset und Art (pad bekommt mehr Raum). */
+  const CHORD_SOUNDS = [
+    ['synth', 'Airy Choir', 'pad'], ['choir', 'Chor Ooh', 'pad'], ['piano', 'Klavier', 'keys'], ['organ', 'Vintage Organ', 'keys'],
+    ['epiano', 'Tape Keys', 'keys'], ['guitar', 'E-Gitarre', 'keys'], ['pad', 'Moon Pad', 'pad'], ['strings', 'Streicher', 'pad'],
+  ];
+  const CHORD_SOUND_IDS = CHORD_SOUNDS.map(([id]) => id);
+  /** Zweiter, leiser Pad-Layer unter den Akkorden („Klavier + Pad“): Preset, Pegel. */
+  const CHORD_PADS = { airy: ['Airy Choir', .4], moon: ['Moon Pad', .5] };
+  const CHORD_PLAYS = ['held', 'rhythm', 'arp'];
+  /** Arpeggio der Akkorde-Spur: alle zwei Schritte eine Stufe über dem Akkordgrundton. */
+  const CHORD_ARP = { every: 2, degs: [0, 2, 4, 7, 4, 2] };
+  /** Spielweisen des Basses (bassVariant). */
+  const BASS_PLAYS = ['off', 'whole', 'half', 'quarter', 'eighths', 'offbeat', 'octaves', 'line', 'line1'];
+  const PUSH_OF = { one: 0, eighth: 2, sixteenth: 1 };
+
+  /* Die acht Stile. drums je Energie (Still · Ruhig · Treibend · Voll): Loop-Name und
+     Ausdünnung (thin 'calm' bzw. 'calm16', siehe thinBeat; Still = keine Drums, Loop
+     der Stufe Ruhig für Taktart und Basslinie). chords je Stufe: 'held', 'arp' oder
+     Anschläge [Schritt, Länge, Faktor] je Takt. Bewusste Abweichungen vom Raster in 4.1
+     (Berater): Walzer und Lied spielen schon bei Ruhig rhythmisch bzw. als Arpeggio;
+     Choral, Walzer, Lied ohne Pumpen; Elektro ohne Fill bei Treibend, gehaltenes Pad
+     mit Pumpen statt Anschlägen; Choral bei Still ohne Bass. Reihenfolge = Stil ‹ ›. */
+  const H8 = (vels) => vels.map((v, i) => [i * 2, 2, v]);
+  const STYLES = [
+    { id: 'choral', meter: '4/4', bpm: 72, room: 'church', energy: 'still', swing: 'straight', push: 'one',
+      drums: [null, ['Pop Ballad', 'calm'], ['Pop Ballad'], ['Halftime Pop']], bass: ['off', 'whole', 'half', 'quarter'],
+      sound: 'choir', pad: null, bassSound: 'round', voicing: 'satb', add9: false,
+      chords: ['held', 'held', [[0, 8, 1], [8, 8, .85]], [[0, 4, 1], [4, 4, .7], [8, 4, .9], [12, 4, .7]]],
+      fills: [0, 0, 8, 4], pump: [0, 0, 0, 0] },
+    { id: 'ballad', meter: '4/4', bpm: 70, room: 'hall', energy: 'calm', swing: 'straight', push: 'one',
+      drums: [null, ['Pop Ballad', 'calm'], ['Pop Ballad'], ['Half-Time Drop']], bass: ['whole', 'half', 'quarter', 'eighths'],
+      sound: 'piano', pad: 'moon', bassSound: 'round', voicing: 'pop', add9: false,
+      chords: ['held', 'held', H8([1, .6, .8, .6, .9, .6, .8, .6]), [[0, 3, 1], [3, 3, .75], [6, 2, .8], [8, 3, .95], [11, 3, .75], [14, 2, .8]]],
+      fills: [0, 0, 8, 4], pump: [0, 0, .1, .2] },
+    { id: 'pop', meter: '4/4', bpm: 104, room: 'rehearsal', energy: 'drive', swing: 'straight', push: 'eighth',
+      drums: [null, ['Pop Stomp', 'calm'], ['Backbeat Open'], ['Pop Stomp']], bass: ['whole', 'half', 'eighths', 'eighths'],
+      sound: 'piano', pad: 'airy', bassSound: 'finger', voicing: 'pop', add9: false,
+      chords: ['held', 'held', H8([1, .65, .85, .65, .95, .65, .85, .65]), [[0, 3, 1], [3, 3, .8], [6, 2, .85], [8, 3, 1], [11, 3, .8], [14, 2, .85]]],
+      fills: [0, 0, 8, 4], pump: [0, 0, .2, .4] },
+    { id: 'gospel', meter: '4/4', bpm: 88, room: 'hall', energy: 'drive', swing: 'light', push: 'eighth',
+      drums: [null, ['Swing Ride'], ['Gospel Shuffle'], ['Swing Soul']], bass: ['whole', 'half', 'line', 'line1'],
+      sound: 'organ', pad: null, bassSound: 'finger', voicing: 'pop', add9: true,
+      chords: ['held', 'held', [[0, 6, 1], [6, 2, .7], [8, 6, .95], [14, 2, .7]], [[0, 4, 1], [4, 2, .6], [6, 2, .8], [10, 4, .9], [14, 2, .8]]],
+      fills: [0, 0, 8, 4], pump: [0, 0, .15, .3] },
+    { id: 'waltz', meter: '3/4', bpm: 112, room: 'hall', energy: 'calm', swing: 'straight', push: 'one',
+      drums: [null, ['Waltz Step', 'calm'], ['Waltz Step'], ['Jazz Waltz']], bass: ['whole', 'whole', 'line', 'line'],
+      sound: 'piano', pad: null, bassSound: 'finger', voicing: 'pop', add9: false,
+      chords: ['held', [[4, 4, .7], [8, 4, .7]], [[4, 3, .85], [8, 3, .8]], [[4, 2, 1], [8, 2, .9]]],
+      fills: [0, 0, 8, 4], pump: [0, 0, 0, 0] },
+    { id: 'song68', meter: '6/8', bpm: 56, room: 'rehearsal', energy: 'calm', swing: 'straight', push: 'one',
+      drums: [null, ['6/8 Ballad', 'calm'], ['6/8 Ballad'], ['Folk Jig']], bass: ['whole', 'half', 'line', 'line'],
+      sound: 'guitar', pad: null, bassSound: 'round', voicing: 'pop', add9: false,
+      chords: ['held', 'arp', 'arp', [[0, 2, 1], [2, 2, .5], [4, 2, .7], [6, 2, .9], [8, 2, .5], [10, 2, .7]]],
+      fills: [0, 0, 8, 4], pump: [0, 0, 0, 0] },
+    { id: 'funk', meter: '4/4', bpm: 98, room: 'dry', energy: 'drive', swing: 'straight', push: 'sixteenth',
+      drums: [null, ['Glass Funk', 'calm16'], ['Glass Funk'], ['Afrobeat Skip']], bass: ['whole', 'half', 'line1', 'line1'],
+      sound: 'epiano', pad: null, bassSound: 'growl', voicing: 'pop', add9: true,
+      chords: ['held', 'held', [[0, 2, 1], [3, 1, .7], [6, 1, .85], [10, 2, .9], [13, 1, .7]],
+        [[0, 1, 1], [3, 1, .75], [4, 1, .5], [6, 2, .9], [9, 1, .7], [10, 1, .85], [13, 1, .75], [14, 1, .6]]],
+      fills: [0, 0, 8, 4], pump: [0, 0, .15, .3] },
+    { id: 'electro', meter: '4/4', bpm: 122, room: 'hall', energy: 'full', swing: 'straight', push: 'eighth',
+      drums: [null, ['Deep House', 'calm'], ['House Bounce'], ['Deep House']], bass: ['whole', 'half', 'offbeat', 'octaves'],
+      sound: 'pad', pad: null, bassSound: 'sub', voicing: 'pop', add9: true,
+      chords: ['held', 'held', 'held', 'held'],
+      fills: [0, 0, 0, 8], pump: [0, .2, .4, .65] },
+  ];
+  const STYLE_IDS = STYLES.map((x) => x.id);
+  const styleOf = (id) => STYLES.find((x) => x.id === id) || null;
+
+  /** Bass-Spielweise als reine Funktion aus der Linie des Loops (Berater, 0b). Stufen
+   *  wie in DRUM_PATTERNS (Tonleiterstufen über dem Akkordgrundton). */
+  function bassVariant(pattern, play) {
+    const meter = METERS[pattern.meter];
+    const n = meter.steps;
+    const line = {};
+    (pattern.bass || []).forEach((st, i) => { line[st] = pattern.bassNotes?.[i] ?? 0; });
+    const steps = Object.keys(line).map(Number).sort((a, b) => a - b);
+    const d = (st) => { let v = 0; for (const x of steps) if (x <= st) v = line[x]; return v; };
+    const last = steps.length ? line[steps[steps.length - 1]] : 0;
+    const SAFE = [0, 2, 4, 7];
+    const out = {};
+    switch (play) {
+      case 'off': break;
+      case 'whole': out[0] = 0; break;
+      case 'half':
+        out[0] = 0;
+        if (pattern.meter === '4/4') out[8] = 0;
+        else if (pattern.meter === '6/8') out[6] = SAFE.includes(d(6)) ? d(6) : 4;
+        break;
+      case 'quarter': {
+        const beats = pattern.meter === '6/8' ? [0, 6] : meter.beats;
+        beats.forEach((b, i) => { out[b] = i === 0 ? 0 : i === beats.length - 1 ? last : (SAFE.includes(d(b)) ? d(b) : 0); });
+        break;
+      }
+      case 'eighths':
+        for (let st = 0; st < n; st += 2) out[st] = 0;
+        out[n - 2] = last;
+        break;
+      case 'offbeat':
+        for (let st = 2; st < n; st += 4) out[st] = 0;
+        break;
+      case 'octaves':
+        for (let st = 0; st < n; st += 2) out[st] = st % 4 === 0 ? 0 : 7;
+        break;
+      case 'line1':
+        Object.assign(out, line);
+        if (out[0] === undefined) {
+          if (out[1] !== undefined) delete out[1];
+          out[0] = 0;
+        }
+        break;
+      default: Object.assign(out, line); // 'line'
+    }
+    return out;
+  }
+  /** Ausdünnung für die Stufe Ruhig (Berater, 0a): Kick nur auf der Eins, Rim-Ersatz
+   *  (Ghost-Snare) auf dem Backbeat, Shaker; 'calm16' (Funk) lässt die Hi-Hat leise stehen. */
+  function thinBeat(beat, pattern, thin) {
+    const out = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, perc: {}, bass: { ...beat.bass } };
+    let perc = null;
+    if (beat.kick[0] !== undefined || thin) out.kick[0] = 1;
+    if (thin === 'calm16') {
+      for (const [st, v] of Object.entries(beat.hat)) out.hat[st] = Math.round(v * .6 * 100) / 100;
+      return { beat: out, perc };
+    }
+    if (pattern.meter === '4/4') {
+      const backbeat = [4, 12].some((st) => beat.snare[st] !== undefined || beat.clap[st] !== undefined);
+      if (backbeat) { out.snare[4] = .45; out.snare[12] = .45; }
+      [2, 6, 10, 14].forEach((st) => { out.perc[st] = .6; });
+      perc = 'shaker';
+    } else if (pattern.meter === '3/4') {
+      out.snare[4] = .45; out.snare[8] = .45;
+    } else {
+      out.snare[6] = .45;
+      [2, 4, 8, 10].forEach((st) => { out.perc[st] = .5; });
+      perc = 'shaker';
+    }
+    return { beat: out, perc };
+  }
+  /** Was eine Energie-Stufe eines Stils festlegt (reine Funktion): Loop, Raster, Bass,
+   *  Fill, Pumpen, Spielweise der Akkorde. Tempo, Tonart, Akkorde und Lage nie. */
+  function resolveEnergy(styleId, energy) {
+    const style = styleOf(styleId);
+    const e = ENERGY_IDS.indexOf(energy);
+    if (!style || e < 0) return null;
+    const stage = style.drums[e] || style.drums[1];
+    const patternIndex = Math.max(0, patternIndexByName(stage[0]));
+    const pattern = DRUM_PATTERNS[patternIndex];
+    let beat = beatFromPattern(pattern);
+    let percSound = percOf(pattern);
+    if (!style.drums[e]) {
+      beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, perc: {}, bass: {} };
+    } else if (stage[1]) {
+      const thinned = thinBeat(beat, pattern, stage[1]);
+      beat = thinned.beat;
+      if (thinned.perc) percSound = thinned.perc;
+    }
+    const bassPlay = style.bass[e];
+    beat.bass = bassVariant(pattern, bassPlay);
+    const chords = style.chords[e];
+    return {
+      patternIndex, beat, percSound, bassPlay,
+      fills: style.fills[e], pump: style.pump[e],
+      chordPlay: Array.isArray(chords) ? 'rhythm' : chords,
+      chordHits: Array.isArray(chords) ? chords.map((h) => [...h]) : null,
+    };
+  }
+  /** Energie in einen Stand schreiben (Kopie). */
+  function applyEnergy(state, energy) {
+    const r = resolveEnergy(state.styleId, energy);
+    if (!r) return state;
+    const s = JSON.parse(JSON.stringify(state));
+    Object.assign(s, r);
+    s.energy = energy;
+    s.beatEdited = false;
+    return s;
+  }
+  /** Stil in einen Stand schreiben (Kopie): Rhythmus-Familie, Bass, Klang, Raum,
+   *  Standard-Energie, Swing, Vorziehen. Tonart und Tempo bleiben stehen. */
+  function applyStyle(state, styleId, energy = null) {
+    const style = styleOf(styleId);
+    if (!style) return state;
+    let s = JSON.parse(JSON.stringify(state));
+    s.styleId = style.id;
+    s = applyEnergy(s, ENERGY_IDS.includes(energy) ? energy : style.energy);
+    // Taktart kann wechseln: Tempo im Achtel-Bezug halten (wie _convertTempo).
+    s.bpm = clamp(Math.round(s.eighths / eighthsPerBeat(style.meter)), BPM_MIN, BPM_MAX);
+    s.chordSound = style.sound;
+    s.chordPad = style.pad;
+    s.chordVoicing = style.voicing;
+    s.chordAdd9 = style.add9;
+    s.chordsOn = true;
+    s.bassSoundId = style.bassSound;
+    s.swing = swingOffered(style.meter) ? swingValueOf(style.swing) : 0;
+    setRoom(s, style.room);
+    const n = progressionOfState(s).degrees.length;
+    s.chordPush = normChordPush(Array(n).fill(PUSH_OF[style.push]), n);
+    if (s.melodyBars && s.melodyMeter !== style.meter) { s.melodyBars = null; s.melodyMeter = null; s.melodyName = null; s.melodyOwnId = null; s.melodyRef = 'chord'; }
+    if (MELODIES[s.melodyIndex].meter !== style.meter) s.melodyIndex = firstMelodyOfMeter(style.meter);
+    s.sampleLanes = sanitizeSampleLanes(s.sampleLanes, METERS[style.meter].steps);
+    return s;
+  }
+  /** Raum-Makro in einen Stand schreiben: Nachhall und Breite (Hallanteil/Vorverzögerung
+   *  liest _syncEngine aus ROOMS). Echo gehört nicht dazu. */
+  function setRoom(s, room) {
+    if (!ROOMS[room]) { s.room = null; return s; }
+    s.room = room;
+    s.fx.reverbLength = ROOMS[room].length;
+    s.fx.chorus = ROOMS[room].width;
+    s.fx.reverbOn = true;
+    return s;
+  }
+  /** Weicht ein Stand vom Stil (bei seiner Energie) ab? Je Element, für Chor (D5). */
+  function styleDiff(s) {
+    const out = { any: false, rhythm: false, bass: false, sound: false, room: false, push: false };
+    const style = styleOf(s.styleId);
+    const r = style && resolveEnergy(s.styleId, s.energy);
+    if (!r) return { ...out, any: !!s.styleId, none: true };
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const drums = (b) => DRUM_TRACKS.map((tr) => Object.entries(b[tr] || {}).sort(([x], [y]) => x - y));
+    out.rhythm = s.patternIndex !== r.patternIndex || !same(drums(s.beat), drums(r.beat)) || s.fills !== r.fills || Math.abs(s.pump - r.pump) > .005
+      || s.chordPlay !== r.chordPlay || !same(s.chordHits, r.chordHits);
+    out.bass = !same(Object.entries(s.beat.bass).sort(([x], [y]) => x - y), Object.entries(r.beat.bass).sort(([x], [y]) => x - y)) || s.bassSoundId !== style.bassSound;
+    out.sound = s.chordSound !== style.sound || (s.chordPad || null) !== style.pad || s.chordVoicing !== style.voicing || s.chordAdd9 !== style.add9;
+    out.room = s.room !== style.room;
+    const n = progressionOfState(s).degrees.length;
+    out.push = !same(s.chordPush, normChordPush(Array(n).fill(PUSH_OF[style.push]), n));
+    out.any = out.rhythm || out.bass || out.sound || out.room || out.push;
+    return out;
+  }
+  /** Anschläge der Akkorde-Spur je Takt einlesen: [Schritt, Länge, Faktor]. */
+  function sanitizeHits(raw, steps) {
+    if (!Array.isArray(raw)) return null;
+    const list = raw.filter((h) => Array.isArray(h) && Number.isInteger(h[0]) && h[0] >= 0 && h[0] < steps && Number.isFinite(h[1]) && h[1] > 0)
+      .slice(0, steps).map(([st, len, v]) => [st, clamp(Math.round(len * 4) / 4, .25, steps - st), Number.isFinite(v) ? clamp(Math.round(v * 100) / 100, .1, 1) : 1])
+      .sort((a, b) => a[0] - b[0]).filter((h, i, arr) => !i || arr[i - 1][0] !== h[0]);
+    return list.length ? list : null;
+  }
+  /** Anschläge eines Takts der Akkorde-Spur (reine Funktion): bei 'held' nur der
+   *  Akkordanfang, bei 'rhythm' die Anschläge (plus vorgezogene Wechsel), bei 'arp'
+   *  CHORD_ARP. Liefert [{ at (Schritt im Takt), len, vel, deg? }]. */
+  function chordCompAt(play, hits, step, barSteps) {
+    if (play === 'arp') {
+      if (step % CHORD_ARP.every) return [];
+      const i = step / CHORD_ARP.every;
+      return [{ at: step, len: CHORD_ARP.every, vel: i ? .75 : 1, deg: CHORD_ARP.degs[i % CHORD_ARP.degs.length] }];
+    }
+    if (play !== 'rhythm' || !hits) return [];
+    return hits.filter(([st]) => st === step && st < barSteps).map(([at, len, vel]) => ({ at, len, vel }));
+  }
+
+  /* ------------------------------------------------------------------------
      ZUSTAND — alles, was gespeichert, geteilt, gewürfelt und rückgängig
      gemacht werden kann. Flüchtiges (gerade gedrückte Tasten, Latch) liegt
      bewusst außerhalb in der View.
      ------------------------------------------------------------------------ */
 
-  function defaultState() {
+  function baseState() {
     // Neue Stände der Studio-Ansicht (Paket 7d): Pop Stomp, Pop Hook, Klavier, Pop-Satz,
     // Chor-Pad an. Workshop und de:construct beginnen über pinLegacy… wie früher.
     const pattern = DRUM_PATTERNS[patternIndexByName('Pop Stomp')];
@@ -2097,7 +2493,8 @@
       // Satz der Akkorde ('satb' Chor | 'pop' enge Lage), Farbe add9, Klang ('synth' | 'choir').
       chordVoicing: 'pop', chordAdd9: false, chordSound: 'choir',
       droneOn: false, droneFifth: true,
-      melodyIndex: melodyIndexByName('Pop Hook'), melodyOn: true, melodyOctave: 4,
+      // Melodie aus (4.7: sie konkurriert mit dem Sopran); Vorlage Pop Hook nach dem Antippen.
+      melodyIndex: melodyIndexByName('Pop Hook'), melodyOn: false, melodyOctave: 4,
       // Bearbeitete oder eigene Melodie: die Takte selbst (null = Vorlage
       // melodyIndex unverändert), dazu Taktart, Name und ggf. Bibliotheks-Id.
       melodyBars: null, melodyMeter: null, melodyName: null, melodyOwnId: null,
@@ -2123,8 +2520,24 @@
       lessonId: null,
       // Kick-Klang (Workshop Paket 6), siehe KIT_DEFAULTS.
       kit: { ...KIT_DEFAULTS },
+      // Redesign (Chor · Studio · Lernen): `layout` 2 kennzeichnet die neue Bedeutung
+      // von `view` (siehe viewOfRaw), learnArea den Bereich in Lernen.
+      layout: 2, learnArea: null,
+      // Stil mit Energie (STYLES, 4.1/4.2), Raum (ROOMS, 4.3; null = Hall wie
+      // eingestellt), Hören auf (HEAR_FOCUS, 4.5). styleId/energy null = eigene Einstellung.
+      styleId: null, energy: null, room: 'rehearsal', hearFocus: 'balanced',
+      // Länge/Wechsel je Akkord (chordTimeline), Einzähler vor dem Start (1 Takt).
+      chordLen: null, chordPush: null, countIn: true,
+      // Spur Akkorde: Spielweise ('held' | 'rhythm' | 'arp'), Anschläge je Takt (rhythmisch),
+      // Lage (−1/0/+1 Oktave). Bass: Spielweise (BASS_PLAYS, null = Linie wie bearbeitet)
+      // und „bleibt auf der Eins“ (zieht bei vorgezogenen Akkorden nicht mit vor).
+      chordPlay: 'held', chordHits: null, chordOctave: 0, bassPlay: null, bassHold: false,
+      // Pad-Layer unter den Akkorden (CHORD_PADS), null = keiner.
+      chordPad: null,
     };
   }
+  /** Neuer Stand: Grundstand mit Stil Pop (Energie Treibend, Raum Probe), wie D1. */
+  function defaultState() { return applyStyle(baseState(), 'pop'); }
 
   /* Melodie-Editor: sichtbarer Stufenbereich (8 oben … eine Oktave tiefer
      bis zur 5 unten), wählbare Tonlängen in Sechzehnteln und Obergrenzen. */
@@ -2270,8 +2683,9 @@
    *  prüfen — fremde Codes dürfen nichts setzen, woran die Engine oder das
    *  Rendering scheitern würden. Unbekanntes fällt auf den Standard zurück. */
   function sanitizeState(raw) {
-    const s = defaultState();
-    if (!raw || typeof raw !== 'object') return s;
+    if (!raw || typeof raw !== 'object') return defaultState();
+    // Vom ungestylten Grundstand aus: was ein Stand nicht nennt, klingt wie früher.
+    const s = baseState();
     const num = (v, lo, hi, fb) => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, lo, hi) : fb);
     const int = (v, lo, hi, fb) => (Number.isInteger(v) && v >= lo && v <= hi ? v : fb);
     const bool = (v, fb) => (typeof v === 'boolean' ? v : fb);
@@ -2292,10 +2706,10 @@
     s.beat = sanitizeBeat(raw.beat, pattern);
     s.beatEdited = bool(raw.beatEdited, false);
     for (const track of TRACK_IDS) s.trackOn[track] = bool(obj(raw.trackOn)[track], true);
-    s.bassSoundId = oneOf(raw.bassSoundId, BASS_SOUNDS.map((b) => b.id), raw.view === 'deconstruct' ? 'round' : ['choir', 'workshop'].includes(raw.view) || raw.choirTask || raw.lessonId ? 'pluck' : s.bassSoundId);
+    s.bassSoundId = oneOf(raw.bassSoundId, BASS_SOUNDS.map((b) => b.id), raw.view === 'deconstruct' ? 'round' : (raw.view === 'choir' && raw.layout !== 2) || raw.view === 'workshop' || raw.choirTask || raw.lessonId ? 'pluck' : s.bassSoundId);
     // Alte Stände aus Chor-Aufgaben, Workshop und de:construct (ohne die
     // neuen Felder) klingen weiter wie damals.
-    const legacy = ['choir', 'workshop', 'deconstruct'].includes(raw.view) || !!raw.choirTask || !!raw.lessonId;
+    const legacy = (raw.view === 'choir' && raw.layout !== 2) || ['workshop', 'deconstruct'].includes(raw.view) || !!raw.choirTask || !!raw.lessonId;
     s.drumKit = oneOf(raw.drumKit, DRUM_KITS, legacy ? 'synth' : 'auto');
     s.feel = bool(raw.feel, !legacy);
     s.fills = oneOf(raw.fills, FILL_LENGTHS, legacy ? 0 : 8);
@@ -2327,7 +2741,8 @@
     // Stände ohne diese Felder klingen wie vor Paket 7: SATB-Satz, Synth-Chor.
     s.chordVoicing = oneOf(raw.chordVoicing, ['satb', 'pop'], 'satb');
     s.chordAdd9 = bool(raw.chordAdd9, false);
-    s.chordSound = oneOf(raw.chordSound, ['synth', 'choir'], 'synth');
+    s.chordSound = oneOf(raw.chordSound, CHORD_SOUND_IDS, 'synth');
+    s.chordPad = oneOf(raw.chordPad, Object.keys(CHORD_PADS), null);
     for (const v of SATB) s.satb[v] = oneOf(obj(raw.satb)[v], ['on', 'focus', 'mute'], 'on');
     s.droneFifth = bool(raw.droneFifth, true);
     s.melodyIndex = int(raw.melodyIndex, 0, MELODIES.length - 1, 0);
@@ -2360,7 +2775,23 @@
     };
     s.automation = sanitizeAutomation(raw.automation);
     for (const lock of Object.keys(s.locks)) s.locks[lock] = bool(obj(raw.locks)[lock], false);
-    s.view = oneOf(raw.view, VIEWS, null);
+    [s.view, s.learnArea] = viewOfRaw(raw);
+    // Redesign-Felder. Alte Stände (ohne layout) klingen weiter wie damals: kein
+    // Stil, kein Raum-Makro, nichts vorgezogen.
+    const fresh = raw.layout === 2;
+    s.styleId = fresh ? oneOf(raw.styleId, STYLE_IDS, null) : null;
+    s.energy = fresh ? oneOf(raw.energy, ENERGY_IDS, null) : null;
+    s.room = fresh ? oneOf(raw.room, ROOM_IDS, null) : null;
+    s.hearFocus = oneOf(raw.hearFocus, HEAR_IDS, 'balanced');
+    s.countIn = bool(raw.countIn, true);
+    const nChords = progressionOfState(s).degrees.length;
+    Object.assign(s, foldChordLens(raw.chordLen, nChords, s.chordBars));
+    s.chordPush = normChordPush(raw.chordPush, nChords);
+    s.chordPlay = oneOf(raw.chordPlay, CHORD_PLAYS, 'held');
+    s.chordHits = sanitizeHits(raw.chordHits, METERS[pattern.meter].steps);
+    s.chordOctave = oneOf(raw.chordOctave, [-1, 0, 1], 0);
+    s.bassPlay = oneOf(raw.bassPlay, BASS_PLAYS, null);
+    s.bassHold = bool(raw.bassHold, false);
     s.choirTask = oneOf(raw.choirTask, CHOIR_TASKS.map((x) => x.id), null);
     s.lessonId = oneOf(raw.lessonId, WORKSHOP_LESSONS.map((l) => l.id), null);
     for (const [key, [lo, hi]] of Object.entries(KIT_RANGES)) s.kit[key] = num(obj(raw.kit)[key], lo, hi, KIT_DEFAULTS[key]);
@@ -2951,7 +3382,7 @@
       const reverbIn = gain(1);
       // Hall am Pumpen vorbei, mit Vorverzögerung und Hochpass: die Fahne
       // soll weder mitpumpen noch den Bass-/Kick-Bereich zuschmieren.
-      const preDelay = ctx.createDelay(.1); preDelay.delayTime.value = .025;
+      const preDelay = ctx.createDelay(.1); preDelay.delayTime.value = .025; // Raum: setPreDelay
       const reverbHP = ctx.createBiquadFilter();
       reverbHP.type = 'highpass'; reverbHP.frequency.value = 250; reverbHP.Q.value = .7;
       const reverbReturn = gain(1, master);
@@ -2979,7 +3410,7 @@
         this.layers[id] = { input, shaper, level, reverbSend, echoSend };
       }
 
-      this.buses = { master, drums, bass, duck, synthSum, chorusWet, convolver, delay, feedback, reverbIn, reverbReturn, echoIn };
+      this.buses = { master, drums, bass, duck, synthSum, chorusWet, convolver, delay, feedback, reverbIn, reverbReturn, echoIn, preDelay };
       this.noiseBuffer = this._whiteNoise(.5);
     }
 
@@ -3011,6 +3442,12 @@
       if (!this.ctx) return;
       const node = this.layers[bus]?.level || this.buses[bus];
       node?.gain.setTargetAtTime(clamp(value, 0, 1), this.ctx.currentTime, .02);
+    }
+
+    /** Vorverzögerung des Halls in s (Raum-Makro, Redesign 4.3). */
+    setPreDelay(seconds) {
+      if (!this.ctx || !this.buses.preDelay) return;
+      this.buses.preDelay.delayTime.setTargetAtTime(clamp(seconds, 0, .09), this.ctx.currentTime, .03);
     }
 
     /** Klangabhängige Teile einer Ebene: Hall-/Echo-Anteil und Drive. */
@@ -3937,7 +4374,7 @@
       // _persist in der Ablage `deconstruct`); als letzter Stand gilt der
       // Studio-Stand — mit der Ansicht, damit es beim nächsten Mal hier weitergeht.
       this._saved.last = this._dcActive && this._dcStash
-        ? { ...JSON.parse(JSON.stringify(this._dcStash.state)), view: 'deconstruct' }
+        ? { ...JSON.parse(JSON.stringify(this._dcStash.state)), view: 'learn', learnArea: 'dc' }
         : this._snapshot();
       this._persist();
       this.hidden = true;
@@ -4021,10 +4458,12 @@
     _applyState(state, { history = true } = {}) {
       if (history) this._pushHistory();
       const droneWasOn = this.state.droneOn;
-      const view = this.state.view;
+      const { view, learnArea } = this.state;
       this.state = state;
       this.state.droneOn = droneWasOn;
-      this.state.view = view; // die Ansicht ist keine Musik — Undo/Zufall lassen sie
+      // die Ansicht ist keine Musik — Undo/Zufall lassen sie
+      this.state.view = view;
+      this.state.learnArea = learnArea;
       this._afterStateChange();
     }
 
@@ -4046,35 +4485,65 @@
 
     /* ---- Ansicht: Chor · Studio (Didaktik Paket 8) ---- */
 
-    _applyView(view) {
-      const v = VIEWS.includes(view) ? view : (this._entry === 'tools' ? 'choir' : 'studio');
+    /* Redesign: Ansichts-Auswahl, Chor-Ansicht und Lernen (siehe Phase 2/3/8). */
+    _renderViewMenu() {}
+    _renderChor() {}
+    _renderLearn() {}
+
+    /** Betriebsart: was gerade zu sehen ist ('choir' | 'studio' | 'learn' | 'tasks' | 'workshop' | 'deconstruct'). */
+    _uiMode() { return uiModeOf(this.state); }
+
+    /**
+     * Ansicht wählen. `view`: 'choir' | 'studio' | 'learn' (mit `area` 'tasks' |
+     * 'course' | 'dc' | null) — oder direkt eine Betriebsart 'tasks' | 'workshop' |
+     * 'deconstruct' (so rufen Selbsttests und Einstiege). Ohne gültige Ansicht: Einstieg
+     * über Tools → Chor, Easter Egg → Studio.
+     */
+    _applyView(view, area = view === 'learn' ? this.state.learnArea : null) {
+      let v = view;
+      let a = null;
+      if (MODE_AREA[view]) { v = 'learn'; a = MODE_AREA[view]; }
+      else if (view === 'learn') a = LEARN_AREAS.includes(area) ? area : null;
+      else if (!VIEWS.includes(view)) v = this._entry === 'tools' ? 'choir' : 'studio';
+      const mode = v === 'learn' ? AREA_MODE[a] || 'learn' : v;
       // Beim Verlassen des Workshops immer auf „Nachher“ zurück.
-      if (v !== 'workshop') this._wsAbReset();
+      if (mode !== 'workshop') this._wsAbReset();
       // de:construct verlassen: „Meine Version“ ablegen, Studio-Stand zurück.
-      if (v !== 'deconstruct' && this._dcActive) { this._dcSheetClose({ focus: false }); this.ui.dc.menu = false; this._dcLeave(); }
+      if (mode !== 'deconstruct' && this._dcActive) { this._dcSheetClose({ focus: false }); this.ui.dc.menu = false; this._dcLeave(); }
       this.state.view = v;
-      if (v === 'deconstruct' && !this._dcActive) this._dcEnter();
-      const choir = v === 'choir';
-      const workshop = v === 'workshop';
-      const dcView = v === 'deconstruct';
+      this.state.learnArea = a;
+      if (mode === 'deconstruct' && !this._dcActive) this._dcEnter();
+      const tasks = mode === 'tasks';
+      const workshop = mode === 'workshop';
+      const dcView = mode === 'deconstruct';
+      const simple = mode === 'choir';
+      const hub = mode === 'learn';
       // Ohne Song zeigt de:construct nur die Auswahl, keine Reiter.
       const dcEmpty = dcView && (!this._saved.deconstruct || this.ui.dc.choosing);
-      this.$all('[data-action="view"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === v)));
-      this.$('.tab-bar').hidden = choir || workshop || dcEmpty;
+      const noTabs = tasks || workshop || dcEmpty || simple || hub;
+      this.$('.tab-bar').hidden = noTabs;
       // de:construct baut mit den bekannten Reitern — der Sampler gehört nicht dazu.
       const smpBtn = this.$('.tab-btn[data-tab="sampler"]');
       if (smpBtn) smpBtn.hidden = dcView;
       if ((dcView || workshop) && this.ui.tab === 'sampler') this.ui.tab = 'beat';
-      this.$('.choir-view').hidden = !choir;
+      this.$('.choir-view').hidden = !tasks;
       this.$('.workshop-view').hidden = !workshop;
       this.$('.dc-view').hidden = !dcView;
-      if (choir || dcEmpty) this.$all('.tab-panel').forEach((panel) => { panel.hidden = true; });
+      this.$('.chor-view').hidden = !simple;
+      this.$('.learn-view').hidden = !hub;
+      // Lernen: über jedem Bereich die Leiste „‹ Lernen“ zurück zur Übersicht.
+      this.$('.learn-back').hidden = !(tasks || workshop || dcView);
+      if (noTabs) this.$all('.tab-panel').forEach((panel) => { panel.hidden = true; });
       else this._setTab(this.ui.tab);
       if (workshop) this._wsEnter();
+      this._renderViewMenu();
       this._renderChoir();
+      this._renderChor();
+      this._renderLearn();
       this._renderDeconstruct();
       this._wsDecorate();
       this._applySound(); // Klang-Rätsel: außerhalb des Workshops immer der eigene Klang
+      this._renderSheet();
     }
 
     /* ---- Ansicht: de:construct ----
@@ -4598,7 +5067,7 @@
     _renderDeconstruct() {
       const host = this.$('.dc-view');
       if (!host) return;
-      const dcView = this.state.view === 'deconstruct';
+      const dcView = this._uiMode() === 'deconstruct';
       // Markierung an der Transportleiste, nicht am Host: ein Custom Element
       // darf im Konstruktor (der _renderAll aufruft) keine Attribute setzen.
       this.$('.transport-bar').classList.toggle('is-dc-orig', dcView && !!this._saved.deconstruct && !this.ui.dc.choosing && this.ui.dc.listen === 'orig');
@@ -4758,10 +5227,10 @@
     _renderDcQuick() {
       const btn = this.$('.dc-quick');
       if (!btn) return;
-      const on = this.state.view === 'deconstruct' && !!this._saved.deconstruct && !this.ui.dc.choosing;
+      const on = this._uiMode() === 'deconstruct' && !!this._saved.deconstruct && !this.ui.dc.choosing;
       btn.hidden = !on;
       // Würfeln würde in de:construct auch Vorgegebenes (Grundton) verstellen.
-      this.$('[data-action="randomize"]').hidden = this.state.view === 'deconstruct';
+      this.$('[data-action="randomize"]').hidden = this._uiMode() === 'deconstruct';
       if (!on) return;
       const orig = this.ui.dc.listen === 'orig';
       btn.setAttribute('aria-pressed', String(orig));
@@ -4840,7 +5309,7 @@
 
     /** Laufende Challenge (nur in der Workshop-Ansicht wirksam). */
     _wsCh() {
-      return this.state.view === 'workshop' ? this.ui?.ws?.ch || null : null;
+      return this._uiMode() === 'workshop' ? this.ui?.ws?.ch || null : null;
     }
 
     /** Beat, der an Schritt g klingt: beim Detektiv abwechselnd zwei Takte
@@ -5028,7 +5497,7 @@
 
     /** Höchstens einmal pro Frame prüfen und Markierungen nachziehen. */
     _wsSchedule() {
-      if (this._wsFrame || this.state.view !== 'workshop') return;
+      if (this._wsFrame || this._uiMode() !== 'workshop') return;
       this._wsFrame = global.requestAnimationFrame(() => {
         this._wsFrame = 0;
         this._wsChEval();
@@ -5041,7 +5510,7 @@
      *  fallen. Erreicht bleibt erreicht. */
     _wsCheck() {
       const ws = this.ui.ws;
-      if (!ws || this.state.view !== 'workshop' || ws.ab?.showing === 'before') return;
+      if (!ws || this._uiMode() !== 'workshop' || ws.ab?.showing === 'before') return;
       const { lesson } = ws;
       const ctx = this._wsCtx();
       const reachedBefore = ws.reached;
@@ -5076,7 +5545,7 @@
     /** Aus _enterKey: gespielten Ton als Tonleiterstufe der Tonart merken. */
     _wsNote(midi) {
       const ws = this.ui.ws;
-      if (!ws || this.state.view !== 'workshop') return;
+      if (!ws || this._uiMode() !== 'workshop') return;
       const pc = mod(midi - this.state.keyRoot, 12);
       const steps = this._mode().steps;
       let deg = null;
@@ -5181,7 +5650,7 @@
       this.$all('.ws-dim, .ws-focus, .ws-from, .ws-to, .ws-hide, .ws-hint').forEach((el) => el.classList.remove('ws-dim', 'ws-focus', 'ws-from', 'ws-to', 'ws-hide', 'ws-hint'));
       this.$all('.tab-panel[inert], .ws-panel [inert]').forEach((el) => { el.inert = false; });
       const ws = this.ui.ws;
-      if (this.state.view !== 'workshop' || !ws) return;
+      if (this._uiMode() !== 'workshop' || !ws) return;
       const { lesson } = ws;
       const focusEls = lesson.focus.flatMap((key) => this._wsFocusEls(key));
       const home = this.$(`.tab-panel[data-tab-panel="${lesson.tab}"]`);
@@ -5475,13 +5944,34 @@
     }
     /** Klang der Akkorde: Synth-Chor (fest, 'Airy Choir') oder echter Chor ('Chor Ooh';
      *  ohne geladene Samples übernimmt die Engine den Ersatzklang 'Airy Choir'). */
-    _chordSound() { return this.state.chordSound === 'choir' ? CHOIR_CHORD_SOUND : CHORD_SOUND; }
+    _chordSound() {
+      const s = this.state;
+      const key = `${s.chordSound}|${s.energy}`;
+      if (this._chordSoundCache?.key === key) return this._chordSoundCache.sound;
+      const entry = CHORD_SOUNDS.find(([id]) => id === s.chordSound) || CHORD_SOUNDS[0];
+      const base = s.chordSound === 'choir' ? CHOIR_CHORD_SOUND : s.chordSound === 'synth' ? CHORD_SOUND : soundFromPreset(presetIndexByName(entry[1]));
+      // Energie: Voll etwas heller, Still etwas dunkler (nur der Filter, nie die Lage).
+      const bright = ENERGY_BRIGHT[s.energy] ?? 1;
+      const sound = bright === 1 ? base : { ...base, cutoff: clamp(base.cutoff * bright, 100, 12000) };
+      this._chordSoundCache = { key, sound };
+      return sound;
+    }
+    /** Art des Akkord-Klangs ('pad' | 'keys') — bestimmt den Anteil am Raum. */
+    _chordSoundKind() { return (CHORD_SOUNDS.find(([id]) => id === this.state.chordSound) || CHORD_SOUNDS[0])[2]; }
+    /** Pad-Layer unter den Akkorden ([Klang, Pegel]) oder null. */
+    _chordPadSound() {
+      const pad = CHORD_PADS[this.state.chordPad];
+      if (!pad) return null;
+      if (this._padSoundCache?.name !== pad[0]) this._padSoundCache = { name: pad[0], sound: soundFromPreset(presetIndexByName(pad[0])) };
+      return [this._padSoundCache.sound, pad[1]];
+    }
     /** Sample-Instrumente laden, die gerade gebraucht werden (Melodieklang, Akkorde). */
     _loadInstruments() {
       if (!this.engine.ready) return;
       const s = this.state;
       if (s.sound.sample) this.engine.ensureInstrument(s.sound.sample).then(() => this._renderSampleNote());
-      if (s.chordSound === 'choir') this.engine.ensureInstrument('choir');
+      const chordSample = this._chordSound().sample;
+      if (chordSample) this.engine.ensureInstrument(chordSample);
     }
     _renderSampleNote() {
       const note = this.$('.sample-note');
@@ -5490,17 +5980,25 @@
     _bassSound() { return BASS_SOUNDS.find((b) => b.id === this.state.bassSoundId) || BASS_SOUNDS[0]; }
 
     /** Harmonie an einem Schritt: Tonart, Modus, Akkordstufe. */
-    _harmonyAt(g) {
+    /** `pushed: false` — ohne vorgezogene Wechsel (Melodie, siehe chordAtStep). */
+    _harmonyAt(g, pushed = true) {
       const s = this.state;
       const prog = this._progression();
-      const barSteps = this._barSteps();
-      const bar = Math.floor(g / barSteps);
-      const index = Math.floor(bar / s.chordBars) % prog.degrees.length;
+      const at = chordAtStep(this._chordTimeline(prog), g, pushed);
+      const index = at.index;
       const deg = prog.degrees[index];
       return {
         keyRoot: s.keyRoot, steps: this._stepsFor(deg, prog, index), deg, sevenths: !!prog.sevenths, alter: prog.alter?.[index] || null, bass: prog.bass?.[index] || 0,
-        index, chordStart: g % (barSteps * s.chordBars) === 0,
+        index, chordStart: at.chordStart, start: at.start, end: at.end,
       };
+    }
+    /** Zeitleiste der klingenden Folge (Länge/Vorziehen je Akkord). */
+    _chordTimeline(prog = this._progression()) {
+      const s = this.state;
+      const barSteps = this._barSteps();
+      const key = `${prog.degrees.length}|${barSteps}|${s.chordBars}|${s.chordLen}|${s.chordPush}`;
+      if (this._tlCache?.key !== key) this._tlCache = { key, tl: chordTimelineOf(s, prog.degrees.length, barSteps) };
+      return this._tlCache.tl;
     }
 
     _currentHarmony() { return (!this._shownOriginal() && this.shown?.h) || this._harmonyAt(this.shown?.g || 0); }
@@ -5573,15 +6071,24 @@
       if (!this.engine.ready) return;
       // de:construct auf A: Pegel und Effekte des Originals.
       if (this._dcHearsOriginal() && this.state !== this._saved.deconstruct.original) { this._dcHeard(() => this._syncEngine()); return; }
-      const s = this.state;
-      // Gesamtlautstärke bleibt beim A/B-Wechsel die eigene.
-      this.engine.setMaster((this._dcMine || s).mix.master);
-      for (const bus of BUSES) this.engine.setBusLevel(bus, s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) ? 0 : s.mix[bus]);
-      for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, this._heardSound());
-      this.engine.setLayerSound('chords', this._chordSound());
+      this._applyLevels(this.engine, (this._dcMine || this.state).mix.master);
       this._loadInstruments();
-      this.engine.setLayerSound('drone', DRONE_SOUND);
-      this.engine.setFx(s.fx, this._stepSeconds());
+      this.engine.setFx(this.state.fx, this._stepSeconds());
+    }
+
+    /** Pegel, Klänge und Raum der Ebenen in eine Engine (live oder Lasttest):
+     *  state.mix mal „Hören auf“ und Energie-Ausgleich (busFactor); unter einem
+     *  Raum ersetzt dessen Hallanteil (ROOM_SEND je Ebene) den Anteil der Klänge. */
+    _applyLevels(eng, master) {
+      const s = this.state;
+      eng.setMaster(master * (ENERGY_TRIM[s.energy]?.all ?? 1));
+      for (const bus of BUSES) eng.setBusLevel(bus, s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) ? 0 : s.mix[bus] * busFactor(s, bus));
+      const room = ROOMS[s.room];
+      const wet = (sound, factor) => (room ? { ...sound, reverbWet: clamp(room.wet * factor, 0, 1) } : sound);
+      for (const layer of SOUND_LAYERS) eng.setLayerSound(layer, wet(this._heardSound(), ROOM_SEND[layer]));
+      eng.setLayerSound('chords', wet(this._chordSound(), this._chordSoundKind() === 'pad' ? ROOM_SEND.chordsPad : ROOM_SEND.chordsKeys));
+      eng.setLayerSound('drone', wet(DRONE_SOUND, ROOM_SEND.drone));
+      eng.setPreDelay(room ? room.pre / 1000 : .025);
     }
 
     async start() {
@@ -5593,7 +6100,10 @@
       }
       this.playing = true;
       this._stopArpClock(); // ab jetzt spielt der Arp im Groove-Scheduler
-      this.globalStep = 0;
+      // Einzähler (ein Takt Klick, nur aus dem Stillstand; nicht in Workshop und de:construct,
+      // deren Aufgaben auf den ersten Schlag zählen): Schritte −Takt … −1.
+      this.globalStep = this._countInSteps();
+      this._bassTie = null;
       this.scheduledSteps.length = 0;
       this.nextStepTime = this.engine.ctx.currentTime + .06;
       this._ovl.lastTick = 0; this._ovl.ratioWall = 0; this._ovl.underruns = this._playbackStats()?.underrunEvents || 0;
@@ -5605,6 +6115,7 @@
     }
 
     stop() {
+      if (this._pendingEnergy) this._commitEnergy();
       this.playing = false;
       clearTimeout(this.schedulerTimer);
       cancelAnimationFrame(this.visualFrame);
@@ -5981,11 +6492,7 @@
       try {
         this._dcHeard(() => {
           const s = this.state;
-          eng.setMaster(s.mix.master);
-          for (const bus of BUSES) eng.setBusLevel(bus, s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) ? 0 : s.mix[bus]);
-          for (const layer of SOUND_LAYERS) eng.setLayerSound(layer, this._heardSound());
-          eng.setLayerSound('chords', this._chordSound());
-          eng.setLayerSound('drone', DRONE_SOUND);
+          this._applyLevels(eng, s.mix.master);
           // Hall-Impuls sofort in der gewünschten Länge (live kommt er entprellt per Timer).
           const length = clamp(s.fx.reverbLength, .2, 4);
           eng._reverbLength = length;
@@ -6065,6 +6572,19 @@
       this._watchOverload(ctx);
       while (this.nextStepTime < ctx.currentTime + .1) {
         const g = this.globalStep;
+        if (g < 0) {
+          // Einzähler: nur Klicks auf den Zählzeiten, die Anzeige zählt mit.
+          const barSteps = this._barSteps();
+          const st = g + barSteps;
+          const beats = METERS[this._meter()].beats;
+          if (beats.includes(st)) this._smpClick(this.nextStepTime, st === 0);
+          this.scheduledSteps.push({ g, time: this.nextStepTime, h: this._harmonyAt(0), side: 'mine', countIn: beats.filter((b) => b <= st).length });
+          this.nextStepTime += this._stepSeconds();
+          this.globalStep++;
+          continue;
+        }
+        // Energie wechselt nur an einer Grenze von zwei Takten (4.1).
+        if (this._pendingEnergy && g % (2 * this._barSteps()) === 0) this._commitEnergy();
         const h = this._harmonyAt(g);
         if (this.autoRec.phase === 'armed' && g === this.autoRec.startStep) {
           this.autoRec.startTime = this.nextStepTime;
@@ -6158,17 +6678,19 @@
         if (track === 'kick' && s.pump > 0) this.engine.duckAt(swung, s.pump, stepSec * 4);
       }
       if (hearBeat && s.sampleLanes.length) this._playLanes(g, step, swung, stepSec, h);
-      if (s.trackOn.bass && beat.bass?.[step] !== undefined && this._dcHears('bass')) {
-        this.engine.playBass(swung, this._bassMidi(h, beat.bass[step]), 1, this._bassSound(), bassNoteSteps(beat.bass, step, barSteps) * stepSec * .92);
-      }
+      // Vorgezogene Wechsel (chordPush): die Melodie ist über dem Takt-Akkord geschrieben und
+      // nimmt die Harmonie ohne Vorziehen, ebenso der Bass mit „bleibt auf der Eins“.
+      const pushedAny = this._chordTimeline().push.some(Boolean);
+      const hMel = pushedAny ? this._harmonyAt(g, false) : h;
+      if (s.trackOn.bass && this._dcHears('bass')) this._playBassStep(g, step, swung, stepSec, barSteps, beat.bass || {}, s.bassHold ? hMel : h);
 
-      if (h.chordStart && s.chordsOn && this._dcHears('chords')) this._playChord(h, swung, stepSec * barSteps * s.chordBars);
+      if (s.chordsOn && this._dcHears('chords')) this._playChordStep(g, step, swung, stepSec, barSteps, h);
       // Nach einer Aufnahme loopt die Aufnahme statt der Melodie, bis sie
       // gespeichert oder verworfen ist; beim Einzählen/Aufnehmen: Stille.
       const recPhase = this.rec.phase;
       if (recPhase === 'done') {
-        if (this.rec.looping) this._playMelodyStep(g, h, swung, stepSec, this.rec.loopBars, 'key', true);
-      } else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording' && this._dcHears('melody')) this._playMelodyStep(g, h, swung, stepSec);
+        if (this.rec.looping) this._playMelodyStep(g, hMel, swung, stepSec, this.rec.loopBars, 'key', true);
+      } else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording' && this._dcHears('melody')) this._playMelodyStep(g, hMel, swung, stepSec);
 
       if (s.arpOn && this._dcHears('all')) {
         const trigger = this._arpTrigger(g);
@@ -6311,16 +6833,68 @@
       }, delay);
     }
 
-    _playChord(h, time, duration) {
+    /** Ein Basston je Schritt. „Bass zieht mit vor“: schlägt ein vorgezogener Akkord an,
+     *  wo die Linie schweigt, kommt der Grundton schon dort und klingt über die Eins
+     *  (der Ton auf der Eins entfällt dann — übergebunden). */
+    _playBassStep(g, step, time, stepSec, barSteps, bass, h) {
+      const s = this.state;
+      const push = this._chordTimeline().push[h.index] || 0;
+      if (!s.bassHold && push && h.chordStart && g === h.start && bass[step] === undefined) {
+        const down = mod(step + push, barSteps);
+        const len = push + (bass[down] !== undefined ? bassNoteSteps(bass, down, barSteps) : 0);
+        this._bassTie = bass[down] !== undefined ? g + push : null;
+        this.engine.playBass(time, this._bassMidi(h, 0), 1, this._bassSound(), Math.max(1, len) * stepSec * .92);
+        return;
+      }
+      if (bass[step] === undefined) return;
+      if (this._bassTie === g) { this._bassTie = null; return; }
+      this.engine.playBass(time, this._bassMidi(h, bass[step]), 1, this._bassSound(), bassNoteSteps(bass, step, barSteps) * stepSec * .92);
+    }
+
+    /** Akkorde-Spur je Schritt: gehalten (je Akkordanfang), rhythmisch (Anschläge je Takt,
+     *  dazu jeder Wechsel — auch ein vorgezogener) oder Arpeggio; darunter ggf. der Pad-Layer. */
+    _playChordStep(g, step, time, stepSec, barSteps, h) {
+      const s = this.state;
+      const left = Math.max(1, h.end - g);
+      // Workshop, de:construct und Chor-Aufgaben spielen die Akkorde wie früher gehalten.
+      const play = ['workshop', 'deconstruct'].includes(this._uiMode()) ? 'held' : s.chordPlay;
+      if (h.chordStart) { const pad = this._chordPadSound(); if (pad) this._playChord(h, time, left * stepSec, pad[1], pad[0]); }
+      if (play === 'held' || (play === 'rhythm' && !s.chordHits)) {
+        if (h.chordStart) this._playChord(h, time, left * stepSec);
+        return;
+      }
+      if (play === 'arp') {
+        for (const hit of chordCompAt('arp', null, step, barSteps)) {
+          const root = 48 + mod(h.keyRoot + degreeSemis(h.steps, h.deg), 12) + 12 * s.chordOctave;
+          const midi = root + degreeSemis(h.steps, h.deg + hit.deg) - degreeSemis(h.steps, h.deg);
+          this.engine.playTone(this._chordSound(), midi, time, .16 * hit.vel, Math.min(left, hit.len * 1.8) * stepSec, { layer: 'chords', glide: 0, stepSeconds: stepSec });
+        }
+        return;
+      }
+      const hits = chordCompAt('rhythm', s.chordHits, step, barSteps);
+      if (!hits.length && h.chordStart) {
+        // Wechsel zwischen zwei Anschlägen (z. B. vorgezogen): bis zum nächsten Anschlag klingen lassen.
+        const next = s.chordHits.map(([st]) => mod(st - step, barSteps)).filter((d) => d > 0);
+        hits.push({ len: next.length ? Math.min(...next) : barSteps, vel: .9 });
+      }
+      for (const hit of hits) this._playChord(h, time, Math.min(left, hit.len) * stepSec, hit.vel);
+    }
+
+    /** Akkord im Satz der Folge. `level`: Faktor auf die Lautstärke; `sound`: anderer
+     *  Klang (Pad-Layer). Die Lage (chordOctave) verschiebt alle Stimmen um Oktaven. */
+    _playChord(h, time, duration, level = 1, sound = this._chordSound()) {
       const voicing = this._voicings()[h.index];
       if (!voicing) return;
       const s = this.state;
       const anyFocus = SATB.some((v) => s.satb[v] === 'focus');
+      const shift = 12 * (s.chordOctave || 0);
       for (const voice of SATB) {
         const mode = s.satb[voice];
         if (mode === 'mute') continue;
-        const velocity = mode === 'focus' ? .22 : anyFocus ? .05 : .11;
-        this.engine.playTone(this._chordSound(), voicing[voice], time, velocity, duration * .97,
+        const velocity = (mode === 'focus' ? .22 : anyFocus ? .05 : .11) * level;
+        let midi = voicing[voice] + shift;
+        if (midi < 36) midi += 12;
+        this.engine.playTone(sound, midi, time, velocity, duration * .97,
           { layer: 'chords', glide: 0, stepSeconds: this._stepSeconds() });
       }
     }
@@ -6336,14 +6910,14 @@
       if (ref === 'key') return null;
       const s = this.state;
       const prog = this._progression();
-      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}|${(prog.alter || []).join()}|${s.chordBars}|${s.melodyOctave}|${altBars}|${this._barSteps()}|${JSON.stringify(bars)}`;
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}|${(prog.alter || []).join()}|${s.chordBars}|${s.chordLen}|${s.melodyOctave}|${altBars}|${this._barSteps()}|${JSON.stringify(bars)}`;
       if (this._melShiftCache?.key === key) return this._melShiftCache.shifts;
       const barSteps = this._barSteps();
       const gcd = (a, b) => (b ? gcd(b, a % b) : a);
       const lcm = (a, b) => (a * b) / gcd(a, b);
-      const count = lcm(lcm(bars.length, prog.degrees.length * s.chordBars), altBars ? 2 : 1);
+      const count = lcm(lcm(bars.length, chordCycleBars(this._chordTimeline(prog))), altBars ? 2 : 1);
       const modeSteps = this._mode().steps;
-      const shifts = melodyBarShifts(bars, count, (bar, deg, alt) => melodyMidi(deg, alt, this._harmonyAt(bar * barSteps), 'chord', modeSteps, s.melodyOctave), altBars);
+      const shifts = melodyBarShifts(bars, count, (bar, deg, alt) => melodyMidi(deg, alt, this._harmonyAt(bar * barSteps, false), 'chord', modeSteps, s.melodyOctave), altBars);
       this._melShiftCache = { key, shifts };
       return shifts;
     }
@@ -6387,7 +6961,14 @@
       const now = this.engine.ctx.currentTime;
       let latest;
       while (this.scheduledSteps.length && this.scheduledSteps[0].time <= now + .01) latest = this.scheduledSteps.shift();
+      if (latest?.countIn) {
+        this._renderBeatDots(latest.g + this._barSteps(), true);
+        this._setStatus(tf('lab.countIn', { n: latest.countIn }));
+        this.shown = null;
+        latest = null;
+      }
       if (latest) {
+        if (this.shown === null && latest.g === 0) this._setStatus(t('lab.statusRunning'));
         const chordChanged = latest.h.index !== this.shown?.h?.index || latest.side !== this.shown?.side;
         this.shown = latest;
         this._showStep(latest, chordChanged);
@@ -6409,8 +6990,8 @@
       this._showMelodyStep(g);
       this._showRecLoopStep(g);
       if (chordChanged) this._renderNow();
-      if (this.state.view === 'choir') this._renderChoirNow(g);
-      else if (this.state.view === 'workshop') this._wsChShow(g);
+      if (this._uiMode() === 'tasks') this._renderChoirNow(g);
+      else if (this._uiMode() === 'workshop') this._wsChShow(g);
     }
 
     _setStatus(text) { this.$all('.status-line').forEach((el) => { el.textContent = text; }); }
@@ -6560,8 +7141,8 @@
       this.$('[data-out="pump"]').textContent = `${Math.round(s.pump * 100)} %`;
       this.$('.dc-meter').value = this._meter();
       this._chips(this.$('.bass-chips'), BASS_SOUNDS.map((b) => ({ value: b.id, label: b.name })), s.bassSoundId, 'bass-sound');
-      this.$('.kit-panel').hidden = s.view === 'workshop';
-      this.$('.live-panel').hidden = s.view === 'workshop';
+      this.$('.kit-panel').hidden = uiModeOf(s) === 'workshop';
+      this.$('.live-panel').hidden = uiModeOf(s) === 'workshop';
       this._chips(this.$('.kit-chips'), DRUM_KITS.map((id) => ({ value: id, label: t(`lab.kit.${id}`) })), s.drumKit, 'drum-kit');
       this._chips(this.$('.fill-chips'), FILL_LENGTHS.map((n) => ({ value: n, label: t(`lab.fill.${n}`) })), s.fills, 'fills');
       this._renderKit();
@@ -6585,7 +7166,7 @@
       const meter = METERS[this._meter()];
       const host = this.$('.track-list');
       // Workshop und de:construct bauen mit den bekannten fünf Schlagzeugspuren.
-      const hidePerc = s.view === 'workshop' || s.view === 'deconstruct';
+      const hidePerc = uiModeOf(s) === 'workshop' || uiModeOf(s) === 'deconstruct';
       const laneRows = (track) => s.sampleLanes.flatMap((lane, i) => {
         const meta = this._sampleMeta(lane.padId);
         const target = meta ? (meta.kind === 'hit' ? meta.track : 'bass') : 'bass';
@@ -6660,7 +7241,7 @@
         row.append(roll, label, cells, toggle);
         return [row, ...laneRows(track)];
       }));
-      if (this.state.view === 'workshop') this._wsDecorate();
+      if (this._uiMode() === 'workshop') this._wsDecorate();
     }
 
     /** Zeile einer Sample-Spur: Vorhören, Name, Zellen (Anschlagstärke, bei Tönen der klingende Ton), An/Aus. */
@@ -7782,8 +8363,7 @@
           if (meta.detectedMidi === null) continue;
           const target = sampleToneTarget(meta.toneRole, meta.detectedMidi, chordPitchClasses(h.keyRoot, h.steps, h.deg, h.sevenths).slice(0, 3));
           // Dauer: bis zum nächsten Treffer der Spur im Takt bzw. zum Akkordwechsel.
-          const chordSteps = barSteps * s.chordBars;
-          const untilChord = chordSteps - (g % chordSteps);
+          const untilChord = Math.max(1, h.end - g);
           const untilNext = bassNoteSteps(lane.steps, step, barSteps);
           const steps = Math.min(untilChord, untilNext);
           this.engine.playPad(buffer, meta, when, level, { rate: sampleToneRate(target, meta.detectedMidi, meta.detectedCents, meta.pitch), duration: Math.max(.05, steps * stepSec * .92), layer: 'keys' });
@@ -8523,7 +9103,7 @@
       this._renderDcQuick();
     }
 
-    _renderBeatDots(step) {
+    _renderBeatDots(step, counting = false) {
       const meter = METERS[this._meter()];
       const host = this.$('.beat-dots');
       if (host.childElementCount !== meter.beats.length) {
@@ -8531,7 +9111,40 @@
       }
       let current = -1;
       meter.beats.forEach((b, i) => { if (step >= b) current = i; });
-      Array.from(host.children).forEach((dot, i) => dot.classList.toggle('is-now', this.playing && i === current));
+      Array.from(host.children).forEach((dot, i) => {
+        dot.classList.toggle('is-now', this.playing && i === current);
+        dot.classList.toggle('is-count', counting && i <= current);
+      });
+    }
+
+    /** Länge des Einzählers in Schritten (negativ) — 0, wenn keiner. */
+    _countInSteps() {
+      if (!this.state.countIn || ['workshop', 'deconstruct'].includes(this._uiMode())) return 0;
+      return -this._barSteps();
+    }
+
+    /** Energie wählen: im Stillstand sofort, beim Spielen an der nächsten Grenze von
+     *  zwei Takten (_commitEnergy im Scheduler). Ein Undo-Schritt. */
+    _setEnergy(energy) {
+      if (!ENERGY_IDS.includes(energy) || !this.state.styleId) return;
+      const custom = styleDiff(this.state).rhythm || styleDiff(this.state).bass;
+      this._pushHistory();
+      if (custom) this._setStatus(t('lab.chor.resetHint'));
+      if (!this.playing) { this._applyEnergyNow(energy); return; }
+      this._pendingEnergy = energy;
+      this._setStatus(t('lab.chor.energyNext'));
+      this._renderChor();
+    }
+    _applyEnergyNow(energy) {
+      const next = applyEnergy(this.state, energy);
+      const { view, learnArea, droneOn } = this.state;
+      this.state = Object.assign(next, { view, learnArea, droneOn });
+      this._afterStateChange();
+    }
+    _commitEnergy() {
+      const energy = this._pendingEnergy;
+      this._pendingEnergy = null;
+      this._applyEnergyNow(energy);
     }
 
     /** Akkord-/Tonart-Anzeige in der Transportleiste plus Akkordleiste und
@@ -9628,8 +10241,8 @@
         } else if (el.dataset.mix) {
           s.mix[el.dataset.mix] = Number(el.value);
           this._paintLevel(el);
-          if (el.dataset.mix === 'master') this.engine.setMaster(s.mix.master);
-          else this.engine.setBusLevel(el.dataset.mix, s.mute[el.dataset.mix] ? 0 : s.mix[el.dataset.mix]);
+          if (el.dataset.mix === 'master') this.engine.setMaster(s.mix.master * (ENERGY_TRIM[s.energy]?.all ?? 1));
+          else this.engine.setBusLevel(el.dataset.mix, s.mute[el.dataset.mix] ? 0 : s.mix[el.dataset.mix] * busFactor(s, el.dataset.mix));
         } else if (el.classList.contains('prog-name')) {
           const name = el.value.trim().slice(0, 40);
           if (name && s.progOwnId) {
@@ -9653,7 +10266,7 @@
         const el = event.target;
         const s = this.state;
         const field = el.dataset.field;
-        if (field === 'chordBars') { s.chordBars = Number(el.value); this._renderNow(); }
+        if (field === 'chordBars') { s.chordBars = Number(el.value); s.chordLen = null; this._renderNow(); }
         else if (field === 'meter') this._handleAction('meter', el.value, el);
         else if (field === 'arpMode') s.arpMode = el.value;
         else if (field === 'arpDivision') s.arpDivision = Number(el.value);
@@ -10123,7 +10736,7 @@
         // Mixer & Klang
         case 'mute':
           s.mute[value] = !s.mute[value];
-          this.engine.setBusLevel(value, s.mute[value] ? 0 : s.mix[value]);
+          this.engine.setBusLevel(value, s.mute[value] ? 0 : s.mix[value] * busFactor(s, value));
           this._renderMixer();
           break;
         case 'preset-cat': this.ui.presetCat = value === this.ui.presetCat ? 'all' : value; this._renderSound(); break;
@@ -11296,6 +11909,9 @@
 </nav>
 
 <div class="lab-body">
+  <nav class="learn-back" hidden><button class="chip" type="button" data-action="learn-home">‹ ${t('lab.viewLearn')}</button></nav>
+  <section class="chor-view" hidden></section>
+  <section class="learn-view" hidden></section>
   <section class="choir-view" hidden>
     <section class="panel">
       <div class="panel-head"><h2>${t('lab.choirTask')}</h2>${help('choirHelp')}</div>
@@ -11859,6 +12475,140 @@
 
   if (!customElements.get('chor-groove-lab')) customElements.define('chor-groove-lab', GrooveLabView);
 
+  /** Selbsttests des Redesigns (reine Funktionen; Aufruf aus runMusicSelfTests in app.js
+   *  und in der Konsole über ChorGrooveLab._test.redesignSelfTest()). Liefert Fehlertexte. */
+  function redesignSelfTest() {
+    const failed = [];
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const fail = (msg) => failed.push(`Redesign: ${msg}`);
+    // 1. Akkord-Zeitleiste: ohne Länge/Vorziehen genau die alte Rechnung (Takt / chordBars).
+    for (const bars of [1, 2]) {
+      for (const n of [1, 3, 4]) {
+        const tl = chordTimeline(n, 16, bars, null, null);
+        for (let g = 0; g < 16 * 8 * bars; g++) {
+          const at = chordAtStep(tl, g);
+          const old = Math.floor(Math.floor(g / 16) / bars) % n;
+          if (at.index !== old || at.chordStart !== (g % (16 * bars) === 0)) { fail(`Zeitleiste ${n}×${bars} bei ${g}: ${at.index}/${at.chordStart} statt ${old}`); break; }
+        }
+      }
+    }
+    {
+      // Achtel früher bei allen vier Akkorden: Wechsel auf 14, 30, 46 und über die Loop-Grenze auf 62;
+      // der allererste Takt beginnt auf 0, die Melodie (ohne Vorziehen) wechselt auf der Eins.
+      const tl = chordTimeline(4, 16, 1, null, [2, 2, 2, 2]);
+      const starts = [];
+      for (let g = 0; g < 128; g++) if (chordAtStep(tl, g).chordStart) starts.push(g);
+      if (!same(starts, [0, 14, 30, 46, 62, 78, 94, 110, 126])) fail(`Vorziehen: Wechsel auf ${starts}`);
+      if (chordAtStep(tl, 62).index !== 0 || chordAtStep(tl, 61).index !== 3 || chordAtStep(tl, 64).chordStart) fail('Vorziehen über die Loop-Grenze');
+      if (chordAtStep(tl, 14, false).index !== 0 || chordAtStep(tl, 16, false).index !== 1) fail('Harmonie ohne Vorziehen');
+      const at = chordAtStep(tl, 14);
+      if (at.start !== 14 || at.end !== 30) fail(`Akkord 2 klingt ${at.start}–${at.end}`);
+      // 16tel früher, Längen ½ · 1 · 2 Takte.
+      const tl2 = chordTimeline(3, 16, 1, [.5, 1, 2], [0, 1, 0]);
+      if (tl2.total !== 56 || !same(tl2.starts, [0, 8, 24])) fail(`Längen: ${tl2.starts} / ${tl2.total}`);
+      if (chordAtStep(tl2, 7).index !== 1 || !chordAtStep(tl2, 7).chordStart || chordAtStep(tl2, 23).index !== 1) fail('Länge ½ Takt mit 16tel früher');
+      if (chordCycleBars(tl2) !== 7) fail(`Wiederholung nach ${chordCycleBars(tl2)} Takten statt 7`);
+      // Vorziehen nie länger als der vorige Akkord; ein einziger Akkord wechselt nie.
+      if (chordTimeline(1, 16, 1, null, [2]).push[0] !== 0) fail('Vorziehen bei einem Akkord');
+    }
+    if (!same(foldChordLens([2, 2, 2], 3), { chordBars: 2, chordLen: null }) || !same(foldChordLens([.5, 1], 3).chordLen, [.5, 1, 1])
+      || !same(foldChordLens(null, 3, 2), { chordBars: 2, chordLen: null })) fail('foldChordLens');
+    if (normChordPush([0, 0], 2) !== null || !same(normChordPush([2, 'x', 1], 3), [2, 0, 1])) fail('normChordPush');
+    // 2. Swing-Stufen (4.4).
+    if (swingLevelOf(0) !== 'straight' || swingLevelOf(.28) !== 'light' || swingLevelOf(.67) !== 'shuffle' || swingLevelOf(.45) !== null) fail('Swing-Stufen');
+    if (Math.abs(swingRatio(.28) - .57) > .001 || Math.abs(swingRatio(.67) - .6675) > .001) fail('Swing-Verhältnis');
+    if (swingOffered('3/4') || swingOffered('6/8') || !swingOffered('4/4')) fail('Swing bei 3/4/6/8 nicht ausgeblendet');
+    // 3. Bass-Spielweisen: deterministisch, im Takt, Stufen −1…7, Eins belegt; Beispiele des Beraters.
+    for (const p of DRUM_PATTERNS) {
+      for (const play of BASS_PLAYS) {
+        const a = bassVariant(p, play);
+        if (!same(a, bassVariant(p, play))) fail(`bassVariant ${p.name}/${play} nicht deterministisch`);
+        const steps = Object.keys(a).map(Number);
+        if (steps.some((st) => st < 0 || st >= METERS[p.meter].steps) || Object.values(a).some((d) => d < -1 || d > 7)) fail(`bassVariant ${p.name}/${play} außerhalb`);
+        if (!['off', 'offbeat', 'line'].includes(play) && a[0] !== 0) fail(`bassVariant ${p.name}/${play} ohne Eins`);
+      }
+    }
+    const bv = (name, play) => bassVariant(DRUM_PATTERNS[patternIndexByName(name)], play);
+    if (!same(bv('Pop Ballad', 'half'), { 0: 0, 8: 0 }) || !same(bv('Backbeat Open', 'quarter'), { 0: 0, 4: 0, 8: 4, 12: 0 })
+      || !same(bv('6/8 Ballad', 'half'), { 0: 0, 6: 4 }) || !same(bv('Swing Soul', 'line1'), { 0: 0, 4: 3, 8: 2, 11: 4, 14: 0 })
+      || !same(bv('Halftime Pop', 'quarter'), { 0: 0, 4: 0, 8: 0, 12: 4 })) fail('bassVariant: Beispiele des Beraters');
+    // 4. Stile × Energie: gleiche Taktart, Still ohne Drums, Werte im Bereich; Tonart/Tempo/Folge bleiben.
+    const base = baseState();
+    base.keyRoot = 7; base.modeId = 'minor'; base.progDegrees = [0, 5, 3, 4]; base.chordOctave = 1;
+    for (const style of STYLES) {
+      const sty = applyStyle(base, style.id);
+      if (sty.keyRoot !== 7 || sty.modeId !== 'minor' || !same(sty.progDegrees, [0, 5, 3, 4]) || sty.eighths !== base.eighths || sty.chordOctave !== 1) fail(`Stil ${style.id} ändert Tonart, Tempo, Folge oder Lage`);
+      if (styleDiff(sty).any) fail(`Stil ${style.id} weicht direkt nach dem Wählen von sich ab: ${JSON.stringify(styleDiff(sty))}`);
+      if (sty.energy !== style.energy || sty.room !== style.room) fail(`Stil ${style.id}: Energie/Raum`);
+      if (!swingOffered(style.meter) && sty.swing) fail(`Stil ${style.id}: Swing in ${style.meter}`);
+      for (const e of ENERGY_IDS) {
+        const r = resolveEnergy(style.id, e);
+        const p = DRUM_PATTERNS[r.patternIndex];
+        if (patternIndexByName(style.drums[1][0]) < 0 || (style.drums[ENERGY_IDS.indexOf(e)] && patternIndexByName(style.drums[ENERGY_IDS.indexOf(e)][0]) < 0)) fail(`Stil ${style.id}: Loop unbekannt`);
+        if (p.meter !== style.meter) fail(`Stil ${style.id}/${e}: Taktart ${p.meter}`);
+        if (e === 'still' && DRUM_TRACKS.some((tr) => Object.keys(r.beat[tr]).length)) fail(`Stil ${style.id}: Still mit Drums`);
+        if (!FILL_LENGTHS.includes(r.fills) || r.pump < 0 || r.pump > 1) fail(`Stil ${style.id}/${e}: Fill/Pump`);
+        if (r.chordHits && r.chordHits.some(([st, len]) => st >= METERS[p.meter].steps || len <= 0)) fail(`Stil ${style.id}/${e}: Anschläge`);
+        const en = applyEnergy(sty, e);
+        if (en.eighths !== sty.eighths || en.keyRoot !== 7 || !same(en.progDegrees, sty.progDegrees) || en.chordOctave !== 1 || en.melodyIndex !== sty.melodyIndex || en.chordSound !== sty.chordSound) fail(`Energie ${style.id}/${e} ändert mehr als Rhythmus/Dichte`);
+        if (styleDiff(en).any) fail(`Energie ${style.id}/${e}: danach „angepasst“`);
+      }
+    }
+    {
+      const pop = applyStyle(base, 'pop');
+      const edited = JSON.parse(JSON.stringify(pop));
+      edited.beat.kick[3] = 1;
+      if (!styleDiff(edited).rhythm || styleDiff(edited).bass) fail('styleDiff erkennt bearbeitetes Muster nicht');
+      edited.chordSound = 'organ';
+      if (!styleDiff(edited).sound) fail('styleDiff erkennt anderen Klang nicht');
+      if (thinBeat(beatFromPattern(DRUM_PATTERNS[patternIndexByName('Pop Stomp')]), DRUM_PATTERNS[patternIndexByName('Pop Stomp')], 'calm').beat.kick[4] !== undefined) fail('Ruhig: Kick nicht nur auf der Eins');
+    }
+    // 5. Raum, Hören auf, Energie-Ausgleich: Faktoren statt Überschreiben.
+    if (ROOM_IDS.some((r) => !(ROOMS[r].wet > 0 && ROOMS[r].length >= .2 && ROOMS[r].length <= 4 && ROOMS[r].pre >= 0 && ROOMS[r].pre <= 90))) fail('Raum-Werte');
+    if (!(ROOMS.dry.wet < ROOMS.rehearsal.wet && ROOMS.rehearsal.wet < ROOMS.hall.wet && ROOMS.hall.wet < ROOMS.church.wet)) fail('Raum: Hallanteil steigt nicht');
+    {
+      const s = baseState();
+      const mix = JSON.stringify(s.mix);
+      for (const f of HEAR_IDS) { s.hearFocus = f; BUSES.forEach((b) => busFactor(s, b)); }
+      if (JSON.stringify(s.mix) !== mix) fail('Hören auf verändert state.mix');
+      s.hearFocus = 'balanced'; s.energy = null;
+      if (BUSES.some((b) => busFactor(s, b) !== 1)) fail('ausgewogen ist nicht neutral');
+      s.hearFocus = 'rhythm';
+      if (!(busFactor(s, 'drums') > 1 && busFactor(s, 'chords') < 1)) fail('Hören auf Rhythmus');
+      s.hearFocus = 'harmony';
+      if (!(busFactor(s, 'drums') < 1 && busFactor(s, 'chords') > 1 && busFactor(s, 'keys') === 1)) fail('Hören auf Harmonie');
+      if (!(ENERGY_TRIM.full.all < ENERGY_TRIM.drive.all && ENERGY_TRIM.drive.all <= ENERGY_TRIM.calm.all)) fail('Voll ist lauter statt dichter');
+    }
+    // 6. Akkorde-Spur: Arpeggio und Anschläge.
+    if (chordCompAt('arp', null, 1, 16).length || chordCompAt('arp', null, 2, 16)[0]?.deg !== 2) fail('Arpeggio der Akkorde');
+    if (chordCompAt('rhythm', [[0, 2, 1], [6, 2, .7]], 6, 16)[0]?.vel !== .7 || chordCompAt('held', [[0, 2, 1]], 0, 16).length) fail('Anschläge der Akkorde');
+    if (sanitizeHits([[0, 2, 1], [0, 3, 1], [20, 1, 1], 'x'], 16)?.length !== 1 || sanitizeHits([], 16) !== null) fail('sanitizeHits');
+    // 7. Migration alter Stände (idempotent) und neue Felder.
+    const view = (raw) => { const s = sanitizeState(raw); return [s.view, s.learnArea]; };
+    if (!same(view({ view: 'choir', choirTask: 'terzen' }), ['learn', 'tasks'])) fail('alte Chor-Aufgabe → Lernen/Aufgaben');
+    if (!same(view({ view: 'choir' }), ['choir', null])) fail('alter Chor ohne Aufgabe → Chor');
+    if (!same(view({ view: 'workshop' }), ['learn', 'course']) || !same(view({ view: 'deconstruct' }), ['learn', 'dc'])) fail('Workshop/de:construct → Lernen');
+    if (!same(view({ layout: 2, view: 'choir', choirTask: 'terzen' }), ['choir', null])) fail('neuer Chor mit Aufgabe');
+    if (!same(view({ layout: 2, view: 'learn', learnArea: 'kino' }), ['learn', null]) || !same(view({ view: 'kino' }), [null, null])) fail('kaputte Ansicht');
+    {
+      const old = sanitizeState({ patternIndex: 0, chordBars: 2, fx: { reverbLength: 2.5 } });
+      if (old.styleId !== null || old.energy !== null || old.room !== null || old.chordPush !== null || old.chordPlay !== 'held' || old.fx.reverbLength !== 2.5) fail('alter Stand bekommt Stil/Raum/Vorziehen');
+      if (chordTimelineOf(old, 4, 16).lens[0] !== 32) fail('alter Stand: chordBars 2 nicht als Länge');
+      const fresh = defaultState();
+      if (fresh.styleId !== 'pop' || fresh.energy !== 'drive' || fresh.room !== 'rehearsal' || fresh.melodyOn !== false || !fresh.countIn) fail('neuer Stand nicht Pop/Treibend/Probe, Melodie aus');
+      const round = sanitizeState(JSON.parse(JSON.stringify(fresh)));
+      if (!same(round, fresh)) fail('neuer Stand übersteht sanitizeState nicht unverändert');
+      if (!same(sanitizeState(JSON.parse(JSON.stringify(round))), round)) fail('sanitizeState nicht idempotent');
+      if (!same(decodeState(encodeState(fresh)), fresh)) fail('GL1.-Code verliert Redesign-Felder');
+      const custom = { ...JSON.parse(JSON.stringify(fresh)), chordLen: [.5, 1, 2, 1], chordPush: [0, 2, 1, 2], chordHits: [[0, 2, 1]], chordPlay: 'rhythm', chordOctave: -1, bassHold: true, hearFocus: 'harmony', chordPad: 'moon' };
+      const back = sanitizeState(JSON.parse(JSON.stringify(custom)));
+      for (const k of ['chordLen', 'chordPush', 'chordHits', 'chordPlay', 'chordOctave', 'bassHold', 'hearFocus', 'chordPad']) if (!same(back[k], custom[k])) fail(`Feld ${k} geht verloren`);
+      const legacy = pinLegacySound(defaultState());
+      if (legacy.styleId || legacy.room || legacy.chordPush || legacy.pump || legacy.chordPlay !== 'held') fail('pinLegacySound lässt Stil/Raum/Vorziehen stehen');
+    }
+    return failed;
+  }
+
   // Für die Musik-Selbsttests in app.js (runMusicSelfTests) und die Konsole:
   // Daten und reine Funktionen, ohne die Oberfläche zu öffnen.
   const TEST_EXPORT = {
@@ -11879,6 +12629,10 @@
     // de:construct
     VIEWS, DC_LEVELS, DC_ELEMENTS, DC_FOCUS, DC_TAB, DC_SONGS, DRUM_TRACKS, CELL_CYCLE, dcSongsOf, dcTempoFeel, dcFirstOpen, dcNextElement, dcBeat, dcBuild, dcCompare, dcSwitchStep, dcNewSong, sanitizeDeconstruct,
     progressionOfState, harmonyOfState, GrooveLabView, loadLevel,
+    // Redesign (Chor · Studio · Lernen)
+    redesignSelfTest, STYLES, ENERGY_IDS, ROOMS, ROOM_IDS, HEAR_FOCUS, HEAR_IDS, ENERGY_TRIM, SWING_LEVELS, swingLevelOf, swingValueOf, swingRatio,
+    chordTimeline, chordAtStep, chordCycleBars, foldChordLens, normChordPush, bassVariant, thinBeat, resolveEnergy, applyEnergy, applyStyle, styleDiff,
+    chordCompAt, sanitizeHits, busFactor, baseState, uiModeOf, viewOfRaw, LEARN_AREAS, CHORD_SOUNDS,
   };
 
   global.ChorGrooveLab = {

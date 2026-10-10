@@ -884,6 +884,12 @@ export const STRINGS = {
     'lab.satbHint': 'Vierstimmiger Satz mit Stimmführung. Tippe auf eine Stimme: hervorheben → stumm → an. So hörst du deinen Ton im Akkord.',
     'lab.viewAria': 'Ansicht',
     'lab.viewChoir': 'Chor',
+    // >>> Groove Lab Redesign
+    'lab.viewLearn': 'Lernen',
+    'lab.countIn': 'Einzählen … {n}',
+    'lab.chor.resetHint': 'Studio-Feinheiten ersetzt — mit ↶ zurückholen.',
+    'lab.chor.energyNext': 'Energie wechselt an der nächsten Taktgrenze.',
+    // <<< Groove Lab Redesign
     'lab.viewStudio': 'Studio',
     'lab.choirTask': 'Aufgabe',
     'lab.choirHelp': 'Wähle eine Aufgabe: Sie stellt Groove, Akkordfolge, Tempo und Stimmen passend ein. Alles lässt sich danach frei ändern — und mit ↶ zurücknehmen. Im Studio gibt es alle Klang-, Mixer- und Keys-Einstellungen.',
@@ -3055,6 +3061,12 @@ export const STRINGS = {
     'lab.satbHint': 'Four-part voicing with voice leading. Tap a voice: highlight → mute → on. That way you hear your own note within the chord.',
     'lab.viewAria': 'View',
     'lab.viewChoir': 'Choir',
+    // >>> Groove Lab Redesign
+    'lab.viewLearn': 'Learn',
+    'lab.countIn': 'Count-in … {n}',
+    'lab.chor.resetHint': 'Studio details replaced — use ↶ to get them back.',
+    'lab.chor.energyNext': 'Energy changes at the next bar line.',
+    // <<< Groove Lab Redesign
     'lab.viewStudio': 'Studio',
     'lab.choirTask': 'Task',
     'lab.choirHelp': 'Pick a task: it sets groove, chord progression, tempo and voices to match. You can change everything afterwards — and undo it with ↶. The studio has all sound, mixer and keys settings.',
@@ -5226,6 +5238,12 @@ export const STRINGS = {
     'lab.satbHint': 'Czterogłos z prowadzeniem głosów. Stuknij głos: wyróżnij → wycisz → wł. Tak usłyszysz swój dźwięk w akordzie.',
     'lab.viewAria': 'Widok',
     'lab.viewChoir': 'Chór',
+    // >>> Groove Lab Redesign
+    'lab.viewLearn': 'Nauka',
+    'lab.countIn': 'Odliczanie … {n}',
+    'lab.chor.resetHint': 'Ustawienia ze studia zastąpione — przywróć przez ↶.',
+    'lab.chor.energyNext': 'Energia zmieni się na następnej kresce taktowej.',
+    // <<< Groove Lab Redesign
     'lab.viewStudio': 'Studio',
     'lab.choirTask': 'Zadanie',
     'lab.choirHelp': 'Wybierz zadanie: ustawi groove, następstwo akordów, tempo i głosy. Wszystko można potem zmienić — i cofnąć przyciskiem ↶. W studiu są wszystkie ustawienia brzmienia, miksera i klawiszy.',
