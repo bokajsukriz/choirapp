@@ -4722,7 +4722,112 @@
     }
     /** Spielfläche (Phase 6) und Akkordfolgen-Editor (Phase 4). */
     _openSurface() {}
-    _openProgSheet() {}
+    /* ---- Akkordfolgen-Editor (D6), gilt für alle Spuren. Länge je Akkord (½ · 1 · 2
+       Takte), Wechsel (auf der Eins · Achtel · 16tel früher), Stufe, Septakkorde, Bass
+       (Umkehrung), geliehen. Jede Änderung ist ein Undo-Schritt (↶ in der Leiste);
+       die Logik der Folge (prog-*) ist dieselbe wie im Harmonie-Reiter. ---- */
+
+    _openProgSheet() {
+      this.ui.progSel = clamp(this.ui.progSel || 0, 0, this._progression().degrees.length - 1);
+      this._renderProgSheet();
+      this._openLayer(this.$('.prog-layer'), { focus: '.d6-chord[aria-pressed="true"]' });
+    }
+    /** Hat der Rhythmus ein Sechzehntel-Raster (dann gibt es „16tel früher“)? */
+    _hasSixteenths() {
+      const beat = this.state.beat;
+      return TRACK_IDS.some((tr) => Object.keys(beat[tr] || {}).some((st) => Number(st) % 2 === 1)) || !!this.state.chordHits?.some(([st]) => st % 2 === 1);
+    }
+    /** Eine Änderung an der Folge samt Länge/Wechsel je Akkord (Parallel-Arrays). */
+    _progEdit(fn) {
+      const s = this.state;
+      this._pushHistory();
+      const n0 = this._progression().degrees.length;
+      const lens = Array.from({ length: n0 }, (_, i) => s.chordLen?.[i] ?? s.chordBars);
+      const push = Array.from({ length: n0 }, (_, i) => s.chordPush?.[i] || 0);
+      const degrees = this._progBegin();
+      fn({ degrees, alter: s.progAlter, bass: s.progBass, lens, push });
+      Object.assign(s, foldChordLens(lens, degrees.length, s.chordBars));
+      s.chordPush = normChordPush(push, degrees.length);
+      this._tlCache = null;
+      this._progCommit();
+    }
+
+    _renderProgSheet() {
+      const s = this.state;
+      const prog = this._progression();
+      const tl = this._chordTimeline(prog);
+      const n = prog.degrees.length;
+      const sel = this.ui.progSel = clamp(this.ui.progSel || 0, 0, n - 1);
+      const name = (i) => this._nameAt(prog, i);
+      this.$('.d6-sub').textContent = tf('lab.d6.sub', { key: this._keyLabel() });
+      this.$('.d6-tpl-name').textContent = this._progName();
+      this.$('.d6-tpl-sub').textContent = `${prog.degrees.map((_, i) => this._romanAt(prog, i)).join(' – ')} · ${t(s.progDegrees ? 'lab.d6.edited' : 'lab.d6.template')}`;
+      const totalBars = tl.total / tl.barSteps;
+      this.$('.d6-bars').textContent = tf(totalBars === 1 ? 'lab.d6.barsOne' : 'lab.d6.bars', { n: String(totalBars).replace('.', labLang === 'en' ? '.' : ',') });
+      const ruler = this.$('.d6-ruler');
+      ruler.replaceChildren(...Array.from({ length: Math.ceil(totalBars) }, (_, i) => {
+        const el = document.createElement('span');
+        el.textContent = String(i + 1);
+        el.style.flexGrow = String(Math.min(1, totalBars - i));
+        return el;
+      }));
+      const chords = this.$('.d6-chords');
+      chords.replaceChildren(...prog.degrees.map((_, i) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'd6-chord';
+        b.dataset.action = 'd6-sel';
+        b.dataset.value = String(i);
+        b.style.flexGrow = String(tl.lens[i] / tl.barSteps);
+        b.setAttribute('aria-pressed', String(i === sel));
+        const strong = document.createElement('strong');
+        strong.textContent = `${i && tl.push[i] ? '←' : ''}${name(i)}`;
+        const sub = document.createElement('span');
+        sub.textContent = this._romanAt(prog, i);
+        b.append(strong, sub);
+        b.setAttribute('aria-label', `${name(i)}, ${this._romanAt(prog, i)}, ${t(`lab.d6.len.${String(tl.lens[i] / tl.barSteps).replace('.', '')}`)}${tl.push[i] ? `, ${t(`lab.d6.push.${tl.push[i]}`)}` : ''}`);
+        return b;
+      }));
+      this.$('[data-action="d6-add"]').disabled = n >= PROG_MAX_CHORDS;
+      this.$('[data-action="d6-remove"]').disabled = n <= 1;
+      this.$('[data-action="d6-move"][data-value="-1"]').disabled = sel <= 0;
+      this.$('[data-action="d6-move"][data-value="1"]').disabled = sel >= n - 1;
+      const bar = Math.floor(tl.starts[sel] / tl.barSteps) + 1;
+      this.$('.d6-sel-title').textContent = tf('lab.d6.selected', { name: name(sel), bar });
+      const deg = prog.degrees[sel];
+      const degHost = this.$('.d6-degrees');
+      degHost.replaceChildren(...[0, 1, 2, 3, 4, 5, 6].map((d) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.setAttribute('role', 'radio');
+        b.className = 'd6-deg';
+        b.dataset.action = 'd6-deg';
+        b.dataset.value = String(d);
+        b.setAttribute('aria-checked', String(d === deg && !prog.alter?.[sel]));
+        b.textContent = chordName(s.keyRoot, this._stepsFor(d, prog), d, prog.sevenths, s.modeId);
+        b.title = romanNumeral(this._stepsFor(d, prog), d, prog.sevenths);
+        return b;
+      }));
+      const lenNow = tl.lens[sel] / tl.barSteps;
+      this.$all('.d6-len [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(Number(b.dataset.value) === lenNow)));
+      const pushNow = s.chordPush?.[sel] || 0;
+      const sixteenths = this._hasSixteenths();
+      this.$all('.d6-push [role="radio"]').forEach((b) => {
+        b.setAttribute('aria-checked', String(Number(b.dataset.value) === pushNow));
+        b.hidden = Number(b.dataset.value) === 1 && !sixteenths && pushNow !== 1;
+      });
+      this.$('.d6-push').hidden = n < 2;
+      this.$('.d6-push-label').hidden = n < 2;
+      this.$('.d6-push-note').hidden = sel !== 0 || n < 2;
+      this.$('[data-action="d6-sevenths"]').setAttribute('aria-pressed', String(!!prog.sevenths));
+      const bassNow = prog.bass?.[sel] || 0;
+      this.$('.d6-bass').textContent = `${t('lab.bassLabel')}: ${t(['lab.bassRoot', 'lab.bassThird', 'lab.bassFifth'][bassNow])} ›`;
+      const alterNow = prog.alter?.[sel] || '';
+      this.$('.d6-alter').textContent = `${t({ '': 'lab.alterNormal', borrow: 'lab.alterBorrow', secdom: 'lab.alterSecdom' }[alterNow])} ›`;
+      this.$('.d6-alter').setAttribute('aria-pressed', String(!!alterNow));
+      this.$('.d6-all').disabled = !s.chordPush;
+    }
+
 
     /** Anfangstöne geben (Berater, E): Begleitung pausiert; Tonika-Dreiklang, dann die
      *  Einsatztöne B → T → A → S aus dem SATB-Satz des ersten Akkords, Klavier. */
@@ -10650,6 +10755,7 @@
     _onHarmonyChange() {
       this._normChordArrays();
       this._renderChor();
+      if (!this.$('.prog-layer').hidden) this._renderProgSheet();
       this._voicingCache = null;
       this._renderHarmony();
       this._renderNow();
@@ -10726,6 +10832,33 @@
         case 'start-notes': this._giveStartNotes(); break;
         case 'surface-open': this._openSurface(); break;
         case 'prog-sheet': this._openProgSheet(); break;
+        case 'd6-sel': this.ui.progSel = Number(value); this._renderProgSheet(); this.$(`.d6-chord[data-value="${value}"]`)?.focus(); { const p = this._progression(); this._previewChord(p.degrees[this.ui.progSel], this.ui.progSel); } break;
+        case 'd6-deg': this._progEdit(({ degrees, alter }) => { degrees[this.ui.progSel] = Number(value); alter[this.ui.progSel] = null; }); this._previewChord(Number(value), this.ui.progSel); this.$(`.d6-deg[data-value="${value}"]`)?.focus(); break;
+        case 'd6-len': this._progEdit(({ lens }) => { lens[this.ui.progSel] = Number(value); }); this.$(`.d6-len [data-value="${value}"]`)?.focus(); break;
+        case 'd6-push': this._progEdit(({ push }) => { push[this.ui.progSel] = Number(value); }); this.$(`.d6-push [data-value="${value}"]`)?.focus(); break;
+        case 'd6-all-one': this._progEdit(({ push }) => { push.fill(0); }); this._setStatus(t('lab.d6.allOneDone')); break;
+        case 'd6-sevenths': this._pushHistory(); this._progBegin(); s.progSevenths = !this._progression().sevenths; this._progCommit(); break;
+        case 'd6-bass': this._progEdit(({ bass }) => { bass[this.ui.progSel] = ((bass[this.ui.progSel] || 0) + 1) % 3; }); this._previewChord(this._progression().degrees[this.ui.progSel], this.ui.progSel); break;
+        case 'd6-alter': this._progEdit(({ alter }) => { const order = [null, 'borrow', 'secdom']; alter[this.ui.progSel] = order[(order.indexOf(alter[this.ui.progSel] || null) + 1) % 3]; }); this._previewChord(this._progression().degrees[this.ui.progSel], this.ui.progSel); break;
+        case 'd6-add': this._progEdit(({ degrees, alter, bass, lens, push }) => {
+          if (degrees.length >= PROG_MAX_CHORDS) return;
+          const i = this.ui.progSel;
+          for (const list of [degrees, alter, bass, lens]) list.splice(i + 1, 0, list[i]);
+          push.splice(i + 1, 0, this._stylePush());
+          this.ui.progSel = i + 1;
+        }); break;
+        case 'd6-remove': this._progEdit(({ degrees, alter, bass, lens, push }) => {
+          if (degrees.length <= 1) return;
+          for (const list of [degrees, alter, bass, lens, push]) list.splice(this.ui.progSel, 1);
+          this.ui.progSel = Math.max(0, this.ui.progSel - 1);
+        }); break;
+        case 'd6-move': this._progEdit((lists) => {
+          const i = this.ui.progSel;
+          const to = i + Number(value);
+          if (to < 0 || to >= lists.degrees.length) return;
+          for (const list of Object.values(lists)) [list[i], list[to]] = [list[to], list[i]];
+          this.ui.progSel = to;
+        }); this.$(`[data-action="d6-move"][data-value="${value}"]`)?.focus(); break;
         case 'choir-task': this._applyChoirTask(value); break;
         case 'choir-part': {
           this.ui.choirPart = value;
@@ -12345,6 +12478,34 @@
   .layer .chip-row .chip { min-height: 40px; }
   .layer .chip[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+
+  /* ---- Akkordfolgen-Editor (D6) ---- */
+  .d6-tpl { display: flex; align-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 4px; }
+  .d6-tpl .chor-text { text-align: center; }
+  .d6-box { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 10px; display: grid; gap: 8px; }
+  .d6-box-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .d6-legend { font-size: .68rem; color: var(--muted); }
+  .d6-ruler { display: flex; gap: 4px; }
+  .d6-ruler span { flex: 1 1 0; font-size: .6rem; font-weight: 800; color: var(--muted); border-left: 1px solid var(--line); padding-left: 4px; }
+  .d6-chords { display: flex; gap: 4px; }
+  .d6-chord { flex: 1 1 0; min-width: 0; min-height: 64px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    background: var(--surface); border: 1px solid var(--line); color: var(--text); overflow: hidden; }
+  .d6-chord strong { font-size: .92rem; white-space: nowrap; }
+  .d6-chord span { font-size: .66rem; color: var(--muted); }
+  .d6-chord[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .d6-chord[aria-pressed="true"] span { color: #fff; }
+  .d6-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+  .d6-tools .chip { min-height: 40px; }
+  .d6-sel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 10px 12px; display: grid; gap: 6px; }
+  .d6-sel-title { font-size: .9rem; }
+  .d6-degrees { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .d6-deg { min-height: 40px; padding: 0; border-radius: 10px; font-size: .72rem; font-weight: 800; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+  .d6-deg[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .d6-push-note { margin: 0; font-size: .66rem; color: var(--muted); }
+  .d6-opts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .d6-opts .chip { min-height: 40px; }
+  .d6-all { justify-self: center; min-height: 44px; }
+
   /* Menü: Schublade von rechts (auf dem Handy fast bildschirmbreit) */
   .sheet { position: absolute; inset: 0; z-index: 5; display: flex; justify-content: flex-end; }
   .sheet-backdrop { position: absolute; inset: 0; background: rgba(36,27,61,.35); }
@@ -12726,6 +12887,7 @@
       <p class="prog-info"></p>
       <div class="chord-strip"></div>
       <button class="mel-edit-link" type="button" data-action="prog-edit">${UI_ICON.edit}${t('lab.progEdit')}</button>
+      <button class="mel-edit-link" type="button" data-action="prog-sheet" aria-haspopup="dialog">${UI_ICON.edit}${t('lab.d6.open')}</button>
       <div class="prog-editor" hidden>
         <div class="mel-top">
           <span class="prog-count"></span>
@@ -13022,6 +13184,51 @@
 
 <p class="toast" role="status" aria-live="polite" hidden></p>
 
+<div class="layer prog-layer" hidden>
+  <div class="layer-backdrop" data-action="layer-close"></div>
+  <section class="layer-card" role="dialog" aria-modal="true" aria-labelledby="prog-layer-title">
+    <div class="layer-grab" aria-hidden="true"></div>
+    <div class="layer-head"><div><h2 id="prog-layer-title">${t('lab.d6.title')}</h2><span class="layer-sub d6-sub"></span></div>
+      <button class="layer-done" type="button" data-action="layer-close">${t('lab.pickerDone')}</button></div>
+    <div class="d6-tpl">
+      <button class="chor-arrow" type="button" data-action="chor-prog" data-value="-1" aria-label="${t('lab.chor.progPrev')}">‹</button>
+      <div class="chor-text"><strong class="d6-tpl-name"></strong><span class="d6-tpl-sub"></span></div>
+      <button class="chor-arrow" type="button" data-action="chor-prog" data-value="1" aria-label="${t('lab.chor.progNext')}">›</button>
+    </div>
+    <div class="d6-box">
+      <div class="d6-box-head"><span class="chor-label d6-bars"></span><span class="d6-legend">${t('lab.d6.legend')}</span></div>
+      <div class="d6-ruler" aria-hidden="true"></div>
+      <div class="d6-chords" role="group" aria-label="${t('lab.d6.chordsAria')}"></div>
+      <div class="d6-tools">
+        <button class="chip" type="button" data-action="d6-add">+ ${t('lab.progAdd')}</button>
+        <button class="chip" type="button" data-action="d6-remove">− ${t('lab.d6.remove')}</button>
+        <button class="chip" type="button" data-action="d6-move" data-value="-1" aria-label="${t('lab.progMoveLeft')}">‹</button>
+        <button class="chip" type="button" data-action="d6-move" data-value="1" aria-label="${t('lab.progMoveRight')}">›</button>
+      </div>
+    </div>
+    <section class="d6-sel" aria-labelledby="d6-sel-title">
+      <strong class="d6-sel-title" id="d6-sel-title"></strong>
+      <span class="chor-label">${t('lab.d6.chord')}</span>
+      <div class="d6-degrees" role="radiogroup" aria-label="${t('lab.d6.chord')}"></div>
+      <span class="chor-label" id="d6-len-label">${t('lab.d6.length')}</span>
+      <div class="seg d6-len" role="radiogroup" aria-labelledby="d6-len-label">
+        ${CHORD_LENS.map((len) => `<button type="button" role="radio" aria-checked="false" data-action="d6-len" data-value="${len}">${t(`lab.d6.len.${String(len).replace('.', '')}`)}</button>`).join('')}
+      </div>
+      <span class="chor-label d6-push-label" id="d6-push-label">${t('lab.d6.push')}</span>
+      <div class="seg d6-push" role="radiogroup" aria-labelledby="d6-push-label">
+        ${CHORD_PUSHES.map((p) => `<button type="button" role="radio" aria-checked="false" data-action="d6-push" data-value="${p}">${t(`lab.d6.push.${p}`)}</button>`).join('')}
+      </div>
+      <p class="d6-push-note" hidden>${t('lab.d6.pushFirst')}</p>
+      <div class="d6-opts">
+        <button class="chip" type="button" data-action="d6-sevenths" aria-pressed="false">${t('lab.progSevenths')}</button>
+        <button class="chip d6-bass" type="button" data-action="d6-bass"></button>
+        <button class="chip d6-alter" type="button" data-action="d6-alter"></button>
+      </div>
+    </section>
+    <button class="chip d6-all" type="button" data-action="d6-all-one">${t('lab.d6.allOne')}</button>
+  </section>
+</div>
+
 <div class="layer key-layer" hidden>
   <div class="layer-backdrop" data-action="layer-close"></div>
   <section class="layer-card" role="dialog" aria-modal="true" aria-labelledby="key-layer-title">
@@ -13281,6 +13488,24 @@
     if (v.$('.key-layer').hidden || card.getAttribute('role') !== 'dialog' || card.getAttribute('aria-modal') !== 'true') fail('Tonart-Blatt kein Dialog');
     v._handleKeydown({ key: 'Escape', preventDefault() {} });
     if (!v.$('.key-layer').hidden) fail('Escape schließt das Tonart-Blatt nicht');
+    // Akkordfolgen-Editor (D6): Länge/Wechsel je Akkord, Einfügen hält die Parallel-Arrays, ↶ nimmt zurück.
+    v._replaceState(applyStyle(v.state, 'pop'));
+    v._openProgSheet();
+    if (v.$('.prog-layer').hidden || v.$all('.d6-chord').length !== v._progression().degrees.length) fail('D6 öffnet nicht');
+    const histBefore = v.history.length;
+    v._handleAction('d6-sel', '1', null);
+    v._handleAction('d6-len', '0.5', null);
+    v._handleAction('d6-add', null, null);
+    const n = v._progression().degrees.length;
+    if (n !== 5 || v.state.chordLen?.length !== 5 || v.state.chordLen[1] !== .5 || v.state.chordLen[2] !== .5 || v.state.chordPush?.length !== 5) fail(`D6: Parallel-Arrays ${JSON.stringify([v.state.chordLen, v.state.chordPush])}`);
+    if (v.history.length !== histBefore + 2) fail('D6: nicht je Änderung ein Undo-Schritt');
+    v._handleAction('d6-all-one', null, null);
+    if (v.state.chordPush !== null || v.$all('.chor-chord').some((c) => c.textContent.startsWith('←'))) fail('D6: alle auf der Eins');
+    v.undo(); v.undo(); v.undo();
+    if (v._progression().degrees.length !== 4 || v.state.chordLen !== null) fail('D6: ↶ stellt die Folge nicht wieder her');
+    v._renderProgSheet();
+    if (v._hasSixteenths() !== !v.$('.d6-push [data-value="1"]').hidden) fail('D6: „16tel früher“ passt nicht zum Raster des Rhythmus');
+    v._closeLayer(v.$('.prog-layer'));
     // Einzähler: ein Takt, nicht in Workshop/de:construct.
     if (v._countInSteps() !== -v._barSteps()) fail('Einzähler fehlt');
     v._applyView('workshop');
