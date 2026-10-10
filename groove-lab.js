@@ -2224,6 +2224,21 @@
   const BASS_PLAYS = ['off', 'whole', 'half', 'quarter', 'eighths', 'offbeat', 'octaves', 'line', 'line1'];
   const PUSH_OF = { one: 0, eighth: 2, sixteenth: 1 };
 
+  /** Spuren des Studios (D2): Bus, Schloss, Farbe und die Bedienfelder (data-part) je
+   *  Bereich des Blatts. Feste Spurtypen über dem bestehenden Zustand: Liegeton =
+   *  droneOn, 2. Akkorde-Spur = Arp-Ebene, Aufnahme = Sample-Spuren (Phrasen). */
+  const STUDIO_TRACKS = {
+    drums: { bus: 'drums', lock: 'beat', color: 'var(--accent)', pattern: ['loop', 'grid'], sound: ['kit'], mix: ['groove'] },
+    bass: { bus: 'bass', lock: 'beat', color: '#c4620f', pattern: ['bassPlay', 'grid'], sound: ['bassSound'], mix: [] },
+    chords: { bus: 'chords', lock: 'harmony', color: '#2f6fd6', pattern: ['chordPlay', 'satb'], sound: ['chordSoundSel'], mix: [] },
+    melody: { bus: 'melody', lock: 'melody', color: '#0f7c6e', pattern: ['melody'], sound: ['sound'], mix: [] },
+    drone: { bus: 'drone', lock: null, color: '#7a5bd6', pattern: ['drone'], sound: null, mix: [] },
+    arp: { bus: 'arp', lock: null, color: '#2f8fd6', pattern: ['arp'], sound: ['arpSoundNote'], mix: [] },
+    rec: { bus: null, lock: null, color: '#b15b00', pattern: ['recNote'], sound: null, mix: [] },
+  };
+  /** Spuren, in die die Spielfläche spielen und aufnehmen kann. */
+  const SURFACE_TARGETS = ['drums', 'bass', 'chords', 'melody', 'arp'];
+
   /* Die acht Stile. drums je Energie (Still · Ruhig · Treibend · Voll): Loop-Name und
      Ausdünnung (thin 'calm' bzw. 'calm16', siehe thinBeat; Still = keine Drums, Loop
      der Stufe Ruhig für Taktart und Basslinie). chords je Stufe: 'held', 'arp' oder
@@ -4722,6 +4737,280 @@
     }
     /** Spielfläche (Phase 6) und Akkordfolgen-Editor (Phase 4). */
     _openSurface() {}
+    /* ---- Studio (D2, D3, B2): Spuren statt Reiter. Song-Zeile (Tonart · Takt · Tempo ·
+       Raum), Akkordfolge, Spurkarten (Name, Unterzeile, M/S, Mini-Muster, Lautstärke).
+       Ein Spur-Blatt (Muster · Klang · Mix) hängt die vorhandenen Bedienfelder
+       (data-part) um und legt sie beim Schließen zurück — Handler, Selbsttests und der
+       Workshop-Fokus (der auf den Reitern arbeitet) bleiben so unverändert. ---- */
+
+    /** Ein Bedienfeld (data-part) in `host` hängen; die Heimat merkt ein Kommentar-Knoten. */
+    _placePart(name, host) {
+      const el = this.$(`[data-part="${name}"]`);
+      if (!el) return null;
+      this._partHome = this._partHome || new Map();
+      if (!this._partHome.has(el)) {
+        const mark = document.createComment(`part:${name}`);
+        el.before(mark);
+        this._partHome.set(el, mark);
+      }
+      host.append(el);
+      return el;
+    }
+    /** Umgehängte Bedienfelder (in `host` oder alle) zurück an ihren Platz. */
+    _restoreParts(host = null) {
+      for (const [el, mark] of [...(this._partHome || new Map())]) {
+        if (host && !host.contains(el)) continue;
+        mark.replaceWith(el);
+        this._partHome.delete(el);
+      }
+    }
+
+    _trackDef(id) { return STUDIO_TRACKS[id]; }
+    /** Spuren, die gerade da sind: die vier festen plus Liegeton, 2. Akkorde, Aufnahme. */
+    _studioTracks() {
+      const s = this.state;
+      return ['drums', 'bass', 'chords', 'melody', ...(s.droneOn ? ['drone'] : []), ...(s.arpOn ? ['arp'] : []), ...(s.sampleLanes.length ? ['rec'] : [])];
+    }
+    _trackMuted(id) {
+      const s = this.state;
+      if (id === 'rec') return s.sampleLanes.every((l) => !l.on);
+      const def = this._trackDef(id);
+      return !!s.mute[def.bus] || (id === 'bass' && !s.trackOn.bass) || (id === 'chords' && !s.chordsOn) || (id === 'melody' && !s.melodyOn);
+    }
+    /** Pegel eines Busses: Mix × Hören auf × Energie, stumm/Solo/ausgeblendet = 0. */
+    _busLevel(bus, s = this.state) {
+      const solo = this.ui.solo && this._trackDef(this.ui.solo)?.bus;
+      if (s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) || (solo && bus !== solo && bus !== 'keys')) return 0;
+      return s.mix[bus] * busFactor(s, bus);
+    }
+    _trackName(id) { return t(`lab.track.${id}`); }
+    _trackSub(id) {
+      const s = this.state;
+      const pattern = this._pattern();
+      switch (id) {
+        case 'drums': return [pattern.name, t(`lab.kit.${resolveKit(s.drumKit, pattern)}`), s.fills ? tf('lab.studio.fillEvery', { n: s.fills }) : t('lab.studio.noFill')].join(' · ');
+        case 'bass': {
+          const match = s.bassPlay && JSON.stringify(Object.entries(bassVariant(pattern, s.bassPlay)).sort()) === JSON.stringify(Object.entries(s.beat.bass || {}).sort());
+          return [match ? t(`lab.bassPlay.${s.bassPlay}`) : t('lab.studio.ownLine'), this._bassSound().name].join(' · ');
+        }
+        case 'chords': return [`${t(`lab.chordSound.${s.chordSound}`)}${s.chordPad ? ` + ${t('lab.chor.pad')}` : ''}`, t(`lab.studio.voicing.${s.chordVoicing}`), t(`lab.studio.play.${s.chordPlay}`)].join(' · ');
+        case 'melody': return [s.melodyOn ? this._melody().name : t('lab.chor.off'), SYNTH_PRESETS[s.sound.presetIndex]?.name || ''].join(' · ');
+        case 'drone': return [this._keyLabel(), s.droneFifth ? t('lab.studio.withFifth') : ''].filter(Boolean).join(' · ');
+        case 'arp': return [t(ARP_MODES.find(([m]) => m === s.arpMode)?.[1] || 'lab.arpUp'), s.arpAuto ? t('lab.arpAuto') : t('lab.studio.arpManual')].join(' · ');
+        case 'rec': return tf('lab.studio.recCount', { n: s.sampleLanes.length });
+        default: return '';
+      }
+    }
+    /** Mini-Muster der Karte: Schritte eines Takts, auf denen die Spur anschlägt. */
+    _trackCells(id) {
+      const s = this.state;
+      const n = this._barSteps();
+      const on = new Set();
+      const keys = (obj) => Object.keys(obj || {}).map(Number);
+      if (id === 'drums') DRUM_TRACKS.forEach((tr) => { if (s.trackOn[tr]) keys(s.beat[tr]).forEach((st) => on.add(st)); });
+      else if (id === 'bass') keys(s.beat.bass).forEach((st) => on.add(st));
+      else if (id === 'chords') {
+        if (s.chordPlay === 'rhythm' && s.chordHits) s.chordHits.forEach(([st]) => on.add(st));
+        else if (s.chordPlay === 'arp') for (let st = 0; st < n; st += CHORD_ARP.every) on.add(st);
+        else on.add(0);
+      } else if (id === 'melody') (this._melody().bars[0] || []).forEach(([at]) => on.add(Math.floor(at)));
+      else if (id === 'drone') for (let st = 0; st < n; st++) on.add(st);
+      else if (id === 'arp') for (let st = 0; st < n; st += s.arpDivision) on.add(st);
+      else if (id === 'rec') s.sampleLanes.forEach((l) => keys(l.steps).forEach((st) => on.add(st)));
+      return Array.from({ length: n }, (_, st) => on.has(st));
+    }
+
+    _renderStudio() {
+      const host = this.$('.studio-view');
+      if (!host || host.hidden) return;
+      const s = this.state;
+      const meter = this._meter();
+      const style = styleOf(s.styleId);
+      const set = (k, v, sub) => { this.$(`[data-song="${k}"]`).textContent = v; this.$(`[data-song-sub="${k}"]`).textContent = sub; };
+      set('key', this._keyLabel(), t('lab.studio.keySub'));
+      set('meter', meter, style ? tf('lab.studio.styleSub', { name: t(`lab.style.${style.id}.name`) }) : t('lab.studio.noStyle'));
+      const level = swingLevelOf(s.swing);
+      set('tempo', `${tempoSymbol(meter)} ${s.bpm}`, swingOffered(meter) || s.swing ? (level ? t(`lab.swingLevel.${level}`) : `${t('lab.swing')} ${Math.round(swingRatio(s.swing) * 100)} %`) : t('lab.swingLevel.straight'));
+      set('room', s.room ? t(`lab.room.${s.room}`) : t('lab.studio.roomOwn'), tf('lab.studio.reverbSub', { s: String(Math.round(s.fx.reverbLength * 10) / 10).replace('.', labLang === 'en' ? '.' : ',') }));
+      const prog = this._progression();
+      const tl = this._chordTimeline(prog);
+      this.$('.song-prog-list').textContent = prog.degrees.map((_, i) => `${i && tl.push[i] ? '←' : ''}${this._nameAt(prog, i)}`).join(' · ');
+      const target = this._studioTarget();
+      const cards = this.$('.track-cards');
+      const ids = this._studioTracks();
+      const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+      cards.innerHTML = ids.map((id) => {
+        const def = this._trackDef(id);
+        const muted = this._trackMuted(id);
+        const solo = this.ui.solo === id;
+        const name = this._trackName(id);
+        const cells = this._trackCells(id).map((on) => `<i${on ? ' class="on"' : ''}></i>`).join('');
+        const vol = def.bus ? `<label class="t-vol">${UI_ICON.speaker}<input type="range" min="0" max="1" step=".01" data-mix="${def.bus}" value="${s.mix[def.bus]}" aria-label="${esc(tf('lab.studio.volumeAria', { name }))}"></label>` : '';
+        return `<div class="t-card${id === target ? ' is-sel' : ''}${muted ? ' is-muted' : ''}" data-track="${id}" style="--tc:${def.color}">
+          <div class="t-top"><button class="t-open" type="button" data-action="open-track" data-value="${id}" aria-haspopup="dialog"><span class="t-bar" aria-hidden="true"></span>
+            <span class="t-heads"><strong>${esc(name)}</strong><span>${esc(this._trackSub(id))}</span></span></button>
+            <button class="t-ms" type="button" data-action="track-mute" data-value="${id}" aria-pressed="${muted}" aria-label="${esc(tf('lab.studio.muteAria', { name }))}">M</button>
+            <button class="t-ms" type="button" data-action="track-solo" data-value="${id}" aria-pressed="${solo}" aria-label="${esc(tf('lab.studio.soloAria', { name }))}"${id === 'rec' ? ' hidden' : ''}>S</button></div>
+          <div class="t-cells" style="grid-template-columns:repeat(${this._barSteps()},minmax(0,1fr))" aria-hidden="true">${cells}</div>${vol}</div>`;
+      }).join('');
+      cards.querySelectorAll('input[data-mix]').forEach((el) => this._paintLevel?.(el));
+      this.$('.kbd-fab-text').textContent = tf('lab.studio.kbdFab', { name: this._trackName(target) });
+      if (!this.$('.track-layer').hidden) this._renderTrackHead();
+    }
+    /** Ziel der Spielfläche: die markierte Spur (nur Spuren, in die man spielen kann). */
+    _studioTarget() {
+      const ids = this._studioTracks().filter((id) => SURFACE_TARGETS.includes(id));
+      return ids.includes(this.ui.studioTarget) ? this.ui.studioTarget : 'chords';
+    }
+
+    _openTrack(id, tab = 'pattern') {
+      if (!this._trackDef(id)) return;
+      const layer = this.$('.track-layer');
+      if (SURFACE_TARGETS.includes(id)) this.ui.studioTarget = id;
+      this.ui.track = id;
+      layer.dataset.track = id;
+      this._showTrackTab(tab);
+      this._renderStudio();
+      this._openLayer(layer, { onClose: () => { this._restoreParts(this.$('.track-body')); this.$('.track-body').replaceChildren(); this.ui.track = null; this._renderStudio(); }, focus: '.track-tabs [aria-selected="true"]' });
+    }
+    _renderTrackHead() {
+      const id = this.ui.track;
+      if (!id) return;
+      const def = this._trackDef(id);
+      this.$('.track-title').textContent = this._trackName(id);
+      this.$('.track-sub').textContent = this._trackSub(id);
+      this.$('.track-color').style.background = def.color;
+      const lock = this.$('.track-lock');
+      lock.hidden = !def.lock;
+      if (def.lock) {
+        lock.dataset.lock = def.lock;
+        const locked = !!this.state.locks[def.lock];
+        lock.setAttribute('aria-pressed', String(locked));
+        lock.innerHTML = locked ? UI_ICON.lock : UI_ICON.unlock;
+      }
+    }
+    _showTrackTab(tab) {
+      const id = this.ui.track;
+      const def = this._trackDef(id);
+      const tabs = ['pattern', 'sound', 'mix'].filter((x) => x !== 'sound' || def.sound);
+      if (!tabs.includes(tab)) tab = 'pattern';
+      this.ui.trackTab = tab;
+      this.$all('.track-tabs [role="tab"]').forEach((b) => {
+        b.hidden = !tabs.includes(b.dataset.value);
+        b.setAttribute('aria-selected', String(b.dataset.value === tab));
+        b.tabIndex = b.dataset.value === tab ? 0 : -1;
+      });
+      const body = this.$('.track-body');
+      body.setAttribute('aria-labelledby', `tt-${tab}`);
+      this._restoreParts(body);
+      body.replaceChildren();
+      if (tab === 'mix') body.append(this._trackMixBlock(id));
+      for (const part of def[tab] || []) this._placePart(part, body);
+      if (id === 'bass' || id === 'drums') this._renderTracks();
+      if (id === 'chords') this._renderChordPart();
+      if (id === 'bass') this._renderBassPart();
+      if (id === 'rec') this._renderRecLanes();
+      if (id === 'melody' && tab === 'sound') this._renderSound();
+      this._renderTrackHead();
+      body.scrollTop = 0;
+    }
+    /** Mix der Spur: Lautstärke, Stumm/Solo; optionale Spuren lassen sich entfernen. */
+    _trackMixBlock(id) {
+      const s = this.state;
+      const def = this._trackDef(id);
+      const box = document.createElement('section');
+      box.className = 'panel track-mix';
+      const name = this._trackName(id);
+      const muted = this._trackMuted(id);
+      box.innerHTML = `${def.bus ? `<label class="slider-line"><span>${t('lab.studio.volume')}</span><input type="range" min="0" max="1" step=".01" data-mix="${def.bus}" value="${s.mix[def.bus]}" aria-label="${tf('lab.studio.volumeAria', { name })}"><output data-out="mix-${def.bus}">${Math.round(s.mix[def.bus] * 100)} %</output></label>` : ''}
+        <div class="chip-row"><button class="chip" type="button" data-action="track-mute" data-value="${id}" aria-pressed="${muted}">${t('lab.chor.mute')}</button>
+        ${id !== 'rec' ? `<button class="chip" type="button" data-action="track-solo" data-value="${id}" aria-pressed="${this.ui.solo === id}">${t('lab.studio.solo')}</button>` : ''}
+        ${['drone', 'arp'].includes(id) ? `<button class="chip" type="button" data-action="track-remove" data-value="${id}">${t('lab.studio.remove')}</button>` : ''}</div>
+        ${id === 'drums' ? `<p class="foot-note">${t('lab.studio.pumpHint')}</p>` : ''}${id === 'melody' || id === 'chords' ? `<p class="foot-note">${t('lab.studio.roomMixHint')}</p>` : ''}`;
+      return box;
+    }
+    /** Baustein Akkorde/Muster: Spielweise, Satz, Lage, Anschläge je Takt (D3). */
+    _renderChordPart() {
+      const s = this.state;
+      const check = (sel, value) => this.$all(`${sel} [role="radio"]`).forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === String(value))));
+      check('.cp-play', s.chordPlay);
+      check('.cp-voicing', s.chordVoicing);
+      check('.cp-oct', s.chordOctave || 0);
+      const n = this._barSteps();
+      const hits = new Map((s.chordHits || []).map((h) => [h[0], h]));
+      const box = this.$('.cp-hits');
+      box.style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr))`;
+      box.replaceChildren(...Array.from({ length: n }, (_, st) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = `cp-hit${hits.has(st) ? ' on' : ''}${Math.floor(st / METERS[this._meter()].group) % 2 ? ' alt' : ''}`;
+        b.dataset.action = 'cp-hit';
+        b.dataset.value = String(st);
+        b.setAttribute('aria-pressed', String(hits.has(st)));
+        b.setAttribute('aria-label', tf('lab.studio.hitAria', { n: st + 1 }));
+        return b;
+      }));
+      this.$('.cp-hits-box').hidden = s.chordPlay !== 'rhythm';
+      const cs = this.$('.cs-chips');
+      if (cs) {
+        cs.replaceChildren(...CHORD_SOUND_IDS.map((id) => this._radioChip('cs-sound', id, t(`lab.chordSound.${id}`), s.chordSound === id)));
+        this.$('.cs-pad-chips').replaceChildren(...[['', 'lab.studio.padNone'], ['airy', 'lab.studio.padAiry'], ['moon', 'lab.studio.padMoon']]
+          .map(([id, key]) => this._radioChip('cs-pad', id, t(key), (s.chordPad || '') === id)));
+      }
+    }
+    _renderBassPart() {
+      const s = this.state;
+      this.$('.bass-play-chips').replaceChildren(...this._bassCycle().map((id) => this._radioChip('bass-play', id, t(`lab.bassPlay.${id}`), s.bassPlay === id)));
+      this._setSwitch('bassHold', !!s.bassHold);
+    }
+    _renderRecLanes() {
+      const s = this.state;
+      const host = this.$('.rec-lanes');
+      host.replaceChildren(...s.sampleLanes.map((lane, i) => {
+        const meta = this._sampleMeta(lane.padId);
+        const row = document.createElement('div');
+        row.className = 'rec-lane';
+        const name = document.createElement('span');
+        name.textContent = meta ? `${meta.name}${meta.kind === 'loop' ? ` · ${tf('lab.studio.loopTempo', { bpm: meta.bpmAtRec })}` : ''}` : t('lab.sampler.missing');
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'chip';
+        btn.dataset.action = 'lane-toggle'; btn.dataset.value = String(i);
+        btn.setAttribute('aria-pressed', String(lane.on));
+        btn.textContent = t(lane.on ? 'lab.trackOn' : 'lab.trackOff');
+        row.append(name, btn);
+        return row;
+      }));
+    }
+    _radioChip(action, value, label, checked) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip'; b.setAttribute('role', 'radio');
+      b.dataset.action = action; b.dataset.value = value;
+      b.setAttribute('aria-checked', String(checked));
+      b.textContent = label;
+      return b;
+    }
+    /** Tempo-Blatt der Song-Zeile: Swing-Stufen und exakter Wert (nur Studio, 4.4). */
+    _renderSwingPart() {
+      const s = this.state;
+      const offered = swingOffered(this._meter());
+      this.$all('[data-part="swingExact"] .chor-swing [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === swingLevelOf(s.swing))));
+      this.$('[data-part="swingExact"] .chor-swing').hidden = !offered;
+      this.$('.swing-ratio').textContent = tf(this._pattern().swingUnit === 8 ? 'lab.studio.swingRatio8' : 'lab.studio.swingRatio16', { pct: Math.round(swingRatio(s.swing) * 100) });
+      this._renderBeat();
+    }
+
+    /** Kleines Blatt mit Bedienfeldern (Song-Zeile, + Spur, Übergang Keys/Sampler). */
+    _openPanelLayer(title, parts, { after = null } = {}) {
+      const layer = this.$('.panel-layer');
+      const body = this.$('.panel-layer-body');
+      this._restoreParts(body);
+      body.replaceChildren();
+      this.$('.panel-layer-title').textContent = title;
+      parts.forEach((p) => this._placePart(p, body));
+      after?.();
+      if (layer.hidden) this._openLayer(layer, { onClose: () => { this._restoreParts(body); body.replaceChildren(); } });
+    }
+
     /* ---- Akkordfolgen-Editor (D6), gilt für alle Spuren. Länge je Akkord (½ · 1 · 2
        Takte), Wechsel (auf der Eins · Achtel · 16tel früher), Stufe, Septakkorde, Bass
        (Umkehrung), geliehen. Jede Änderung ist ein Undo-Schritt (↶ in der Leiste);
@@ -4826,6 +5115,10 @@
       this.$('.d6-alter').textContent = `${t({ '': 'lab.alterNormal', borrow: 'lab.alterBorrow', secdom: 'lab.alterSecdom' }[alterNow])} ›`;
       this.$('.d6-alter').setAttribute('aria-pressed', String(!!alterNow));
       this.$('.d6-all').disabled = !s.chordPush;
+      const own = s.progOwnId && this._saved.progressions.find((p) => p.id === s.progOwnId);
+      this.$('.d6-own [data-action="prog-original"]').hidden = !s.progDegrees || !!s.progName;
+      this.$('.d6-own [data-action="prog-save"]').hidden = !!own;
+      this.$('.d6-own [data-action="prog-delete"]').hidden = !own;
     }
 
 
@@ -4929,7 +5222,12 @@
       const hub = mode === 'learn';
       // Ohne Song zeigt de:construct nur die Auswahl, keine Reiter.
       const dcEmpty = dcView && (!this._saved.deconstruct || this.ui.dc.choosing);
-      const noTabs = tasks || workshop || dcEmpty || simple || hub;
+      const studio = mode === 'studio';
+      // Studio zeigt Spuren statt Reiter; die Reiter bauen weiter Workshop und de:construct.
+      const noTabs = tasks || workshop || dcEmpty || simple || hub || studio;
+      this._closeAllLayers();
+      this._restoreParts();
+      this.ui.solo = null;
       this.$('.tab-bar').hidden = noTabs;
       // de:construct baut mit den bekannten Reitern — der Sampler gehört nicht dazu.
       const smpBtn = this.$('.tab-btn[data-tab="sampler"]');
@@ -4940,6 +5238,7 @@
       this.$('.dc-view').hidden = !dcView;
       this.$('.chor-view').hidden = !simple;
       this.$('.learn-view').hidden = !hub;
+      this.$('.studio-view').hidden = !studio;
       // Lernen: über jedem Bereich die Leiste „‹ Lernen“ zurück zur Übersicht.
       this.$('.learn-back').hidden = !(tasks || workshop || dcView);
       if (noTabs) this.$all('.tab-panel').forEach((panel) => { panel.hidden = true; });
@@ -4948,9 +5247,11 @@
       this._renderViewMenu();
       this._renderChoir();
       this._renderChor();
+      this._renderStudio();
       this._renderLearn();
       this._renderDeconstruct();
       this._wsDecorate();
+      this._syncEngine();
       this._applySound(); // Klang-Rätsel: außerhalb des Workshops immer der eigene Klang
       this._renderSheet();
     }
@@ -6491,7 +6792,7 @@
     _applyLevels(eng, master) {
       const s = this.state;
       eng.setMaster(master * (ENERGY_TRIM[s.energy]?.all ?? 1));
-      for (const bus of BUSES) eng.setBusLevel(bus, s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) ? 0 : s.mix[bus] * busFactor(s, bus));
+      for (const bus of BUSES) eng.setBusLevel(bus, this._busLevel(bus, s));
       const room = ROOMS[s.room];
       const wet = (sound, factor) => (room ? { ...sound, reverbWet: clamp(room.wet * factor, 0, 1) } : sound);
       for (const layer of SOUND_LAYERS) eng.setLayerSound(layer, wet(this._heardSound(), ROOM_SEND[layer]));
@@ -6550,6 +6851,7 @@
     randomize() {
       this._wsAbReset();
       this._pushHistory();
+      this._meterBeforeRandom = this._meter();
       const s = this.state;
       const locks = s.locks;
       if (!locks.beat) {
@@ -6557,15 +6859,20 @@
         s.beat = beatFromPattern(this._pattern());
         s.percSound = percOf(this._pattern());
         s.beatEdited = false;
-        // Tempi als Viertel gedacht — in 6/8 in punktierte Viertel umgerechnet.
-        this._setBpm(pick([78, 86, 94, 102, 108, 116, 124, 132]) * 2 / eighthsPerBeat(this._meter()));
-        s.swing = pick([0, 0, 0, .25, .45]);
+        // Redesign: „Zufällig“ verändert nie Tonart oder Tempo (auch nicht den Swing) —
+        // Taktart bleibt, damit das Tempo gleich gemeint bleibt.
+        if (this._meter() !== this._meterBeforeRandom) {
+          const same = orderIndexes(BEAT_ORDER, patternIndexByName).filter((i) => DRUM_PATTERNS[i].meter === this._meterBeforeRandom);
+          s.patternIndex = pick(same.length ? same : [s.patternIndex]);
+          s.beat = beatFromPattern(this._pattern());
+          s.percSound = percOf(this._pattern());
+        }
+        if (s.bassPlay) s.beat.bass = bassVariant(this._pattern(), s.bassPlay);
       }
       if (!locks.harmony) {
-        s.keyRoot = Math.floor(Math.random() * 12);
-        s.modeId = pick(MODES).id;
         s.progId = pick(progsForRandom(s.modeId)).id;
         this._clearProgEdit();
+        this._normChordArrays({ fresh: true });
       }
       if (!locks.melody) {
         const candidates = orderIndexes(MELODY_ORDER, melodyIndexByName).map((i) => [MELODIES[i], i]).filter(([m]) => m.meter === this._meter());
@@ -7439,10 +7746,11 @@
     _closeAllLayers() { while (this._layers?.length) this._closeLayer(undefined, { focus: false }); }
 
     /** „Meine Sounds“ (Sampler-Bibliothek). Bis zur eigenen Ansicht: Studio, Reiter Sampler. */
-    _openSounds() {
+    _openSounds(view = 'library') {
       if (this._uiMode() !== 'studio') this._applyView('studio');
-      this._setTab('sampler');
-      this._samplerGo('library');
+      this._primeSamples();
+      this._openPanelLayer(t('lab.menu.sounds'), ['sampler']);
+      this._samplerGo(view);
     }
 
     /* ---- Halten-Roll: eine je Loop eigene, artikulierte Rhythmuszelle nur
@@ -7532,6 +7840,7 @@
       this._renderNow();
       this._renderChoir();
       this._renderChor();
+      this._renderStudio();
       this._renderWorkshop();
       this._renderDeconstruct();
       this._wsDecorate();
@@ -7569,11 +7878,11 @@
     }
 
     _renderLock(which) {
-      const btn = this.$(`[data-action="lock"][data-lock="${which}"]`);
-      if (!btn) return;
       const locked = this.state.locks[which];
-      btn.setAttribute('aria-pressed', String(locked));
-      btn.innerHTML = locked ? UI_ICON.lock : UI_ICON.unlock;
+      this.$all(`[data-action="lock"][data-lock="${which}"]`).forEach((btn) => {
+        btn.setAttribute('aria-pressed', String(locked));
+        btn.innerHTML = locked ? UI_ICON.lock : UI_ICON.unlock;
+      });
     }
 
     /* ---- Beat ---- */
@@ -7585,10 +7894,11 @@
       this._renderLock('beat');
       this._renderTracks();
 
-      this.$('[data-field="swing"]').value = String(s.swing);
-      this.$('[data-out="swing"]').textContent = `${Math.round(s.swing * 100)} %`;
-      this.$('[data-field="pump"]').value = String(s.pump);
-      this.$('[data-out="pump"]').textContent = `${Math.round(s.pump * 100)} %`;
+      // Swing steht zweimal (Beat-Reiter, Tempo der Song-Zeile im Studio): beide mitziehen.
+      this.$all('[data-field="swing"]').forEach((el) => { el.value = String(s.swing); });
+      this.$all('[data-out="swing"]').forEach((el) => { el.textContent = `${Math.round(s.swing * 100)} %`; });
+      this.$all('[data-field="pump"]').forEach((el) => { el.value = String(s.pump); });
+      this.$all('[data-out="pump"]').forEach((el) => { el.textContent = `${Math.round(s.pump * 100)} %`; });
       this.$('.dc-meter').value = this._meter();
       this._chips(this.$('.bass-chips'), BASS_SOUNDS.map((b) => ({ value: b.id, label: b.name })), s.bassSoundId, 'bass-sound');
       this.$('.kit-panel').hidden = uiModeOf(s) === 'workshop';
@@ -7620,7 +7930,10 @@
       const laneRows = (track) => s.sampleLanes.flatMap((lane, i) => {
         const meta = this._sampleMeta(lane.padId);
         const target = meta ? (meta.kind === 'hit' ? meta.track : 'bass') : 'bass';
-        return target === track ? [this._laneRow(lane, i, meta, meter)] : [];
+        if (target !== track) return [];
+        const row = this._laneRow(lane, i, meta, meter);
+        row.dataset.group = track;
+        return [row];
       });
       host.replaceChildren(...TRACK_IDS.filter((track) => !(hidePerc && track === 'perc')).flatMap((track) => {
         const on = s.trackOn[track];
@@ -10690,7 +11003,9 @@
           this._onTempoChange();
         } else if (el.dataset.field === 'swing' || el.dataset.field === 'pump') {
           s[el.dataset.field] = Number(el.value);
-          this.$(`[data-out="${el.dataset.field}"]`).textContent = `${Math.round(Number(el.value) * 100)} %`;
+          this.$all(`[data-out="${el.dataset.field}"]`).forEach((o) => { o.textContent = `${Math.round(Number(el.value) * 100)} %`; });
+          this.$all(`[data-field="${el.dataset.field}"]`).forEach((o) => { if (o !== el) o.value = el.value; });
+          if (el.dataset.field === 'swing') this._renderStudio();
         } else if (el.dataset.kit) {
           s.kit[el.dataset.kit] = Number(el.value);
           this._renderKit();
@@ -10699,7 +11014,11 @@
           if (el.dataset.mix === 'master') this.$all('[data-out="master"]').forEach((o) => { o.textContent = `${Math.round(s.mix.master * 100)} %`; });
           this._paintLevel(el);
           if (el.dataset.mix === 'master') this.engine.setMaster(s.mix.master * (ENERGY_TRIM[s.energy]?.all ?? 1));
-          else this.engine.setBusLevel(el.dataset.mix, s.mute[el.dataset.mix] ? 0 : s.mix[el.dataset.mix] * busFactor(s, el.dataset.mix));
+          else {
+            this.engine.setBusLevel(el.dataset.mix, this._busLevel(el.dataset.mix));
+            this.$all(`input[data-mix="${el.dataset.mix}"]`).forEach((o) => { if (o !== el) o.value = el.value; });
+            this.$all(`[data-out="mix-${el.dataset.mix}"]`).forEach((o) => { o.textContent = `${Math.round(Number(el.value) * 100)} %`; });
+          }
         } else if (el.classList.contains('prog-name')) {
           const name = el.value.trim().slice(0, 40);
           if (name && s.progOwnId) {
@@ -10792,6 +11111,8 @@
       if (key === 'progSevenths') { this._progBegin(); s.progSevenths = on; this._progCommit(); return; }
       if (key === 'progDominant') { this._progBegin(); s.progDominant = on; this._progCommit(); return; }
       if (key === 'chordAdd9') { this._pushHistory(); s.chordAdd9 = on; this._renderSatb(); return; }
+      if (key === 'bassHold') { this._pushHistory(); s.bassHold = on; return; }
+      if (key === 'countIn') { s.countIn = on; return; }
       s[key] = on; // melodyOn, chordsOn
     }
 
@@ -10832,6 +11153,68 @@
         case 'start-notes': this._giveStartNotes(); break;
         case 'surface-open': this._openSurface(); break;
         case 'prog-sheet': this._openProgSheet(); break;
+        // Studio (D2, D3)
+        case 'open-track': if (!this.$('.track-layer').hidden) this._closeLayer(this.$('.track-layer'), { focus: false }); this._openTrack(value, target?.dataset.tab || 'pattern'); break;
+        case 'track-tab': this._showTrackTab(value); this.$(`.track-tabs [data-value="${value}"]`)?.focus(); break;
+        case 'track-mute': {
+          this._pushHistory();
+          const mute = !this._trackMuted(value);
+          if (value === 'rec') s.sampleLanes.forEach((l) => { l.on = !mute; });
+          else {
+            s.mute[this._trackDef(value).bus] = mute;
+            if (!mute && value === 'bass') s.trackOn.bass = true;
+            if (!mute && value === 'chords') s.chordsOn = true;
+            if (!mute && value === 'melody') s.melodyOn = true;
+          }
+          this._syncEngine(); this._renderAll();
+          if (this.ui.track) this._showTrackTab(this.ui.trackTab);
+          break;
+        }
+        case 'track-solo': this.ui.solo = this.ui.solo === value ? null : value; this._syncEngine(); this._renderStudio(); if (this.ui.track) this._showTrackTab(this.ui.trackTab); break;
+        case 'track-remove':
+          this._pushHistory();
+          if (value === 'drone') this._setDrone(false); else if (value === 'arp') { s.arpOn = false; this._renderKeys(); }
+          this._closeLayer(this.$('.track-layer'), { focus: false });
+          this._renderStudio(); this.$('.add-track')?.focus();
+          break;
+        case 'add-track': this._openPanelLayer(t('lab.studio.addTitle'), ['addTrack']); break;
+        case 'add-track-pick':
+          this._closeLayer(this.$('.panel-layer'), { focus: false });
+          if (value === 'drone') { this._setDrone(true); this._renderStudio(); this._openTrack('drone'); }
+          else if (value === 'arp') { this._pushHistory(); s.arpOn = true; s.arpAuto = true; this._renderKeys(); this._renderStudio(); this._openTrack('arp'); }
+          else this._openSounds('record');
+          break;
+        case 'song-key': this._openKeyLayer(); break;
+        case 'song-meter': this._openPanelLayer(t('lab.studio.meter'), ['meterSel'], { after: () => this.$all('.meter-chips [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === this._meter()))) }); break;
+        case 'song-meter-set': if (value !== this._meter()) { this._pushHistory(); this._handleAction('meter', value, target); } this.$all('.meter-chips [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === this._meter()))); break;
+        case 'song-tempo': this._openPanelLayer(t('lab.studio.tempo'), ['tempo', 'swingExact'], { after: () => this._renderSwingPart() }); break;
+        case 'song-room': this._openPanelLayer(t('lab.studio.room'), ['roomSel', 'fx'], { after: () => { this._renderFx(); this.$all('.chor-room [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === s.room))); } }); break;
+        case 'panel-layer': {
+          const parts = value === 'keys' ? ['arp', 'keyboard', 'rec'] : ['sampler'];
+          if (value === 'sampler') { this._primeSamples(); this._renderSampler(); }
+          this._openPanelLayer(t(value === 'keys' ? 'lab.tabKeys' : 'lab.tabSampler'), parts);
+          break;
+        }
+        case 'cp-play': this._pushHistory(); s.chordPlay = value; if (value === 'rhythm' && !s.chordHits) s.chordHits = [[0, 4, 1], [4, 4, .8], [8, 4, .9], [12, 4, .8]].filter(([st]) => st < this._barSteps()); s.chordsOn = true; this._renderChordPart(); this._renderStudio(); this.$(`.cp-play [data-value="${value}"]`)?.focus(); break;
+        case 'cp-voicing': this._pushHistory(); s.chordVoicing = value === 'satb' ? 'satb' : 'pop'; this._voicingCache = null; this._renderSatb(); this._renderChordPart(); this._renderStudio(); this._renderChor(); this.$(`.cp-voicing [data-value="${value}"]`)?.focus(); break;
+        case 'cp-oct': this._pushHistory(); s.chordOctave = clamp(Number(value), -1, 1); this._renderChordPart(); this.$(`.cp-oct [data-value="${value}"]`)?.focus(); break;
+        case 'cp-hit': {
+          this._pushHistory();
+          const st = Number(value);
+          const hits = (s.chordHits || []).filter((h) => h[0] !== st);
+          if (hits.length === (s.chordHits || []).length) hits.push([st, 2, .85]);
+          // Länge je Anschlag: bis zum nächsten Anschlag (höchstens bis Taktende).
+          hits.sort((x, y) => x[0] - y[0]).forEach((h, i) => { h[1] = (hits[i + 1]?.[0] ?? this._barSteps()) - h[0]; });
+          s.chordHits = hits.length ? hits : null;
+          if (!s.chordHits) s.chordPlay = 'held';
+          this._renderChordPart(); this._renderStudio();
+          this.$(`.cp-hit[data-value="${value}"]`)?.focus();
+          break;
+        }
+        case 'cs-sound': this._pushHistory(); s.chordSound = CHORD_SOUND_IDS.includes(value) ? value : 'synth'; s.chordsOn = true; this._syncEngine(); this._renderChordPart(); this._renderStudio(); this._renderChor(); this.$(`.cs-chips [data-value="${value}"]`)?.focus(); break;
+        case 'cs-pad': this._pushHistory(); s.chordPad = CHORD_PADS[value] ? value : null; this._renderChordPart(); this._renderStudio(); this._renderChor(); this.$(`.cs-pad-chips [data-value="${value}"]`)?.focus(); break;
+        case 'bass-play': this._pushHistory(); s.bassPlay = value; s.beat.bass = bassVariant(this._pattern(), value); s.trackOn.bass = true; this._renderTracks(); this._renderBassPart(); this._renderStudio(); this.$(`.bass-play-chips [data-value="${value}"]`)?.focus(); break;
+        case 'lane-toggle': { const lane = s.sampleLanes[Number(value)]; if (lane) { this._pushHistory(); lane.on = !lane.on; this._renderTracks(); this._renderRecLanes(); this._renderStudio(); } break; }
         case 'd6-sel': this.ui.progSel = Number(value); this._renderProgSheet(); this.$(`.d6-chord[data-value="${value}"]`)?.focus(); { const p = this._progression(); this._previewChord(p.degrees[this.ui.progSel], this.ui.progSel); } break;
         case 'd6-deg': this._progEdit(({ degrees, alter }) => { degrees[this.ui.progSel] = Number(value); alter[this.ui.progSel] = null; }); this._previewChord(Number(value), this.ui.progSel); this.$(`.d6-deg[data-value="${value}"]`)?.focus(); break;
         case 'd6-len': this._progEdit(({ lens }) => { lens[this.ui.progSel] = Number(value); }); this.$(`.d6-len [data-value="${value}"]`)?.focus(); break;
@@ -10958,6 +11341,12 @@
           s.beat = beatFromPattern(this._pattern());
           s.percSound = percOf(this._pattern());
           s.beatEdited = false;
+          // Redesign: Bass-Spielweise und Anschläge der Akkorde folgen dem neuen Takt; ohne 4/4 kein Swing.
+          if (s.bassPlay) s.beat.bass = bassVariant(this._pattern(), s.bassPlay);
+          s.chordHits = sanitizeHits(s.chordHits, this._barSteps());
+          if (!s.chordHits && s.chordPlay === 'rhythm') s.chordPlay = 'held';
+          if (!swingOffered(value)) s.swing = 0;
+          s.sampleLanes = sanitizeSampleLanes(s.sampleLanes, this._barSteps());
           this._convertTempo();
           this._onTempoChange();
           this.ui.beatCat = 'all';
@@ -11255,8 +11644,9 @@
         // Mixer & Klang
         case 'mute':
           s.mute[value] = !s.mute[value];
-          this.engine.setBusLevel(value, s.mute[value] ? 0 : s.mix[value] * busFactor(s, value));
+          this.engine.setBusLevel(value, this._busLevel(value));
           this._renderMixer();
+          this._renderStudio();
           break;
         case 'preset-cat': this.ui.presetCat = value === this.ui.presetCat ? 'all' : value; this._renderSound(); break;
         case 'pick-preset':
@@ -11345,8 +11735,8 @@
         event.preventDefault();
         if (!this.$('.confirm').hidden) this._closeConfirm();
         else if (!this.$('.view-pop').hidden) this._toggleViewMenu(false);
-        else if (this._layers?.length) this._closeLayer();
         else if (this.ui.picker) this._closePicker();
+        else if (this._layers?.length) this._closeLayer();
         else if (!this.$('.dc-sheet').hidden) this._dcSheetClose();
         else if (!this.$('.ovl-pop').hidden) this._toggleOverloadPop(false);
         else if (this.ui.dc.menu) { this.ui.dc.menu = false; this.ui.dc.revealAsk = false; this._renderDeconstruct(); this.$('.dc-more')?.focus(); }
@@ -11403,7 +11793,7 @@
     }
 
     _trapFocus(event) {
-      const scope = [this.$('.confirm-card'), this._layers?.[this._layers.length - 1]?.el, this.$('.picker-card'), this.$('.sheet'), this.$('.dc-sheet-card')].find((el) => el && !el.closest('[hidden]')) || this.shadowRoot;
+      const scope = [this.$('.confirm-card'), this.$('.picker-card'), this._layers?.[this._layers.length - 1]?.el, this.$('.sheet'), this.$('.dc-sheet-card')].find((el) => el && !el.closest('[hidden]')) || this.shadowRoot;
       const focusable = Array.from(scope.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea, summary'))
         .filter((el) => el.offsetParent !== null || el === this.shadowRoot.activeElement)
         .filter((el) => scope !== this.shadowRoot || !el.closest('.sheet, .picker'));
@@ -12365,7 +12755,7 @@
   .rec-result .mel-mini { border: 1px solid var(--line); }
   .rec-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 
-  .picker { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; justify-content: flex-end; }
+  .picker { position: absolute; inset: 0; z-index: 12; /* über den Blättern des Redesigns (.layer) */ display: flex; flex-direction: column; justify-content: flex-end; }
   .picker-backdrop { position: absolute; inset: 0; background: rgba(36,27,61,.38); opacity: 0; transition: opacity .22s; }
   .picker-card {
     position: relative; width: 100%; max-width: 560px; margin: 0 auto; height: 82%; display: flex; flex-direction: column;
@@ -12421,7 +12811,7 @@
   .chor-style-bpm { min-height: 36px; font-size: .68rem; }
   .seg { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 3px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 3px; flex: 1; min-width: 0; }
   .seg > button { min-height: 38px; border-radius: 9px; padding: 0 2px; font-size: .7rem; font-weight: 700; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .seg > button[aria-checked="true"] { background: var(--surface); color: var(--text); font-weight: 800; box-shadow: 0 1px 3px rgba(36, 27, 61, .18); }
+  .seg > button[aria-checked="true"], .seg > button[aria-selected="true"] { background: var(--surface); color: var(--text); font-weight: 800; box-shadow: 0 1px 3px rgba(36, 27, 61, .18); }
   .seg-sm > button { min-height: 32px; font-size: .66rem; }
   .seg.is-off { opacity: .5; }
   .chor-row { display: flex; align-items: center; gap: 4px; min-height: 50px; }
@@ -12479,6 +12869,79 @@
   .layer .chip[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 
+
+  /* ---- Studio (D2, D3, B2) ---- */
+  .studio-view { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; position: relative; }
+  .song-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .song-cell { min-height: 56px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; justify-content: center; padding: 4px 8px; text-align: left; min-width: 0; }
+  .song-k { font-size: .56rem; font-weight: 800; letter-spacing: .05em; color: var(--muted); text-transform: uppercase; }
+  .song-v { font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .song-sub { font-size: .62rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .song-prog { min-height: 48px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); display: flex; align-items: center; gap: 8px; padding: 0 10px; text-align: left; }
+  .song-prog-list { flex: 1; min-width: 0; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .song-prog-edit { font-size: .72rem; font-weight: 700; color: var(--muted); white-space: nowrap; }
+  .track-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .t-card, .t-heads { min-width: 0; }
+  .t-card { grid-template-columns: minmax(0, 1fr); }
+  .t-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 8px 8px 10px 10px; display: grid; gap: 7px; }
+  .t-card.is-sel { border: 2px solid var(--accent); padding: 7px 7px 9px 9px; }
+  .t-card.is-muted { opacity: .6; }
+  .t-top { display: flex; align-items: center; gap: 6px; }
+  .t-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: left; min-height: 44px; border-radius: 10px; }
+  .t-bar { width: 10px; height: 34px; border-radius: 5px; background: var(--tc); flex: 0 0 auto; }
+  .t-heads { min-width: 0; display: flex; flex-direction: column; }
+  .t-heads strong { font-size: .92rem; }
+  .t-heads span { font-size: .7rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .t-ms { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 11px; border: 1px solid var(--line); background: var(--bg); font-size: .74rem; font-weight: 800; color: var(--text); }
+  .t-ms[aria-pressed="true"] { background: var(--text); border-color: var(--text); color: #fff; }
+  .t-cells { display: grid; gap: 2px; padding-left: 20px; }
+  .t-cells i { height: 12px; border-radius: 3px; background: var(--line); }
+  .t-cells i.on { background: var(--tc); }
+  .t-vol { display: flex; align-items: center; gap: 8px; padding-left: 20px; color: var(--muted); }
+  .t-vol svg { width: 16px; height: 16px; flex: 0 0 auto; }
+  .t-vol input { flex: 1; accent-color: var(--accent); min-height: 32px; }
+  .add-track { min-height: 48px; border-radius: 16px; border: 2px dashed var(--line); font-size: .78rem; font-weight: 700; color: var(--text); }
+  .studio-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .studio-tools .chip { min-height: 40px; }
+  .studio-fab-space { height: 64px; }
+  .kbd-fab {
+    position: sticky; bottom: 12px; justify-self: center; min-height: 48px; padding: 0 20px; border-radius: 999px; background: var(--text); color: #fff;
+    font-size: .82rem; font-weight: 800; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 8px 20px -8px rgba(36, 27, 61, .6); margin-top: -60px; z-index: 2;
+    max-width: 100%; white-space: nowrap; overflow: hidden;
+  }
+  .kbd-fab-text { overflow: hidden; text-overflow: ellipsis; }
+  .kbd-fab svg { width: 20px; height: 20px; }
+  .track-head { justify-content: flex-start; }
+  .track-color { width: 10px; height: 36px; border-radius: 5px; flex: 0 0 auto; }
+  .track-heads { flex: 1; min-width: 0; display: grid; }
+  .track-heads h2 { font-size: 1.05rem; margin: 0; }
+  .track-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track-tabs > button[hidden] { display: none; }
+  .track-body { display: grid; gap: 10px; }
+  .track-body > .panel, .panel-layer-body > .panel { margin: 0; }
+  .track-layer .layer-card, .panel-layer .layer-card { min-height: 70%; }
+  /* Ein Raster, zwei Blätter: Drums ohne Bass-Zeile, Bass nur mit ihr. */
+  .track-layer[data-track="drums"] .track-row[data-track="bass"], .track-layer[data-track="drums"] .track-row[data-group="bass"] { display: none; }
+  .track-layer[data-track="bass"] .track-row:not([data-track="bass"]):not([data-group="bass"]) { display: none; }
+  .track-layer[data-track="bass"] .kit-box, .track-layer[data-track="bass"] .dc-pattern-head .reset-beat { display: none; }
+  .track-layer .groove-swing, .track-layer .chordsound-chips, .track-layer .voicing-chips { display: none; }
+  .cp-hits { display: grid; gap: 3px; }
+  .cp-hit { height: 34px; border-radius: 5px; background: var(--line); }
+  .cp-hit.alt { background: #e7d6c8; }
+  .cp-hit.on { background: #2f6fd6; }
+  [data-part="chordPlay"] { display: grid; gap: 6px; }
+  [data-part="chordPlay"] .seg { flex: none; }
+  .rec-lanes { display: grid; gap: 6px; margin: 8px 0; }
+  .rec-lane { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .78rem; font-weight: 700; }
+  .add-list { display: grid; gap: 4px; }
+  .add-list .menu-item span { display: grid; gap: 2px; }
+  .add-list .menu-item small { font-size: .7rem; color: var(--muted); font-weight: 600; }
+  .track-mix .chip-row .chip { min-height: 40px; }
+  @media (max-width: 359px) {
+    .song-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .t-ms { width: 40px; }
+  }
+
   /* ---- Akkordfolgen-Editor (D6) ---- */
   .d6-tpl { display: flex; align-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 4px; }
   .d6-tpl .chor-text { text-align: center; }
@@ -12505,6 +12968,9 @@
   .d6-opts { display: flex; gap: 6px; flex-wrap: wrap; }
   .d6-opts .chip { min-height: 40px; }
   .d6-all { justify-self: center; min-height: 44px; }
+  .d6-tpl-open { text-align: center; min-height: 44px; border-radius: 10px; }
+  .d6-own { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .d6-own .chip { min-height: 40px; }
 
   /* Menü: Schublade von rechts (auf dem Handy fast bildschirmbreit) */
   .sheet { position: absolute; inset: 0; z-index: 5; display: flex; justify-content: flex-end; }
@@ -12671,6 +13137,87 @@
       <button class="chor-piano" type="button" data-action="surface-open" aria-label="${t('lab.chor.piano')}" title="${t('lab.chor.piano')}">${UI_ICON.piano}</button>
     </section>
   </section>
+  <section class="studio-view" hidden aria-label="${t('lab.viewStudio')}">
+    <!-- Studio (D2): Song-Zeile, Akkordfolge, Spurkarten. Antippen → Blatt Muster · Klang · Mix. -->
+    <div class="song-row" role="group" aria-label="${t('lab.studio.song')}">
+      ${['key', 'meter', 'tempo', 'room'].map((k) => `<button class="song-cell" type="button" data-action="song-${k}" aria-haspopup="dialog"><span class="song-k">${t(`lab.studio.${k}`)}</span><strong class="song-v" data-song="${k}"></strong><span class="song-sub" data-song-sub="${k}"></span></button>`).join('')}
+    </div>
+    <button class="song-prog" type="button" data-action="prog-sheet" aria-haspopup="dialog"><span class="song-k">${t('lab.studio.prog')}</span><strong class="song-prog-list"></strong><span class="song-prog-edit">${t('lab.studio.edit')} ›</span></button>
+    <div class="track-cards"></div>
+    <button class="add-track" type="button" data-action="add-track" aria-haspopup="dialog">${t('lab.studio.addTrack')}</button>
+    <div class="studio-tools"><span class="sub-label">${t('lab.studio.more')}</span>
+      <button class="chip" type="button" data-action="panel-layer" data-value="keys">${t('lab.tabKeys')}</button>
+      <button class="chip" type="button" data-action="panel-layer" data-value="sampler">${t('lab.tabSampler')}</button>
+    </div>
+    <div class="studio-fab-space" aria-hidden="true"></div>
+    <button class="kbd-fab" type="button" data-action="surface-open">${UI_ICON.piano}<span class="kbd-fab-text"></span></button>
+  </section>
+  <div class="studio-parts" hidden>
+    <!-- Neue Bausteine der Spur-Blätter (werden beim Öffnen in das Blatt gehängt). -->
+    <section data-part="bassPlay" class="panel">
+      <span class="sub-label" id="bass-play-label">${t('lab.studio.bassPlay')}</span>
+      <div class="chip-row bass-play-chips" role="radiogroup" aria-labelledby="bass-play-label"></div>
+      <div class="switch-row">${toggle('bassHold', 'lab.studio.bassHold')}</div>
+      <p class="foot-note">${t('lab.studio.bassLineHint')}</p>
+    </section>
+    <section data-part="chordPlay" class="panel">
+      <p class="foot-note">${t('lab.studio.chordsHint')}</p>
+      <span class="chor-label" id="cp-play-label">${t('lab.studio.playStyle')}</span>
+      <div class="seg cp-play" role="radiogroup" aria-labelledby="cp-play-label">
+        ${CHORD_PLAYS.map((id) => `<button type="button" role="radio" aria-checked="false" data-action="cp-play" data-value="${id}">${t(`lab.studio.play.${id}`)}</button>`).join('')}
+      </div>
+      <span class="chor-label" id="cp-voicing-label">${t('lab.studio.voicing')}</span>
+      <div class="seg cp-voicing" role="radiogroup" aria-labelledby="cp-voicing-label">
+        ${['satb', 'pop'].map((id) => `<button type="button" role="radio" aria-checked="false" data-action="cp-voicing" data-value="${id}">${t(`lab.studio.voicing.${id}`)}</button>`).join('')}
+      </div>
+      <span class="chor-label" id="cp-oct-label">${t('lab.studio.register')}</span>
+      <div class="seg cp-oct" role="radiogroup" aria-labelledby="cp-oct-label">
+        ${[-1, 0, 1].map((o) => `<button type="button" role="radio" aria-checked="false" data-action="cp-oct" data-value="${o}">${t(`lab.studio.register.${o + 1}`)}</button>`).join('')}
+      </div>
+      <div class="cp-hits-box">
+        <span class="chor-label" id="cp-hits-label">${t('lab.studio.hits')}</span>
+        <div class="cp-hits" role="group" aria-labelledby="cp-hits-label"></div>
+      </div>
+    </section>
+    <section data-part="chordSoundSel" class="panel">
+      <span class="sub-label" id="cs-label">${t('lab.studio.chordSound')}</span>
+      <div class="chip-row cs-chips" role="radiogroup" aria-labelledby="cs-label"></div>
+      <span class="sub-label" id="cs-pad-label">${t('lab.studio.padLayer')}</span>
+      <div class="chip-row cs-pad-chips" role="radiogroup" aria-labelledby="cs-pad-label"></div>
+    </section>
+    <section data-part="arpSoundNote" class="panel"><p class="foot-note">${t('lab.studio.arpSound')}</p>
+      <button class="chip" type="button" data-action="open-track" data-value="melody" data-tab="sound">${t('lab.studio.toMelodySound')}</button></section>
+    <section data-part="recNote" class="panel"><p class="foot-note">${t('lab.studio.recHint')}</p>
+      <div class="rec-lanes"></div>
+      <button class="chip" type="button" data-action="my-sounds">${t('lab.menu.sounds')}</button></section>
+    <section data-part="swingExact" class="panel">
+      <span class="chor-label">${t('lab.swing')}</span>
+      <div class="seg chor-swing" role="radiogroup" aria-label="${t('lab.swing')}">
+        ${SWING_LEVELS.map(([id]) => `<button type="button" role="radio" aria-checked="false" data-action="chor-swing" data-value="${id}">${t(`lab.swingLevel.${id}`)}</button>`).join('')}
+      </div>
+      <label class="slider-line"><span>${t('lab.studio.swingExact')}</span><input type="range" data-field="swing" min="0" max="1" step=".01"><output data-out="swing"></output></label>
+      <p class="foot-note swing-ratio"></p>
+    </section>
+    <section data-part="roomSel" class="panel">
+      <div class="seg chor-room" role="radiogroup" aria-label="${t('lab.chor.room')}">
+        ${ROOM_IDS.map((id) => `<button type="button" role="radio" aria-checked="false" data-action="chor-room" data-value="${id}">${t(`lab.room.${id}`)}</button>`).join('')}
+      </div>
+      <p class="foot-note">${t('lab.studio.roomHint')}</p>
+    </section>
+    <section data-part="meterSel" class="panel">
+      <div class="chip-row meter-chips" role="radiogroup" aria-label="${t('lab.studio.meter')}">
+        ${METER_IDS.map((id) => `<button class="chip" type="button" role="radio" aria-checked="false" data-action="song-meter-set" data-value="${id}">${id}</button>`).join('')}
+      </div>
+      <p class="foot-note">${t('lab.studio.meterHint')}</p>
+    </section>
+    <section data-part="addTrack" class="panel">
+      <div class="add-list">
+        <button class="menu-item" type="button" data-action="add-track-pick" data-value="drone"><span><strong>${t('lab.track.drone')}</strong><small>${t('lab.studio.add.drone')}</small></span></button>
+        <button class="menu-item" type="button" data-action="add-track-pick" data-value="rec"><span><strong>${t('lab.track.rec')}</strong><small>${t('lab.studio.add.rec')}</small></span></button>
+        <button class="menu-item" type="button" data-action="add-track-pick" data-value="arp"><span><strong>${t('lab.track.arp')}</strong><small>${t('lab.studio.add.arp')}</small></span></button>
+      </div>
+    </section>
+  </div>
   <section class="learn-view" hidden></section>
   <section class="choir-view" hidden>
     <section class="panel">
@@ -12819,12 +13366,12 @@
     </section>
   </section>
   <section class="tab-panel" data-tab-panel="beat">
-    <section class="panel tempo-panel">${tempoRow}</section>
-    <section class="panel dc-tpl-panel">
+    <section data-part="tempo" class="panel tempo-panel">${tempoRow}</section>
+    <section data-part="loop" class="panel dc-tpl-panel">
       <div class="panel-head"><h2>${t('lab.drumloop')}</h2>${lockBtn('beat')}</div>
       ${pickerTrigger('beat')}
     </section>
-    <section class="panel beat-panel">
+    <section data-part="grid" class="panel beat-panel">
       <div class="zoom-head"><h2>${t('lab.pattern')}</h2><button class="chip zoom-done" type="button" data-action="beat-zoom-close">${t('lab.zoomClose')}</button></div>
       <div class="panel-head dc-pattern-head"><h2>${t('lab.pattern')}</h2>${help('editHint')}<button class="chip reset-beat" type="button" data-action="reset-beat">${t('lab.resetBeat')}</button>${zoomBtn}</div>
       <div class="dc-tools">
@@ -12845,12 +13392,12 @@
         <div class="pill-row"><button class="chip" type="button" data-action="kit-reset">${t('lab.kitReset')}</button></div>
       </details>
     </section>
-    <section class="panel dc-bass-panel live-panel">
+    <section data-part="live" class="panel dc-bass-panel live-panel">
       <div class="panel-head"><h2>${t('lab.sampler.liveTitle')}</h2>${help('helpLive')}<label class="switch live-switch"><input type="checkbox" role="switch" data-switch="liveWrite" checked><span class="switch-track" aria-hidden="true"></span><span>${t('lab.sampler.liveWrite')}</span></label></div>
       ${helpText('helpLive')}
       <div class="live-pads" role="group" aria-label="${t('lab.sampler.liveTitle')}"></div>
     </section>
-    <section class="panel dc-bass-panel kit-panel">
+    <section data-part="kit" class="panel dc-bass-panel kit-panel">
       <div class="panel-head"><h2>${t('lab.drumKit')}</h2>${help('helpKit')}</div>
       ${helpText('helpKit')}
       <div class="chip-row kit-chips" role="group" aria-label="${t('lab.drumKit')}"></div>
@@ -12858,21 +13405,21 @@
       ${helpText('helpFills')}
       <div class="chip-row fill-chips" role="group" aria-label="${t('lab.fills')}"></div>
     </section>
-    <section class="panel dc-bass-panel">
+    <section data-part="bassSound" class="panel dc-bass-panel">
       <div class="panel-head"><h2>${t('lab.bassSound')}</h2>${help('helpBass')}</div>
       ${helpText('helpBass')}
       <div class="chip-row bass-chips"></div>
     </section>
-    <section class="panel">
+    <section data-part="groove" class="panel">
       <div class="panel-head"><h2>${t('lab.groove')}</h2>${help('helpGroove')}</div>
       ${helpText('helpGroove')}
-      <label class="slider-line"><span>${t('lab.swing')}</span><input type="range" data-field="swing" min="0" max="1" step=".01"><output data-out="swing"></output></label>
+      <label class="slider-line groove-swing"><span>${t('lab.swing')}</span><input type="range" data-field="swing" min="0" max="1" step=".01"><output data-out="swing"></output></label>
       <label class="slider-line"><span>${t('lab.pump')}</span><input type="range" data-field="pump" min="0" max="1" step=".01"><output data-out="pump"></output></label>
     </section>
   </section>
 
   <section class="tab-panel" data-tab-panel="harmony" hidden>
-    <section class="panel">
+    <section data-part="key" class="panel">
       <div class="panel-head"><h2>${t('lab.key')}</h2>${help('helpKey')}<span class="item-name key-name"></span>${lockBtn('harmony')}</div>
       ${helpText('helpKey')}
       <div class="select-grid">
@@ -12880,7 +13427,7 @@
         <label class="select-field"><span>${t('lab.keyMode')}</span><select data-field="modeId"></select></label>
       </div>
     </section>
-    <section class="panel">
+    <section data-part="prog" class="panel">
       <div class="panel-head"><h2>${t('lab.progression')}</h2>${help('helpProgression')}</div>
       ${helpText('helpProgression')}
       ${pickerTrigger('prog')}
@@ -12918,7 +13465,7 @@
         <select data-field="chordBars"><option value="1">${t('lab.everyBar')}</option><option value="2">${t('lab.everyTwoBars')}</option></select>
       </label>
     </section>
-    <section class="panel">
+    <section data-part="satb" class="panel">
       <div class="panel-head"><h2>${t('lab.satbTitle')}</h2>${help('satbHint')}</div>
       ${helpText('satbHint')}
       <div class="switch-row">${toggle('chordsOn', 'lab.chordsPlay')}</div>
@@ -12927,7 +13474,7 @@
       <div class="chip-row chordsound-chips" role="group" aria-label="${t('lab.chordSoundLabel')}"></div>
       <div class="satb-list"></div>
     </section>
-    <section class="panel">
+    <section data-part="drone" class="panel">
       <div class="panel-head"><h2>${t('lab.drone')}</h2>${help('droneHint')}</div>
       ${helpText('droneHint')}
       <div class="switch-row">${toggle('droneOn', 'lab.droneOn')}${toggle('droneFifth', 'lab.droneFifth')}</div>
@@ -12935,11 +13482,11 @@
   </section>
 
   <section class="tab-panel" data-tab-panel="sampler" hidden>
-    <div class="sampler-root"></div>
+    <div class="sampler-root" data-part="sampler"></div>
   </section>
 
   <section class="tab-panel" data-tab-panel="melody" hidden>
-    <section class="panel">
+    <section data-part="melody" class="panel">
       <div class="panel-head">
         <h2>${t('lab.melody')}</h2>${help('melodyHint')}
         ${lockBtn('melody')}${bareToggle('melodyOn', 'lab.melodyOn')}
@@ -12983,7 +13530,7 @@
   </section>
 
   <section class="tab-panel" data-tab-panel="sound" hidden>
-    <section class="panel">
+    <section data-part="sound" class="panel">
       <div class="panel-head"><h2>${t('lab.sound')}</h2>${help('helpSound')}${lockBtn('sound')}</div>
       ${helpText('helpSound')}
       ${pickerTrigger('sound')}
@@ -13052,7 +13599,7 @@
       </details>
     </section>
 
-    <section class="panel">
+    <section data-part="fx" class="panel">
       <div class="panel-head"><h2>${t('lab.effects')}</h2>${help('helpEffects')}</div>
       ${helpText('helpEffects')}
       <div class="fx-groups">
@@ -13071,7 +13618,7 @@
   </section>
 
   <section class="tab-panel" data-tab-panel="mixer" hidden>
-    <section class="panel">
+    <section data-part="mixer" class="panel">
       <div class="panel-head"><h2>${t('lab.mixer')}</h2>${help('helpMixer')}</div>
       ${helpText('helpMixer')}
       <div class="mixer-list"></div>
@@ -13079,7 +13626,7 @@
   </section>
 
   <section class="tab-panel" data-tab-panel="keys" hidden>
-    <section class="panel">
+    <section data-part="arp" class="panel">
       <div class="panel-head"><h2>${t('lab.arpeggiator')}</h2>${help('helpArp')}${bareToggle('arpOn', 'lab.arpOn')}</div>
       ${helpText('helpArp')}
       <div class="switch-row arp-switches">${toggle('latchOn', 'lab.latch')}${toggle('arpAuto', 'lab.arpAuto')}</div>
@@ -13103,7 +13650,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section data-part="keyboard" class="panel">
       <div class="panel-head"><h2>${t('lab.miniKeyboard')}</h2>${help('keysHint')}</div>
       ${helpText('keysHint')}
       <div class="keyboard-head">
@@ -13114,7 +13661,7 @@
       <div class="scale-pads" hidden></div>
     </section>
 
-    <section class="panel rec-panel">
+    <section data-part="rec" class="panel rec-panel">
       <div class="panel-head"><h2>${t('lab.recTitle')}</h2>${help('recHint')}</div>
       ${helpText('recHint')}
       <div class="rec-row">
@@ -13184,6 +13731,31 @@
 
 <p class="toast" role="status" aria-live="polite" hidden></p>
 
+<div class="layer track-layer" hidden>
+  <div class="layer-backdrop" data-action="layer-close"></div>
+  <section class="layer-card" role="dialog" aria-modal="true" aria-labelledby="track-layer-title">
+    <div class="layer-grab" aria-hidden="true"></div>
+    <div class="layer-head track-head"><span class="track-color" aria-hidden="true"></span>
+      <div class="track-heads"><h2 id="track-layer-title" class="track-title"></h2><span class="layer-sub track-sub"></span></div>
+      <button class="lock-btn track-lock" type="button" data-action="lock" aria-pressed="false" aria-label="${t('lab.studio.lockAria')}" title="${t('lab.studio.lockAria')}"></button>
+      <button class="layer-done" type="button" data-action="layer-close">${t('lab.pickerDone')}</button></div>
+    <div class="seg track-tabs" role="tablist" aria-label="${t('lab.studio.areas')}">
+      ${['pattern', 'sound', 'mix'].map((id) => `<button type="button" role="tab" id="tt-${id}" aria-selected="false" aria-controls="track-body" data-action="track-tab" data-value="${id}">${t(`lab.studio.tab.${id}`)}</button>`).join('')}
+    </div>
+    <div class="track-body" id="track-body" role="tabpanel"></div>
+  </section>
+</div>
+
+<div class="layer panel-layer" hidden>
+  <div class="layer-backdrop" data-action="layer-close"></div>
+  <section class="layer-card" role="dialog" aria-modal="true" aria-labelledby="panel-layer-title">
+    <div class="layer-grab" aria-hidden="true"></div>
+    <div class="layer-head"><h2 id="panel-layer-title" class="panel-layer-title"></h2>
+      <button class="layer-done" type="button" data-action="layer-close">${t('lab.pickerDone')}</button></div>
+    <div class="panel-layer-body"></div>
+  </section>
+</div>
+
 <div class="layer prog-layer" hidden>
   <div class="layer-backdrop" data-action="layer-close"></div>
   <section class="layer-card" role="dialog" aria-modal="true" aria-labelledby="prog-layer-title">
@@ -13192,7 +13764,7 @@
       <button class="layer-done" type="button" data-action="layer-close">${t('lab.pickerDone')}</button></div>
     <div class="d6-tpl">
       <button class="chor-arrow" type="button" data-action="chor-prog" data-value="-1" aria-label="${t('lab.chor.progPrev')}">‹</button>
-      <div class="chor-text"><strong class="d6-tpl-name"></strong><span class="d6-tpl-sub"></span></div>
+      <button class="chor-text d6-tpl-open" type="button" data-action="picker-open" data-picker="prog" aria-haspopup="dialog"><strong class="d6-tpl-name"></strong><span class="d6-tpl-sub"></span></button>
       <button class="chor-arrow" type="button" data-action="chor-prog" data-value="1" aria-label="${t('lab.chor.progNext')}">›</button>
     </div>
     <div class="d6-box">
@@ -13226,6 +13798,11 @@
       </div>
     </section>
     <button class="chip d6-all" type="button" data-action="d6-all-one">${t('lab.d6.allOne')}</button>
+    <div class="d6-own">
+      <button class="chip" type="button" data-action="prog-original">${t('lab.melOriginal')}</button>
+      <button class="chip" type="button" data-action="prog-save">${t('lab.melSave')}</button>
+      <button class="chip" type="button" data-action="prog-delete">${t('lab.melDelete')}</button>
+    </div>
   </section>
 </div>
 
@@ -13442,7 +14019,40 @@
     if (!shown('.chor-view') || shown('.tab-bar') || v.state.view !== 'choir') fail('Chor zeigt nicht die Chor-Ansicht');
     if (v.$('.view-btn').getAttribute('aria-haspopup') !== 'menu' || v.$all('.view-opt[aria-checked="true"]').length !== 1) fail('Ansichts-Auswahl');
     v._applyView('studio');
-    if (!shown('.tab-bar') || shown('.chor-view') || !shown('.menu-random') && false) fail('Studio zeigt die Reiter nicht');
+    if (shown('.tab-bar') || !shown('.studio-view') || v.$all('.t-card').length !== 4 || shown('.chor-view')) fail('Studio zeigt die Spuren nicht');
+    // Spur-Blatt: Bedienfelder hängen um und kehren beim Schließen zurück (Workshop braucht sie in den Reitern).
+    const gridHome = () => v.$('[data-part="grid"]').closest('.tab-panel')?.dataset.tabPanel;
+    v._openTrack('drums');
+    if (!v.$('.track-body [data-part="loop"]') || !v.$('.track-body [data-part="grid"]') || v.$('.track-layer .layer-card').getAttribute('role') !== 'dialog') fail('Drums-Blatt: Muster fehlt');
+    v._showTrackTab('sound');
+    if (!v.$('.track-body [data-part="kit"]') || v.$('.track-body [data-part="grid"]')) fail('Drums-Blatt: Klang');
+    v._showTrackTab('mix');
+    if (!v.$('.track-body [data-mix="drums"]') || !v.$('.track-body [data-part="groove"]')) fail('Drums-Blatt: Mix (Lautstärke, Pumpen)');
+    v._closeLayer(v.$('.track-layer'), { focus: false });
+    if (gridHome() !== 'beat' || v.$('.track-body').children.length) fail('Bedienfelder kehren nicht in die Reiter zurück');
+    v._openTrack('chords');
+    if (!v.$('.track-body [data-part="chordPlay"]') || !v.$('.track-body [data-part="satb"]') || v.ui.studioTarget !== 'chords') fail('Akkorde-Blatt');
+    v._handleAction('cp-play', 'rhythm', null);
+    v._handleAction('cp-hit', '3', null);
+    if (v.state.chordPlay !== 'rhythm' || !v.state.chordHits.some(([st]) => st === 3)) fail('Anschläge der Akkorde');
+    v._closeLayer(v.$('.track-layer'), { focus: false });
+    v._handleAction('track-solo', 'bass', null);
+    if (v._busLevel('drums') !== 0 || !(v._busLevel('bass') > 0) || !(v._busLevel('keys') > 0)) fail('Solo');
+    v._handleAction('track-solo', 'bass', null);
+    v._handleAction('track-mute', 'drums', null);
+    if (!v.state.mute.drums || !v.$('.t-card[data-track="drums"]').classList.contains('is-muted')) fail('Stumm auf der Karte');
+    v.undo();
+    v._handleAction('add-track-pick', 'arp', null);
+    if (!v.state.arpOn || !v.$('.t-card[data-track="arp"]') || v.$('.track-layer').hidden) fail('+ Spur: 2. Akkorde');
+    v._closeAllLayers();
+    const keyBefore = v.state.keyRoot; const tempoBefore = v.state.eighths;
+    v.randomize();
+    if (v.state.keyRoot !== keyBefore || v.state.eighths !== tempoBefore) fail('Zufällig ändert Tonart oder Tempo');
+    v._handleAction('song-tempo', null, null);
+    if (!v.$('.panel-layer-body [data-part="tempo"]') || !v.$('.panel-layer-body [data-part="swingExact"]')) fail('Song-Zeile: Tempo-Blatt');
+    v._applyView('learn', 'course');
+    if (v.$('.panel-layer-body').children.length || !v.$('[data-part="tempo"]').closest('.tab-panel')) fail('Ansichtswechsel räumt die Blätter nicht auf');
+    v._applyView('studio');
     v._applyView('learn', null);
     if (!shown('.learn-view') || v.$all('.learn-tile').length !== 3) fail('Lernen: drei Kacheln');
     v._applyView('learn', 'course');

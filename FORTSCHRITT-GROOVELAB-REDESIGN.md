@@ -11,7 +11,7 @@ Auftrag: `ARBEITSANWEISUNG-GROOVELAB-REDESIGN.md`. Basis: `main` @ `2ea07a7`
 | 2 | Kopfleiste mit Ansichts-Dropdown, Menü-Umbau | fertig (Lernen-Übersicht D4 schon mit drin) |
 | 3 | Chor-Ansicht (D1, D5), Anfangstöne, Einzähler, Hören auf | fertig |
 | 4 | Akkordfolgen-Editor (D6) | fertig (Mindestergebnis 1–4 erreicht) |
-| 5 | Studio mit Spuren (D2, D3, B2) | offen |
+| 5 | Studio mit Spuren (D2, D3, B2) | fertig (Reiter bleiben nur als Baufläche für Workshop/de:construct) |
 | 6 | Spielflächen (E1, E5, E2) mit vereinter Aufnahme | offen |
 | 7 | Meine Sounds + Aufnehmen (E3, E4) | offen |
 | 8 | Lernen (D4), Workshop-/de:construct-Umverdrahtung | offen |
@@ -19,9 +19,18 @@ Auftrag: `ARBEITSANWEISUNG-GROOVELAB-REDESIGN.md`. Basis: `main` @ `2ea07a7`
 
 ## Nächster Schritt
 
-Phase 5: Studio mit Spuren (D2/D3/B2). Plan: Spurkarten über `.tab-panel`-Inhalten;
-Blätter (Muster · Klang · Mix) hängen die vorhandenen Panels um (DOM verschieben,
-Handler bleiben), Workshop-Fokus (`_wsFocusEls`) auf neue Orte.
+Phase 6: Spielflächen — `_openSurface()` (Stub; Chor-Piano-Knopf und Studio-FAB rufen
+ihn). Chor: Vollbild quer (E1/E5), Studio: Leiste von unten (E2) mit „● Aufnehmen“
+(dazu/ersetzen) → ersetzt Keys-Aufnahme und „Live einspielen“. Danach die
+Übergangs-Werkzeuge im Studio („Keys“, „Sampler“) entfernen.
+
+Phase 5 erledigt: `.studio-view` (Song-Zeile, Akkordfolge, Spurkarten), STUDIO_TRACKS,
+Spur-Blatt `.track-layer` (Muster · Klang · Mix) hängt Panels per `data-part` um
+(`_placePart/_restoreParts`; beim Schließen/Ansichtswechsel zurück in die Reiter),
+neue Bausteine in `.studio-parts` (bassPlay, chordPlay, chordSoundSel, swingExact,
+roomSel, meterSel, addTrack, recNote, arpSoundNote), Solo (ui.solo, `_busLevel`),
+„+ Spur“, Song-Blätter Tempo/Raum/Takt (`.panel-layer`), Zufällig ohne Tonart/Tempo,
+Picker über den Blättern (z-index 12).
 
 Phase 4 erledigt: `.prog-layer` (D6), `_openProgSheet/_renderProgSheet/_progEdit`
 (Parallel-Arrays Stufe/geliehen/Bass/Länge/Wechsel), Aktionen `d6-*`, Vorlage ‹ ›
