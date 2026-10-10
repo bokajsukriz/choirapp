@@ -15,7 +15,7 @@ Auftrag: `ARBEITSANWEISUNG-GROOVELAB-REDESIGN.md`. Basis: `main` @ `2ea07a7`
 | 6 | Spielflächen (E1, E5, E2) mit vereinter Aufnahme | fertig |
 | 7 | Meine Sounds + Aufnehmen (E3, E4) | fertig |
 | 8 | Lernen (D4), Workshop-/de:construct-Umverdrahtung | fertig, teilweise: Kurs/de:construct bauen weiter auf den Reiter-Panels (D-Entscheidung) |
-| 9 | Querschnitt, Schlussprüfung, README | offen |
+| 9 | Querschnitt, Schlussprüfung, README | fertig (siehe Bericht) |
 
 ## Nächster Schritt
 
