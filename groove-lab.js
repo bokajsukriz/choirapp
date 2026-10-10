@@ -2251,6 +2251,8 @@
     }
     return best;
   }
+  /** Kurs → Studio: Spur und Bereich des Blatts je Reiter einer Einheit (lesson.tab). */
+  const LESSON_TRACK = { beat: ['drums', 'pattern'], harmony: ['chords', 'pattern'], melody: ['melody', 'pattern'], sound: ['melody', 'sound'], keys: ['arp', 'pattern'], mixer: [null, 'mix'] };
   /** Spuren, in die die Spielfläche spielen und aufnehmen kann. */
   const SURFACE_TARGETS = ['drums', 'bass', 'chords', 'melody', 'arp'];
 
@@ -4670,6 +4672,22 @@
         this.$('[data-action="chor-extra-mute"]').setAttribute('aria-pressed', String(muted));
       }
       this.$('.chor-reset').hidden = !(style && diff.any);
+      // Lernen/Aufgaben: was die Aufgabe gesetzt hat, ist markiert.
+      const task = this._uiMode() === 'tasks' ? CHOIR_TASKS.find((x) => x.id === s.choirTask) : null;
+      const marks = new Set();
+      if (task) {
+        const keys = Object.keys(task.set);
+        if (keys.includes('bpm')) marks.add('tempo');
+        if (keys.includes('progId') || keys.includes('modeId')) marks.add('chords');
+        if (keys.includes('modeId')) marks.add('key');
+        if ('groove' in task) marks.add('rhythm');
+        if (task.melody || keys.includes('melodyOn')) marks.add('melody');
+        if (keys.includes('chordsOn')) marks.add('sound');
+      }
+      this.$('.chor-pair > .chor-card:first-child').classList.toggle('is-task-set', marks.has('key'));
+      this.$('.chor-pair > .chor-card:last-child').classList.toggle('is-task-set', marks.has('tempo'));
+      this.$('.chor-chords-row').classList.toggle('is-task-set', marks.has('chords'));
+      for (const el of ['rhythm', 'bass', 'sound', 'melody']) this.$(`.chor-el[data-el="${el}"]`).classList.toggle('is-task-set', marks.has(el));
     }
 
     /** Akkorde, Rhythmus, Bass, Klang, Melodie ‹ › (Chor). */
@@ -5202,7 +5220,7 @@
         const name = this._trackName(id);
         const cells = this._trackCells(id).map((on) => `<i${on ? ' class="on"' : ''}></i>`).join('');
         const vol = def.bus ? `<label class="t-vol">${UI_ICON.speaker}<input type="range" min="0" max="1" step=".01" data-mix="${def.bus}" value="${s.mix[def.bus]}" aria-label="${esc(tf('lab.studio.volumeAria', { name }))}"></label>` : '';
-        return `<div class="t-card${id === target ? ' is-sel' : ''}${muted ? ' is-muted' : ''}" data-track="${id}" style="--tc:${def.color}">
+        return `<div class="t-card${id === target ? ' is-sel' : ''}${muted ? ' is-muted' : ''}${id === this.ui.hl ? ' is-hl' : ''}" data-track="${id}" style="--tc:${def.color}">
           <div class="t-top"><button class="t-open" type="button" data-action="open-track" data-value="${id}" aria-haspopup="dialog"><span class="t-bar" aria-hidden="true"></span>
             <span class="t-heads"><strong>${esc(name)}</strong><span>${esc(this._trackSub(id))}</span></span></button>
             <button class="t-ms" type="button" data-action="track-mute" data-value="${id}" aria-pressed="${muted}" aria-label="${esc(tf('lab.studio.muteAria', { name }))}">M</button>
@@ -5584,6 +5602,7 @@
       this._closeAllLayers();
       this._restoreParts();
       this.ui.solo = null;
+      if (mode !== 'studio') this.ui.hl = null;
       this.$('.tab-bar').hidden = noTabs;
       // de:construct baut mit den bekannten Reitern — der Sampler gehört nicht dazu.
       const smpBtn = this.$('.tab-btn[data-tab="sampler"]');
@@ -5592,7 +5611,13 @@
       this.$('.choir-view').hidden = !tasks;
       this.$('.workshop-view').hidden = !workshop;
       this.$('.dc-view').hidden = !dcView;
-      this.$('.chor-view').hidden = !simple;
+      // Aufgaben laufen über der Chor-Ansicht (gleiche Begleitung, Aufgabenkarte darüber).
+      const chorView = this.$('.chor-view');
+      chorView.hidden = !(simple || tasks);
+      chorView.classList.toggle('is-task', tasks);
+      // In Aufgaben steht die Chor-Ansicht unter der Aufgabenkarte (und „Jetzt“), sonst an ihrem Platz.
+      if (tasks) this.$('.choir-now-panel').after(chorView);
+      else if (chorView.parentElement !== this.$('.lab-body')) this.$('.learn-view').before(chorView);
       this.$('.learn-view').hidden = !hub;
       this.$('.studio-view').hidden = !studio;
       // Lernen: über jedem Bereich die Leiste „‹ Lernen“ zurück zur Übersicht.
@@ -11590,6 +11615,16 @@
         case 'learn-area': this._applyView('learn', value); break;
         case 'learn-toggle': this.ui.learnOpen = (this.ui.learnOpen || 'tasks') === value ? 'none' : value; this._renderLearn(); this.$(`.learn-head[data-value="${value}"]`)?.focus(); break;
         case 'learn-task': this._applyView('learn', 'tasks'); this._applyChoirTask(value); break;
+        case 'ws-open-studio': {
+          // Kurs → Studio: derselbe Stand, die Spur der Einheit hervorgehoben und ihr Blatt offen.
+          const lesson = this.ui.ws?.lesson;
+          const [track, tab] = LESSON_TRACK[lesson?.tab] || [null, 'pattern'];
+          this._applyView('studio');
+          this.ui.hl = track;
+          this._renderStudio();
+          if (track) this._openTrack(track, tab);
+          break;
+        }
         case 'my-sounds': this._closeSheet({ focus: false }); this._openSounds(); break;
         case 'layer-close': this._closeLayer(target.closest('.layer')); break;
         // Chor (D1, D5)
@@ -13327,6 +13362,11 @@
     .chor-text strong { font-size: .84rem; }
   }
 
+
+  /* Lernen/Aufgaben: Aufgabenkarte über der Chor-Ansicht, gesetzte Werte markiert. */
+  .is-task-set { box-shadow: inset 3px 0 0 var(--accent); }
+  .chor-card.is-task-set { box-shadow: 0 0 0 2px var(--accent); }
+  .chor-view.is-task { margin-top: 10px; }
   /* ---- Blätter des Redesigns (Bottom-Sheet, Ebenen-Stapel _openLayer) ---- */
   .layer { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; justify-content: flex-end; }
   .layer-backdrop { position: absolute; inset: 0; background: rgba(36, 27, 61, .42); }
@@ -13361,6 +13401,7 @@
   .t-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 8px 8px 10px 10px; display: grid; gap: 7px; }
   .t-card.is-sel { border: 2px solid var(--accent); padding: 7px 7px 9px 9px; }
   .t-card.is-muted { opacity: .6; }
+  .t-card.is-hl { box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .35); }
   .t-top { display: flex; align-items: center; gap: 6px; }
   .t-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: left; min-height: 44px; border-radius: 10px; }
   .t-bar { width: 10px; height: 34px; border-radius: 5px; background: var(--tc); flex: 0 0 auto; }
@@ -13811,7 +13852,7 @@
       <div class="chip-row choir-grooves"></div>
       <div class="choir-tempo">${tempoRow}</div>
     </section>
-    <section class="panel">
+    <section class="panel choir-old" hidden>
       <div class="panel-head"><h2>${t('lab.key')}</h2></div>
       <div class="select-grid">
         <label class="select-field"><span>${t('lab.keyRoot')}</span><select data-field="keyRoot"></select></label>
@@ -13867,6 +13908,7 @@
         </div>
         <p class="ws-ab-hint" hidden></p>
         <p class="ws-to-studio">${t('lab.ws.toStudio')}</p>
+        <button class="chip ws-open-studio" type="button" data-action="ws-open-studio">${t('lab.learn.toStudio')} ›</button>
       </div>
       <p class="ws-live" aria-live="polite"></p>
     </section>
@@ -14744,6 +14786,15 @@
     if (v.$('.sf-rec').hidden || v.ui.sf.tab !== 'pads' || v.$('.sf-target').value !== 'drums') fail('Studio-Spielfläche: Drums → Pads');
     v._closeLayer(v.$('.surface'), { focus: false });
     if (bassDegreeOf(64, { keyRoot: 0, steps: MODES[0].steps, deg: 0 }) !== 2 || bassDegreeOf(67, { keyRoot: 0, steps: MODES[0].steps, deg: 0 }) !== 4) fail('bassDegreeOf');
+    // Lernen: Aufgabe über der Chor-Ansicht, gesetzte Werte markiert; Kurs → Studio mit Spur.
+    v._applyView('learn', null);
+    v._handleAction('learn-task', 'terzen', null);
+    if (v._uiMode() !== 'tasks' || !shown('.choir-view') || !shown('.chor-view') || !v.$('.chor-pair .is-task-set') || v.state.choirTask !== 'terzen') fail('Aufgabe läuft nicht über der Chor-Ansicht');
+    v._applyView('learn', 'course');
+    v._handleAction('ws-open-studio', null, null);
+    const lt = LESSON_TRACK[v.ui.ws?.lesson?.tab]?.[0];
+    if (v._uiMode() !== 'studio' || (lt && (v.ui.track !== lt || !v.$(`.t-card.is-hl[data-track="${lt}"]`)))) fail('Kurs → Studio');
+    v._closeAllLayers();
     // Einzähler: ein Takt, nicht in Workshop/de:construct.
     if (v._countInSteps() !== -v._barSteps()) fail('Einzähler fehlt');
     v._applyView('workshop');

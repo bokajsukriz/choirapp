@@ -14,15 +14,19 @@ Auftrag: `ARBEITSANWEISUNG-GROOVELAB-REDESIGN.md`. Basis: `main` @ `2ea07a7`
 | 5 | Studio mit Spuren (D2, D3, B2) | fertig (Reiter bleiben nur als Baufläche für Workshop/de:construct) |
 | 6 | Spielflächen (E1, E5, E2) mit vereinter Aufnahme | fertig |
 | 7 | Meine Sounds + Aufnehmen (E3, E4) | fertig |
-| 8 | Lernen (D4), Workshop-/de:construct-Umverdrahtung | offen |
+| 8 | Lernen (D4), Workshop-/de:construct-Umverdrahtung | fertig, teilweise: Kurs/de:construct bauen weiter auf den Reiter-Panels (D-Entscheidung) |
 | 9 | Querschnitt, Schlussprüfung, README | offen |
 
 ## Nächster Schritt
 
-Phase 8: Lernen — Aufgaben laufen über der Chor-Ansicht (gleiche Begleitung,
-Aufgabenkarte darüber), Kurs/de:construct öffnen das Studio mit Hervorhebung.
-Heute: Lernen-Übersicht fertig (Phase 2), Aufgaben/Kurs/dc zeigen die alten Ansichten
-mit „‹ Lernen“.
+Phase 9: Querschnitt — Schlussprüfung Berater, Screenreader-Durchgang, kleine
+Geräte, de/en/pl (nicht mehr genutzte lab.*-Schlüssel), README „Groove Lab: Aufbau
+der Oberfläche“ neu, Kopfkommentar groove-lab.js, Bericht, Archivieren, PR.
+
+Phase 8 erledigt: Aufgaben laufen über der Chor-Ansicht (`.chor-view` wird unter die
+Aufgabenkarte gehängt, gesetzte Werte `is-task-set`), Kurs: „Im Studio weiterbauen“
+(LESSON_TRACK → Spur-Blatt, Karte `is-hl`). Kurs und de:construct bauen weiter auf
+den Panels (Fokus `_wsFocusEls`, `is-dc`-Klassen hängen an `.tab-panel`), siehe Bericht.
 
 Phase 7 erledigt: `_renderSamplerLibrary` = Meine Sounds (E3: Filter, Zeilen mit
 Anhören/Art/Länge/Wellenform/„verwendet als“/⋯ → Editor, Werks-Klänge eingeklappt,

@@ -1157,6 +1157,7 @@ export const STRINGS = {
     'lab.snd.afterBass': 'Ton-Spur (folgt den Akkorden)',
     'lab.snd.afterRec': 'Spur „Aufnahme“',
     'lab.snd.afterSave': 'Nur speichern',
+    'lab.learn.toStudio': 'Im Studio weiterbauen',
     // <<< Groove Lab Redesign
     'lab.viewStudio': 'Studio',
     'lab.choirTask': 'Aufgabe',
@@ -3599,6 +3600,7 @@ export const STRINGS = {
     'lab.snd.afterBass': 'Tone lane (follows the chords)',
     'lab.snd.afterRec': 'Track “Recording”',
     'lab.snd.afterSave': 'Just save',
+    'lab.learn.toStudio': 'Keep building in the Studio',
     // <<< Groove Lab Redesign
     'lab.viewStudio': 'Studio',
     'lab.choirTask': 'Task',
@@ -6041,6 +6043,7 @@ export const STRINGS = {
     'lab.snd.afterBass': 'Ścieżka dźwięku (podąża za akordami)',
     'lab.snd.afterRec': 'Ścieżka „Nagranie”',
     'lab.snd.afterSave': 'Tylko zapisz',
+    'lab.learn.toStudio': 'Buduj dalej w studiu',
     // <<< Groove Lab Redesign
     'lab.viewStudio': 'Studio',
     'lab.choirTask': 'Zadanie',
