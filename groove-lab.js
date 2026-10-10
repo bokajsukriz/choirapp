@@ -16,10 +16,16 @@
    - GrooveEngine:  reine Klangerzeugung (AudioContext, Bus-Struktur, Voices).
                     Kennt weder Muster noch UI-Zustand.
    - Knob:          eigenständiger Dreh-Regler (Pointer-Events, Tastatur).
-   - GrooveLabView: die UI (Shadow-DOM-Web-Component) — schlanke
-                    Transportleiste oben (▶, Taktpunkte, ↶, Menü), darunter
-                    die Reiter; Menü mit Speichern & Öffnen, Modus und
-                    Einstellungen. Zustand, Scheduler, Rendering, Speichern.
+   - Stile & Co.:   STYLES (acht Stile mit Energie-Leiter), ROOMS, HEAR_FOCUS,
+                    Akkord-Zeitleiste (Länge/Vorziehen je Akkord) — reine
+                    Funktionen, Selbsttest redesignSelfTest.
+   - GrooveLabView: die UI (Shadow-DOM-Web-Component) — Kopfleiste (▶,
+                    Taktpunkte, Ansicht ▾ Chor · Studio · Lernen, Audio &
+                    Leistung, ↶, Menü). Chor: einfache Karten; Studio: Song-
+                    Zeile + Spurkarten, Blätter Muster · Klang · Mix hängen die
+                    Panels der (für Kurs/de:construct weiter vorhandenen)
+                    Reiter um; Spielflächen; Lernen. Zustand, Scheduler,
+                    Rendering, Speichern.
    ========================================================================== */
 (function (global) {
   'use strict';
@@ -235,6 +241,10 @@
   function pinLegacySound(s) {
     s.drumKit = 'synth'; s.feel = false; s.fills = 0; s.trackOn.perc = false; s.bassSoundId = 'pluck';
     s.chordVoicing = 'satb'; s.chordAdd9 = false; s.chordSound = 'synth'; s.mix.chords = .55;
+    // Ohne Stil, Raum-Makro, Vorziehen und Anschläge (Redesign) — wie früher.
+    s.styleId = null; s.energy = null; s.room = null; s.pump = 0; s.chordPush = null; s.chordLen = null;
+    s.chordPlay = 'held'; s.chordHits = null; s.chordPad = null; s.chordOctave = 0; s.bassPlay = null; s.bassHold = false;
+    s.fx.reverbLength = 1.8; s.fx.chorus = .2;
     return s;
   }
   /** Workshop und de:construct beginnen mit dem früheren Standard-Stand der Studio-Ansicht:
@@ -932,6 +942,8 @@
     { id: 'beatbox', set: { chordsOn: false, melodyOn: false, arpOn: false, bpm: 84 }, display: 'vocalPerc', groove: 'Vocal Perc Basic', fadeDrums: true },
   ];
   const CHOIR_PARTS = ['S', 'A', 'T', 'B'];
+  // Lernen/Aufgaben (D4): Gruppen der Chor-Aufgaben.
+  const LEARN_TASK_GROUPS = [['sing', ['meineStimme', 'bass', 'terzen', 'liegeton']], ['hear', ['minusEins', 'echo', 'pentatonik']], ['rhythm', ['zweiVier', 'swing', 'beatbox']]];
   const patternIndexByName = (name) => DRUM_PATTERNS.findIndex((p) => p.name === name);
   const melodyIndexByName = (name) => MELODIES.findIndex((m) => m.name === name);
 
@@ -1418,7 +1430,7 @@
    *  Master-Pegel des aktuellen Stands. */
   function lessonState(current, lesson) {
     const s = pinLegacyStudio(pinLegacySound(defaultState()));
-    s.view = current.view; s.keysLayout = current.keysLayout; s.octave = current.octave;
+    s.view = current.view; s.learnArea = current.learnArea; s.keysLayout = current.keysLayout; s.octave = current.octave;
     s.mix.master = current.mix.master;
     s.chordsOn = false; s.melodyOn = false; s.arpOn = false;
     if (lesson.groove === null) { s.mute.drums = true; s.mute.bass = true; }
@@ -1765,6 +1777,93 @@
     return quarters < 80 ? 'calm' : quarters < 105 ? 'mid' : quarters < 125 ? 'brisk' : 'fast';
   }
 
+  /* ------------------------------------------------------------------------
+     AKKORD-ZEITLEISTE (Redesign, Akkordfolgen-Editor D6). Jeder Akkord der
+     Folge hat eine LÄNGE (½ · 1 · 2 Takte, `chordLen[i]`; fehlt das Feld,
+     gilt für alle `chordBars`) und einen WECHSEL (`chordPush[i]`: 0 auf der
+     Eins, 2 eine Achtel früher, 1 eine Sechzehntel früher — Zahl = Schritte).
+     Vorgezogen wird auch der Wechsel über die Loop-Grenze, der allererste
+     Takt (g = 0, nach dem Einzähler) nie. „Nachziehen“ gibt es nicht: das ist
+     eine Länge (½ Takt). Reine Funktionen, siehe redesignSelfTest.
+     ------------------------------------------------------------------------ */
+  const CHORD_LENS = [.5, 1, 2];
+  const CHORD_PUSHES = [0, 2, 1];
+  /** Länge/Vorziehen je Akkord auf `n` Akkorde normalisieren (null = überall Standard). */
+  /** Längen einlesen: überall gleich 1 oder 2 Takte → chordBars (wie früher), sonst je Akkord. */
+  function foldChordLens(raw, n, chordBars = 1) {
+    if (!Array.isArray(raw) || !raw.length) return { chordBars, chordLen: null };
+    const last = CHORD_LENS.includes(raw[raw.length - 1]) ? raw[raw.length - 1] : chordBars;
+    const list = Array.from({ length: n }, (_, i) => (CHORD_LENS.includes(raw[i]) ? raw[i] : last));
+    if (list.every((x) => x === list[0]) && (list[0] === 1 || list[0] === 2)) return { chordBars: list[0], chordLen: null };
+    return { chordBars, chordLen: list };
+  }
+  function normChordPush(raw, n) {
+    if (!Array.isArray(raw)) return null;
+    const list = Array.from({ length: n }, (_, i) => (CHORD_PUSHES.includes(raw[i]) ? raw[i] : 0));
+    return list.every((x) => !x) ? null : list;
+  }
+  /** Zeitleiste der Folge in Schritten: Anfang, Länge, Vorziehen je Akkord, Gesamtlänge. */
+  function chordTimeline(n, barSteps, chordBars = 1, chordLen = null, chordPush = null) {
+    const lens = Array.from({ length: n }, (_, i) => Math.max(1, Math.round((chordLen?.[i] ?? chordBars) * barSteps)));
+    const starts = [];
+    let at = 0;
+    for (const len of lens) { starts.push(at); at += len; }
+    // Vorziehen nur, wenn der vorige Akkord dafür lang genug ist; bei einem
+    // einzigen Akkord gibt es keinen Wechsel.
+    const push = Array.from({ length: n }, (_, i) => {
+      const p = n > 1 ? (chordPush?.[i] || 0) : 0;
+      return p < lens[(i + n - 1) % n] ? p : 0;
+    });
+    return { n, barSteps, lens, starts, push, total: at };
+  }
+  /** Welcher Akkord klingt im Schritt `g`? `pushed: false` = ohne Vorziehen
+   *  (für die Melodie, die über dem Takt-Akkord geschrieben ist). Liefert
+   *  Index, absoluten Anfang/Ende und ob hier ein Akkord neu anschlägt. */
+  function chordAtStep(tl, g, pushed = true) {
+    const { n, starts, total } = tl;
+    const push = pushed ? tl.push : tl.push.map(() => 0);
+    const gg = Math.max(0, g);
+    const cycle = Math.floor(gg / total);
+    const pos = gg - cycle * total;
+    const base = cycle * total;
+    // Wechselpunkte innerhalb eines Durchlaufs; der des ersten Akkords liegt
+    // (außer ganz am Anfang) am Ende des vorigen Durchlaufs.
+    const eff = starts.map((st, i) => (i ? st - push[i] : 0));
+    const wrap = total - push[0];
+    if (push[0] && pos >= wrap) {
+      const start = base + wrap;
+      const end = base + total + (n > 1 ? eff[1] : wrap);
+      return { index: 0, start, end, chordStart: gg === start };
+    }
+    let i = n - 1;
+    while (i > 0 && eff[i] > pos) i--;
+    const start = i === 0 ? (cycle === 0 ? 0 : base - push[0]) : base + eff[i];
+    const end = i + 1 < n ? base + eff[i + 1] : base + wrap;
+    return { index: i, start, end, chordStart: gg === start };
+  }
+  /** Takte, nach denen sich die Harmonie (auf Takt-Einsen) wiederholt. */
+  function chordCycleBars(tl) {
+    return tl.total % tl.barSteps === 0 ? tl.total / tl.barSteps : (2 * tl.total) / tl.barSteps;
+  }
+  const chordTimelineOf = (s, n, barSteps) => chordTimeline(n, barSteps, s.chordBars, s.chordLen, s.chordPush);
+
+  /* ------------------------------------------------------------------------
+     SWING-STUFEN (4.4). state.swing bleibt die eine Wahrheit (0 = gerade);
+     die Stufe ist daraus abgeleitet. Für Achtel- wie Sechzehntel-Swing gilt
+     dasselbe Verhältnis (1 + swing/2) / 2 (siehe _swingOffset): leicht ≈ 57 %,
+     Shuffle ≈ 67 % (Triole). Bei 3/4 und 6/8 nicht angeboten.
+     ------------------------------------------------------------------------ */
+  const SWING_LEVELS = [['straight', 0], ['light', .28], ['shuffle', .67]];
+  const swingRatio = (swing) => (1 + swing / 2) / 2;
+  /** Nächste Stufe zum Wert; null, wenn der Wert (Studio, exakt) zu weit weg liegt. */
+  function swingLevelOf(swing) {
+    let best = null;
+    for (const [id, v] of SWING_LEVELS) if (Math.abs(v - swing) <= .06 && (!best || Math.abs(v - swing) < Math.abs(best[1] - swing))) best = [id, v];
+    return best ? best[0] : null;
+  }
+  const swingValueOf = (level) => (SWING_LEVELS.find(([id]) => id === level) || SWING_LEVELS[0])[1];
+  const swingOffered = (meter) => meter === '4/4';
+
   /** Klingende Akkordfolge eines Stands (wie GrooveLabView._progression). */
   function progressionOfState(s) {
     const base = PROGRESSIONS.find((p) => p.id === s.progId) || PROGRESSIONS[0];
@@ -1778,10 +1877,10 @@
   const modeStepsOf = (s) => (MODES.find((m) => m.id === s.modeId) || MODES[0]).steps;
 
   /** Harmonie eines Stands am Schritt g (wie GrooveLabView._harmonyAt). */
-  function harmonyOfState(s, g) {
+  function harmonyOfState(s, g, pushed = true) {
     const prog = progressionOfState(s);
     const barSteps = METERS[meterOfState(s)].steps;
-    const index = Math.floor(Math.floor(g / barSteps) / s.chordBars) % prog.degrees.length;
+    const { index } = chordAtStep(chordTimelineOf(s, prog.degrees.length, barSteps), g, pushed);
     const deg = prog.degrees[index];
     const alter = prog.alter?.[index] || null;
     return { keyRoot: s.keyRoot, steps: chordSteps(modeStepsOf(s), s.modeId, prog, deg, alter), deg, sevenths: !!prog.sevenths, index, alter, bass: prog.bass?.[index] || 0 };
@@ -1832,13 +1931,13 @@
       o.melodyRef = 'chord';
     }
     if (song.sound) o.sound = soundFromPreset(presetIndexByName(song.sound));
-    o.view = 'deconstruct';
+    o.view = 'learn'; o.learnArea = 'dc';
 
     // „Meine Version“: Vorgegebenes wie im Original, Gesuchtes neutral —
     // leeres Raster, Tempo 100, ein einziger Akkord, Melodie aus.
     const m = pinLegacySound(defaultState());
     m.bassSoundId = 'round';
-    m.view = 'deconstruct';
+    m.view = 'learn'; m.learnArea = 'dc';
     m.keyRoot = o.keyRoot;
     m.patternIndex = 0;
     m.beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, perc: {}, bass: {} };
@@ -2033,7 +2132,7 @@
     const level = dcLevel(song.level);
     const fresh = dcBuild(song.id);
     const mine = sanitizeState(raw.mine && typeof raw.mine === 'object' ? raw.mine : fresh.mine);
-    mine.view = 'deconstruct';
+    mine.view = 'learn'; mine.learnArea = 'dc';
     const isDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
     const out = { v: 2, song: song.id, level: level.id, created: isDate(raw.created) ? raw.created : null,
       original: fresh.original, mine, checks: {}, done: {}, revealed: raw.revealed === true, revealedEls: {}, solved: {} };
@@ -2048,9 +2147,28 @@
     return out;
   }
 
-  // Ansichten des Labs (state.view); 'deconstruct' seit de:construct.
-  const VIEWS = ['choir', 'studio', 'workshop', 'deconstruct'];
-  const VIEW_LABEL = { choir: 'lab.viewChoir', studio: 'lab.viewStudio', workshop: 'lab.viewWorkshop', deconstruct: 'lab.viewDeconstruct' };
+  // Ansichten des Labs (Redesign): state.view 'choir' (einfach) | 'studio' (Spuren) |
+  // 'learn'; in Lernen nennt state.learnArea den Bereich: 'tasks' (Chor-Aufgaben),
+  // 'course' (Workshop/Kurs), 'dc' (de:construct), null = Übersicht der Kacheln.
+  // Bis zum Redesign (state.layout fehlt) hieß 'choir' die Aufgaben-Ansicht.
+  const VIEWS = ['choir', 'studio', 'learn'];
+  const VIEW_LABEL = { choir: 'lab.viewChoir', studio: 'lab.viewStudio', learn: 'lab.viewLearn' };
+  const LEARN_AREAS = ['tasks', 'course', 'dc'];
+  // Interne Betriebsart (was gerade läuft) je Lern-Bereich — so heißen sie im Code weiter.
+  const AREA_MODE = { tasks: 'tasks', course: 'workshop', dc: 'deconstruct' };
+  const MODE_AREA = { tasks: 'tasks', workshop: 'course', deconstruct: 'dc' };
+  /** Betriebsart eines Stands: 'choir' | 'studio' | 'learn' | 'tasks' | 'workshop' | 'deconstruct' | null. */
+  const uiModeOf = (s) => (s.view === 'learn' ? AREA_MODE[s.learnArea] || 'learn' : s.view);
+  /** Gespeicherte Ansicht (auch alte Werte) → [view, learnArea] (idempotent). */
+  function viewOfRaw(raw) {
+    const v = raw.view;
+    if (v === 'workshop') return ['learn', 'course'];
+    if (v === 'deconstruct') return ['learn', 'dc'];
+    if (v === 'tasks') return ['learn', 'tasks'];
+    if (v === 'choir' && raw.layout !== 2) return raw.choirTask ? ['learn', 'tasks'] : ['choir', null];
+    if (v === 'learn') return ['learn', LEARN_AREAS.includes(raw.learnArea) ? raw.learnArea : null];
+    return VIEWS.includes(v) ? [v, null] : [null, null];
+  }
 
   const TABS = [
     { id: 'beat', labelKey: 'lab.tabBeat' },
@@ -2063,12 +2181,330 @@
   ];
 
   /* ------------------------------------------------------------------------
+     STILE, ENERGIE, RAUM, HÖREN AUF (Redesign, Abschnitt 4 der Anweisung;
+     Inhalte vom Berater „Musikproduzent & -pädagoge“ festgelegt). Alles reine
+     Daten und Funktionen — die View schreibt das Ergebnis in den Zustand
+     (applyStyle/applyEnergy), danach ist es ein ganz normaler Stand, den das
+     Studio weiter bearbeiten kann. Ein Stil lässt Tonart und Tempo stehen.
+     ------------------------------------------------------------------------ */
+  const ENERGY_IDS = ['still', 'calm', 'drive', 'full'];
+  const ROOM_IDS = ['dry', 'rehearsal', 'hall', 'church'];
+  const HEAR_IDS = ['rhythm', 'balanced', 'harmony'];
+  /** Raum-Makro: Hallanteil (absoluter Send, ersetzt unter einem Raum den Anteil
+   *  der Klänge), Nachhall in s, Vorverzögerung in ms, Breite (→ fx.chorus). */
+  const ROOMS = {
+    dry: { wet: .12, length: .6, pre: 10, width: .1 },
+    rehearsal: { wet: .35, length: 1.4, pre: 20, width: .2 },
+    hall: { wet: .5, length: 2.3, pre: 30, width: .3 },
+    church: { wet: .65, length: 3.6, pre: 40, width: .35 },
+  };
+  /** Anteil am Raum je Ebene: Pad am meisten; Bass und Kick bleiben trocken (kein Send). */
+  const ROOM_SEND = { chordsPad: 1, chordsKeys: .6, melody: .7, arp: .6, drone: .7, keys: .5 };
+  /** „Hören auf“: Faktor auf state.mix je Bus (state.mix bleibt unverändert). */
+  const HEAR_FOCUS = {
+    rhythm: { drums: 1.18, bass: 1.12, chords: .6, drone: .6, melody: .85, arp: .7, keys: 1 },
+    balanced: {},
+    harmony: { drums: .45, bass: .8, chords: 1.33, drone: 1.33, melody: .85, arp: 1.1, keys: 1 },
+  };
+  /** Energie: „Voll“ = dichter, nicht lauter — Gesamtpegel und einzelne Busse ausgleichen. */
+  const ENERGY_TRIM = {
+    still: { all: 1.06, chords: 1.1, bass: .9 }, calm: { all: 1 }, drive: { all: .94 }, full: { all: .85, drums: .9, chords: .9 },
+  };
+  /** Helligkeit der Akkorde je Energie (Faktor auf den Filter). */
+  const ENERGY_BRIGHT = { still: .85, calm: .9, drive: 1, full: 1.25 };
+  /** Mix-Faktor eines Busses aus Hören auf und Energie. */
+  const busFactor = (s, bus) => (HEAR_FOCUS[s.hearFocus]?.[bus] ?? 1) * (ENERGY_TRIM[s.energy]?.[bus] ?? 1);
+
+  /** Klang der Akkorde-Spur (state.chordSound): Preset und Art (pad bekommt mehr Raum). */
+  const CHORD_SOUNDS = [
+    ['synth', 'Airy Choir', 'pad'], ['choir', 'Chor Ooh', 'pad'], ['piano', 'Klavier', 'keys'], ['organ', 'Vintage Organ', 'keys'],
+    ['epiano', 'Tape Keys', 'keys'], ['guitar', 'E-Gitarre', 'keys'], ['pad', 'Moon Pad', 'pad'], ['strings', 'Streicher', 'pad'],
+  ];
+  const CHORD_SOUND_IDS = CHORD_SOUNDS.map(([id]) => id);
+  /** Zweiter, leiser Pad-Layer unter den Akkorden („Klavier + Pad“): Preset, Pegel. */
+  const CHORD_PADS = { airy: ['Airy Choir', .4], moon: ['Moon Pad', .5] };
+  const CHORD_PLAYS = ['held', 'rhythm', 'arp'];
+  /** Arpeggio der Akkorde-Spur: alle zwei Schritte eine Stufe über dem Akkordgrundton. */
+  const CHORD_ARP = { every: 2, degs: [0, 2, 4, 7, 4, 2] };
+  /** Spielweisen des Basses (bassVariant). */
+  const BASS_PLAYS = ['off', 'whole', 'half', 'quarter', 'eighths', 'offbeat', 'octaves', 'line', 'line1'];
+  const PUSH_OF = { one: 0, eighth: 2, sixteenth: 1 };
+
+  /** Spuren des Studios (D2): Bus, Schloss, Farbe und die Bedienfelder (data-part) je
+   *  Bereich des Blatts. Feste Spurtypen über dem bestehenden Zustand: Liegeton =
+   *  droneOn, 2. Akkorde-Spur = Arp-Ebene, Aufnahme = Sample-Spuren (Phrasen). */
+  const STUDIO_TRACKS = {
+    drums: { bus: 'drums', lock: 'beat', color: 'var(--accent)', pattern: ['loop', 'grid'], sound: ['kit'], mix: ['groove'] },
+    bass: { bus: 'bass', lock: 'beat', color: '#c4620f', pattern: ['bassPlay', 'grid'], sound: ['bassSound'], mix: [] },
+    chords: { bus: 'chords', lock: 'harmony', color: '#2f6fd6', pattern: ['chordPlay', 'satb'], sound: ['chordSoundSel'], mix: [] },
+    melody: { bus: 'melody', lock: 'melody', color: '#0f7c6e', pattern: ['melody'], sound: ['sound'], mix: [] },
+    drone: { bus: 'drone', lock: null, color: '#7a5bd6', pattern: ['drone'], sound: null, mix: [] },
+    arp: { bus: 'arp', lock: null, color: '#2f8fd6', pattern: ['arp'], sound: ['arpSoundNote'], mix: [] },
+    rec: { bus: null, lock: null, color: '#b15b00', pattern: ['recNote'], sound: null, mix: [] },
+  };
+  /** Klänge der Chor-Spielfläche (Klang ▾). */
+  const SURFACE_SOUNDS = ['Klavier', 'Tape Keys', 'Vintage Organ', 'E-Gitarre', 'Streicher', 'Moon Pad'];
+  /** Bass-Stufe (wie in DRUM_PATTERNS) eines gespielten Tons über dem Akkord `h`. */
+  function bassDegreeOf(midi, h) {
+    const root = h.keyRoot + degreeSemis(h.steps, h.deg);
+    const semis = mod(midi - root, 12);
+    let best = 0;
+    let bestDist = 99;
+    for (let d = 0; d < 7; d++) {
+      const iv = mod(degreeSemis(h.steps, h.deg + d) - degreeSemis(h.steps, h.deg), 12);
+      const dist = Math.min(mod(iv - semis, 12), mod(semis - iv, 12));
+      if (dist < bestDist) { best = d; bestDist = dist; }
+    }
+    return best;
+  }
+  /** Kurs → Studio: Spur und Bereich des Blatts je Reiter einer Einheit (lesson.tab). */
+  const LESSON_TRACK = { beat: ['drums', 'pattern'], harmony: ['chords', 'pattern'], melody: ['melody', 'pattern'], sound: ['melody', 'sound'], keys: ['arp', 'pattern'], mixer: [null, 'mix'] };
+  /** Spuren, in die die Spielfläche spielen und aufnehmen kann. */
+  const SURFACE_TARGETS = ['drums', 'bass', 'chords', 'melody', 'arp'];
+
+  /* Die acht Stile. drums je Energie (Still · Ruhig · Treibend · Voll): Loop-Name und
+     Ausdünnung (thin 'calm' bzw. 'calm16', siehe thinBeat; Still = keine Drums, Loop
+     der Stufe Ruhig für Taktart und Basslinie). chords je Stufe: 'held', 'arp' oder
+     Anschläge [Schritt, Länge, Faktor] je Takt. Bewusste Abweichungen vom Raster in 4.1
+     (Berater): Walzer und Lied spielen schon bei Ruhig rhythmisch bzw. als Arpeggio;
+     Choral, Walzer, Lied ohne Pumpen; Elektro ohne Fill bei Treibend, gehaltenes Pad
+     mit Pumpen statt Anschlägen; Choral bei Still ohne Bass. Reihenfolge = Stil ‹ ›. */
+  const H8 = (vels) => vels.map((v, i) => [i * 2, 2, v]);
+  const STYLES = [
+    { id: 'choral', meter: '4/4', bpm: 72, room: 'church', energy: 'still', swing: 'straight', push: 'one',
+      drums: [null, ['Pop Ballad', 'calm'], ['Pop Ballad'], ['Halftime Pop']], bass: ['off', 'whole', 'half', 'quarter'],
+      sound: 'choir', pad: null, bassSound: 'round', voicing: 'satb', add9: false,
+      chords: ['held', 'held', [[0, 8, 1], [8, 8, .85]], [[0, 4, 1], [4, 4, .7], [8, 4, .9], [12, 4, .7]]],
+      fills: [0, 0, 8, 4], pump: [0, 0, 0, 0] },
+    { id: 'ballad', meter: '4/4', bpm: 70, room: 'hall', energy: 'calm', swing: 'straight', push: 'one',
+      drums: [null, ['Pop Ballad', 'calm'], ['Pop Ballad'], ['Half-Time Drop']], bass: ['whole', 'half', 'quarter', 'eighths'],
+      sound: 'piano', pad: 'moon', bassSound: 'round', voicing: 'pop', add9: false,
+      chords: ['held', 'held', H8([1, .6, .8, .6, .9, .6, .8, .6]), [[0, 3, 1], [3, 3, .75], [6, 2, .8], [8, 3, .95], [11, 3, .75], [14, 2, .8]]],
+      fills: [0, 0, 8, 4], pump: [0, 0, .1, .2] },
+    { id: 'pop', meter: '4/4', bpm: 104, room: 'rehearsal', energy: 'drive', swing: 'straight', push: 'eighth',
+      drums: [null, ['Pop Stomp', 'calm'], ['Backbeat Open'], ['Pop Stomp']], bass: ['whole', 'half', 'eighths', 'eighths'],
+      sound: 'piano', pad: 'airy', bassSound: 'finger', voicing: 'pop', add9: false,
+      chords: ['held', 'held', H8([1, .65, .85, .65, .95, .65, .85, .65]), [[0, 3, 1], [3, 3, .8], [6, 2, .85], [8, 3, 1], [11, 3, .8], [14, 2, .85]]],
+      fills: [0, 0, 8, 4], pump: [0, 0, .2, .4] },
+    { id: 'gospel', meter: '4/4', bpm: 88, room: 'hall', energy: 'drive', swing: 'light', push: 'eighth',
+      drums: [null, ['Swing Ride'], ['Gospel Shuffle'], ['Swing Soul']], bass: ['whole', 'half', 'line', 'line1'],
+      sound: 'organ', pad: null, bassSound: 'finger', voicing: 'pop', add9: true,
+      chords: ['held', 'held', [[0, 6, 1], [6, 2, .7], [8, 6, .95], [14, 2, .7]], [[0, 4, 1], [4, 2, .6], [6, 2, .8], [10, 4, .9], [14, 2, .8]]],
+      fills: [0, 0, 8, 4], pump: [0, 0, .15, .3] },
+    { id: 'waltz', meter: '3/4', bpm: 112, room: 'hall', energy: 'calm', swing: 'straight', push: 'one',
+      drums: [null, ['Waltz Step', 'calm'], ['Waltz Step'], ['Jazz Waltz']], bass: ['whole', 'whole', 'line', 'line'],
+      sound: 'piano', pad: null, bassSound: 'finger', voicing: 'pop', add9: false,
+      chords: ['held', [[4, 4, .7], [8, 4, .7]], [[4, 3, .85], [8, 3, .8]], [[4, 2, 1], [8, 2, .9]]],
+      fills: [0, 0, 8, 4], pump: [0, 0, 0, 0] },
+    { id: 'song68', meter: '6/8', bpm: 56, room: 'rehearsal', energy: 'calm', swing: 'straight', push: 'one',
+      drums: [null, ['6/8 Ballad', 'calm'], ['6/8 Ballad'], ['Folk Jig']], bass: ['whole', 'half', 'line', 'line'],
+      sound: 'guitar', pad: null, bassSound: 'round', voicing: 'pop', add9: false,
+      chords: ['held', 'arp', 'arp', [[0, 2, 1], [2, 2, .5], [4, 2, .7], [6, 2, .9], [8, 2, .5], [10, 2, .7]]],
+      fills: [0, 0, 8, 4], pump: [0, 0, 0, 0] },
+    { id: 'funk', meter: '4/4', bpm: 98, room: 'dry', energy: 'drive', swing: 'straight', push: 'sixteenth',
+      drums: [null, ['Glass Funk', 'calm16'], ['Glass Funk'], ['Afrobeat Skip']], bass: ['whole', 'half', 'line1', 'line1'],
+      sound: 'epiano', pad: null, bassSound: 'growl', voicing: 'pop', add9: true,
+      chords: ['held', 'held', [[0, 2, 1], [3, 1, .7], [6, 1, .85], [10, 2, .9], [13, 1, .7]],
+        [[0, 1, 1], [3, 1, .75], [4, 1, .5], [6, 2, .9], [9, 1, .7], [10, 1, .85], [13, 1, .75], [14, 1, .6]]],
+      fills: [0, 0, 8, 4], pump: [0, 0, .15, .3] },
+    { id: 'electro', meter: '4/4', bpm: 122, room: 'hall', energy: 'full', swing: 'straight', push: 'eighth',
+      drums: [null, ['Deep House', 'calm'], ['House Bounce'], ['Deep House']], bass: ['whole', 'half', 'offbeat', 'octaves'],
+      sound: 'pad', pad: null, bassSound: 'sub', voicing: 'pop', add9: true,
+      chords: ['held', 'held', 'held', 'held'],
+      fills: [0, 0, 0, 8], pump: [0, .2, .4, .65] },
+  ];
+  const STYLE_IDS = STYLES.map((x) => x.id);
+  const styleOf = (id) => STYLES.find((x) => x.id === id) || null;
+
+  /** Bass-Spielweise als reine Funktion aus der Linie des Loops (Berater, 0b). Stufen
+   *  wie in DRUM_PATTERNS (Tonleiterstufen über dem Akkordgrundton). */
+  function bassVariant(pattern, play) {
+    const meter = METERS[pattern.meter];
+    const n = meter.steps;
+    const line = {};
+    (pattern.bass || []).forEach((st, i) => { line[st] = pattern.bassNotes?.[i] ?? 0; });
+    const steps = Object.keys(line).map(Number).sort((a, b) => a - b);
+    const d = (st) => { let v = 0; for (const x of steps) if (x <= st) v = line[x]; return v; };
+    const last = steps.length ? line[steps[steps.length - 1]] : 0;
+    const SAFE = [0, 2, 4, 7];
+    const out = {};
+    switch (play) {
+      case 'off': break;
+      case 'whole': out[0] = 0; break;
+      case 'half':
+        out[0] = 0;
+        if (pattern.meter === '4/4') out[8] = 0;
+        else if (pattern.meter === '6/8') out[6] = SAFE.includes(d(6)) ? d(6) : 4;
+        break;
+      case 'quarter': {
+        const beats = pattern.meter === '6/8' ? [0, 6] : meter.beats;
+        beats.forEach((b, i) => { out[b] = i === 0 ? 0 : i === beats.length - 1 ? last : (SAFE.includes(d(b)) ? d(b) : 0); });
+        break;
+      }
+      case 'eighths':
+        for (let st = 0; st < n; st += 2) out[st] = 0;
+        out[n - 2] = last;
+        break;
+      case 'offbeat':
+        for (let st = 2; st < n; st += 4) out[st] = 0;
+        break;
+      case 'octaves':
+        for (let st = 0; st < n; st += 2) out[st] = st % 4 === 0 ? 0 : 7;
+        break;
+      case 'line1':
+        Object.assign(out, line);
+        if (out[0] === undefined) {
+          if (out[1] !== undefined) delete out[1];
+          out[0] = 0;
+        }
+        break;
+      default: Object.assign(out, line); // 'line'
+    }
+    return out;
+  }
+  /** Ausdünnung für die Stufe Ruhig (Berater, 0a): Kick nur auf der Eins, Rim-Ersatz
+   *  (Ghost-Snare) auf dem Backbeat, Shaker; 'calm16' (Funk) lässt die Hi-Hat leise stehen. */
+  function thinBeat(beat, pattern, thin) {
+    const out = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, perc: {}, bass: { ...beat.bass } };
+    let perc = null;
+    if (beat.kick[0] !== undefined || thin) out.kick[0] = 1;
+    if (thin === 'calm16') {
+      for (const [st, v] of Object.entries(beat.hat)) out.hat[st] = Math.round(v * .6 * 100) / 100;
+      return { beat: out, perc };
+    }
+    if (pattern.meter === '4/4') {
+      const backbeat = [4, 12].some((st) => beat.snare[st] !== undefined || beat.clap[st] !== undefined);
+      if (backbeat) { out.snare[4] = .45; out.snare[12] = .45; }
+      [2, 6, 10, 14].forEach((st) => { out.perc[st] = .6; });
+      perc = 'shaker';
+    } else if (pattern.meter === '3/4') {
+      out.snare[4] = .45; out.snare[8] = .45;
+    } else {
+      out.snare[6] = .45;
+      [2, 4, 8, 10].forEach((st) => { out.perc[st] = .5; });
+      perc = 'shaker';
+    }
+    return { beat: out, perc };
+  }
+  /** Was eine Energie-Stufe eines Stils festlegt (reine Funktion): Loop, Raster, Bass,
+   *  Fill, Pumpen, Spielweise der Akkorde. Tempo, Tonart, Akkorde und Lage nie. */
+  function resolveEnergy(styleId, energy) {
+    const style = styleOf(styleId);
+    const e = ENERGY_IDS.indexOf(energy);
+    if (!style || e < 0) return null;
+    const stage = style.drums[e] || style.drums[1];
+    const patternIndex = Math.max(0, patternIndexByName(stage[0]));
+    const pattern = DRUM_PATTERNS[patternIndex];
+    let beat = beatFromPattern(pattern);
+    let percSound = percOf(pattern);
+    if (!style.drums[e]) {
+      beat = { kick: {}, snare: {}, clap: {}, hat: {}, open: {}, perc: {}, bass: {} };
+    } else if (stage[1]) {
+      const thinned = thinBeat(beat, pattern, stage[1]);
+      beat = thinned.beat;
+      if (thinned.perc) percSound = thinned.perc;
+    }
+    const bassPlay = style.bass[e];
+    beat.bass = bassVariant(pattern, bassPlay);
+    const chords = style.chords[e];
+    return {
+      patternIndex, beat, percSound, bassPlay,
+      fills: style.fills[e], pump: style.pump[e],
+      chordPlay: Array.isArray(chords) ? 'rhythm' : chords,
+      chordHits: Array.isArray(chords) ? chords.map((h) => [...h]) : null,
+    };
+  }
+  /** Energie in einen Stand schreiben (Kopie). */
+  function applyEnergy(state, energy) {
+    const r = resolveEnergy(state.styleId, energy);
+    if (!r) return state;
+    const s = JSON.parse(JSON.stringify(state));
+    Object.assign(s, r);
+    s.energy = energy;
+    s.beatEdited = false;
+    return s;
+  }
+  /** Stil in einen Stand schreiben (Kopie): Rhythmus-Familie, Bass, Klang, Raum,
+   *  Standard-Energie, Swing, Vorziehen. Tonart und Tempo bleiben stehen. */
+  function applyStyle(state, styleId, energy = null) {
+    const style = styleOf(styleId);
+    if (!style) return state;
+    let s = JSON.parse(JSON.stringify(state));
+    s.styleId = style.id;
+    s = applyEnergy(s, ENERGY_IDS.includes(energy) ? energy : style.energy);
+    // Taktart kann wechseln: Tempo im Achtel-Bezug halten (wie _convertTempo).
+    s.bpm = clamp(Math.round(s.eighths / eighthsPerBeat(style.meter)), BPM_MIN, BPM_MAX);
+    s.chordSound = style.sound;
+    s.chordPad = style.pad;
+    s.chordVoicing = style.voicing;
+    s.chordAdd9 = style.add9;
+    s.chordsOn = true;
+    s.bassSoundId = style.bassSound;
+    s.swing = swingOffered(style.meter) ? swingValueOf(style.swing) : 0;
+    setRoom(s, style.room);
+    const n = progressionOfState(s).degrees.length;
+    s.chordPush = normChordPush(Array(n).fill(PUSH_OF[style.push]), n);
+    if (s.melodyBars && s.melodyMeter !== style.meter) { s.melodyBars = null; s.melodyMeter = null; s.melodyName = null; s.melodyOwnId = null; s.melodyRef = 'chord'; }
+    if (MELODIES[s.melodyIndex].meter !== style.meter) s.melodyIndex = firstMelodyOfMeter(style.meter);
+    s.sampleLanes = sanitizeSampleLanes(s.sampleLanes, METERS[style.meter].steps);
+    return s;
+  }
+  /** Raum-Makro in einen Stand schreiben: Nachhall und Breite (Hallanteil/Vorverzögerung
+   *  liest _syncEngine aus ROOMS). Echo gehört nicht dazu. */
+  function setRoom(s, room) {
+    if (!ROOMS[room]) { s.room = null; return s; }
+    s.room = room;
+    s.fx.reverbLength = ROOMS[room].length;
+    s.fx.chorus = ROOMS[room].width;
+    s.fx.reverbOn = true;
+    return s;
+  }
+  /** Weicht ein Stand vom Stil (bei seiner Energie) ab? Je Element, für Chor (D5). */
+  function styleDiff(s) {
+    const out = { any: false, rhythm: false, bass: false, sound: false, room: false, push: false };
+    const style = styleOf(s.styleId);
+    const r = style && resolveEnergy(s.styleId, s.energy);
+    if (!r) return { ...out, any: !!s.styleId, none: true };
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const drums = (b) => DRUM_TRACKS.map((tr) => Object.entries(b[tr] || {}).sort(([x], [y]) => x - y));
+    out.rhythm = s.patternIndex !== r.patternIndex || !same(drums(s.beat), drums(r.beat)) || s.fills !== r.fills || Math.abs(s.pump - r.pump) > .005
+      || s.chordPlay !== r.chordPlay || !same(s.chordHits, r.chordHits);
+    out.bass = !same(Object.entries(s.beat.bass).sort(([x], [y]) => x - y), Object.entries(r.beat.bass).sort(([x], [y]) => x - y)) || s.bassSoundId !== style.bassSound;
+    out.sound = s.chordSound !== style.sound || (s.chordPad || null) !== style.pad || s.chordVoicing !== style.voicing || s.chordAdd9 !== style.add9;
+    out.room = s.room !== style.room;
+    const n = progressionOfState(s).degrees.length;
+    out.push = !same(s.chordPush, normChordPush(Array(n).fill(PUSH_OF[style.push]), n));
+    out.any = out.rhythm || out.bass || out.sound || out.room || out.push;
+    return out;
+  }
+  /** Anschläge der Akkorde-Spur je Takt einlesen: [Schritt, Länge, Faktor]. */
+  function sanitizeHits(raw, steps) {
+    if (!Array.isArray(raw)) return null;
+    const list = raw.filter((h) => Array.isArray(h) && Number.isInteger(h[0]) && h[0] >= 0 && h[0] < steps && Number.isFinite(h[1]) && h[1] > 0)
+      .slice(0, steps).map(([st, len, v]) => [st, clamp(Math.round(len * 4) / 4, .25, steps - st), Number.isFinite(v) ? clamp(Math.round(v * 100) / 100, .1, 1) : 1])
+      .sort((a, b) => a[0] - b[0]).filter((h, i, arr) => !i || arr[i - 1][0] !== h[0]);
+    return list.length ? list : null;
+  }
+  /** Anschläge eines Takts der Akkorde-Spur (reine Funktion): bei 'held' nur der
+   *  Akkordanfang, bei 'rhythm' die Anschläge (plus vorgezogene Wechsel), bei 'arp'
+   *  CHORD_ARP. Liefert [{ at (Schritt im Takt), len, vel, deg? }]. */
+  function chordCompAt(play, hits, step, barSteps) {
+    if (play === 'arp') {
+      if (step % CHORD_ARP.every) return [];
+      const i = step / CHORD_ARP.every;
+      return [{ at: step, len: CHORD_ARP.every, vel: i ? .75 : 1, deg: CHORD_ARP.degs[i % CHORD_ARP.degs.length] }];
+    }
+    if (play !== 'rhythm' || !hits) return [];
+    return hits.filter(([st]) => st === step && st < barSteps).map(([at, len, vel]) => ({ at, len, vel }));
+  }
+
+  /* ------------------------------------------------------------------------
      ZUSTAND — alles, was gespeichert, geteilt, gewürfelt und rückgängig
      gemacht werden kann. Flüchtiges (gerade gedrückte Tasten, Latch) liegt
      bewusst außerhalb in der View.
      ------------------------------------------------------------------------ */
 
-  function defaultState() {
+  function baseState() {
     // Neue Stände der Studio-Ansicht (Paket 7d): Pop Stomp, Pop Hook, Klavier, Pop-Satz,
     // Chor-Pad an. Workshop und de:construct beginnen über pinLegacy… wie früher.
     const pattern = DRUM_PATTERNS[patternIndexByName('Pop Stomp')];
@@ -2097,7 +2533,8 @@
       // Satz der Akkorde ('satb' Chor | 'pop' enge Lage), Farbe add9, Klang ('synth' | 'choir').
       chordVoicing: 'pop', chordAdd9: false, chordSound: 'choir',
       droneOn: false, droneFifth: true,
-      melodyIndex: melodyIndexByName('Pop Hook'), melodyOn: true, melodyOctave: 4,
+      // Melodie aus (4.7: sie konkurriert mit dem Sopran); Vorlage Pop Hook nach dem Antippen.
+      melodyIndex: melodyIndexByName('Pop Hook'), melodyOn: false, melodyOctave: 4,
       // Bearbeitete oder eigene Melodie: die Takte selbst (null = Vorlage
       // melodyIndex unverändert), dazu Taktart, Name und ggf. Bibliotheks-Id.
       melodyBars: null, melodyMeter: null, melodyName: null, melodyOwnId: null,
@@ -2123,8 +2560,24 @@
       lessonId: null,
       // Kick-Klang (Workshop Paket 6), siehe KIT_DEFAULTS.
       kit: { ...KIT_DEFAULTS },
+      // Redesign (Chor · Studio · Lernen): `layout` 2 kennzeichnet die neue Bedeutung
+      // von `view` (siehe viewOfRaw), learnArea den Bereich in Lernen.
+      layout: 2, learnArea: null,
+      // Stil mit Energie (STYLES, 4.1/4.2), Raum (ROOMS, 4.3; null = Hall wie
+      // eingestellt), Hören auf (HEAR_FOCUS, 4.5). styleId/energy null = eigene Einstellung.
+      styleId: null, energy: null, room: 'rehearsal', hearFocus: 'balanced',
+      // Länge/Wechsel je Akkord (chordTimeline), Einzähler vor dem Start (1 Takt).
+      chordLen: null, chordPush: null, countIn: true,
+      // Spur Akkorde: Spielweise ('held' | 'rhythm' | 'arp'), Anschläge je Takt (rhythmisch),
+      // Lage (−1/0/+1 Oktave). Bass: Spielweise (BASS_PLAYS, null = Linie wie bearbeitet)
+      // und „bleibt auf der Eins“ (zieht bei vorgezogenen Akkorden nicht mit vor).
+      chordPlay: 'held', chordHits: null, chordOctave: 0, bassPlay: null, bassHold: false,
+      // Pad-Layer unter den Akkorden (CHORD_PADS), null = keiner.
+      chordPad: null,
     };
   }
+  /** Neuer Stand: Grundstand mit Stil Pop (Energie Treibend, Raum Probe), wie D1. */
+  function defaultState() { return applyStyle(baseState(), 'pop'); }
 
   /* Melodie-Editor: sichtbarer Stufenbereich (8 oben … eine Oktave tiefer
      bis zur 5 unten), wählbare Tonlängen in Sechzehnteln und Obergrenzen. */
@@ -2270,8 +2723,9 @@
    *  prüfen — fremde Codes dürfen nichts setzen, woran die Engine oder das
    *  Rendering scheitern würden. Unbekanntes fällt auf den Standard zurück. */
   function sanitizeState(raw) {
-    const s = defaultState();
-    if (!raw || typeof raw !== 'object') return s;
+    if (!raw || typeof raw !== 'object') return defaultState();
+    // Vom ungestylten Grundstand aus: was ein Stand nicht nennt, klingt wie früher.
+    const s = baseState();
     const num = (v, lo, hi, fb) => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, lo, hi) : fb);
     const int = (v, lo, hi, fb) => (Number.isInteger(v) && v >= lo && v <= hi ? v : fb);
     const bool = (v, fb) => (typeof v === 'boolean' ? v : fb);
@@ -2292,10 +2746,10 @@
     s.beat = sanitizeBeat(raw.beat, pattern);
     s.beatEdited = bool(raw.beatEdited, false);
     for (const track of TRACK_IDS) s.trackOn[track] = bool(obj(raw.trackOn)[track], true);
-    s.bassSoundId = oneOf(raw.bassSoundId, BASS_SOUNDS.map((b) => b.id), raw.view === 'deconstruct' ? 'round' : ['choir', 'workshop'].includes(raw.view) || raw.choirTask || raw.lessonId ? 'pluck' : s.bassSoundId);
+    s.bassSoundId = oneOf(raw.bassSoundId, BASS_SOUNDS.map((b) => b.id), raw.view === 'deconstruct' ? 'round' : (raw.view === 'choir' && raw.layout !== 2) || raw.view === 'workshop' || raw.choirTask || raw.lessonId ? 'pluck' : s.bassSoundId);
     // Alte Stände aus Chor-Aufgaben, Workshop und de:construct (ohne die
     // neuen Felder) klingen weiter wie damals.
-    const legacy = ['choir', 'workshop', 'deconstruct'].includes(raw.view) || !!raw.choirTask || !!raw.lessonId;
+    const legacy = (raw.view === 'choir' && raw.layout !== 2) || ['workshop', 'deconstruct'].includes(raw.view) || !!raw.choirTask || !!raw.lessonId;
     s.drumKit = oneOf(raw.drumKit, DRUM_KITS, legacy ? 'synth' : 'auto');
     s.feel = bool(raw.feel, !legacy);
     s.fills = oneOf(raw.fills, FILL_LENGTHS, legacy ? 0 : 8);
@@ -2327,7 +2781,8 @@
     // Stände ohne diese Felder klingen wie vor Paket 7: SATB-Satz, Synth-Chor.
     s.chordVoicing = oneOf(raw.chordVoicing, ['satb', 'pop'], 'satb');
     s.chordAdd9 = bool(raw.chordAdd9, false);
-    s.chordSound = oneOf(raw.chordSound, ['synth', 'choir'], 'synth');
+    s.chordSound = oneOf(raw.chordSound, CHORD_SOUND_IDS, 'synth');
+    s.chordPad = oneOf(raw.chordPad, Object.keys(CHORD_PADS), null);
     for (const v of SATB) s.satb[v] = oneOf(obj(raw.satb)[v], ['on', 'focus', 'mute'], 'on');
     s.droneFifth = bool(raw.droneFifth, true);
     s.melodyIndex = int(raw.melodyIndex, 0, MELODIES.length - 1, 0);
@@ -2360,7 +2815,23 @@
     };
     s.automation = sanitizeAutomation(raw.automation);
     for (const lock of Object.keys(s.locks)) s.locks[lock] = bool(obj(raw.locks)[lock], false);
-    s.view = oneOf(raw.view, VIEWS, null);
+    [s.view, s.learnArea] = viewOfRaw(raw);
+    // Redesign-Felder. Alte Stände (ohne layout) klingen weiter wie damals: kein
+    // Stil, kein Raum-Makro, nichts vorgezogen.
+    const fresh = raw.layout === 2;
+    s.styleId = fresh ? oneOf(raw.styleId, STYLE_IDS, null) : null;
+    s.energy = fresh ? oneOf(raw.energy, ENERGY_IDS, null) : null;
+    s.room = fresh ? oneOf(raw.room, ROOM_IDS, null) : null;
+    s.hearFocus = oneOf(raw.hearFocus, HEAR_IDS, 'balanced');
+    s.countIn = bool(raw.countIn, true);
+    const nChords = progressionOfState(s).degrees.length;
+    Object.assign(s, foldChordLens(raw.chordLen, nChords, s.chordBars));
+    s.chordPush = normChordPush(raw.chordPush, nChords);
+    s.chordPlay = oneOf(raw.chordPlay, CHORD_PLAYS, 'held');
+    s.chordHits = sanitizeHits(raw.chordHits, METERS[pattern.meter].steps);
+    s.chordOctave = oneOf(raw.chordOctave, [-1, 0, 1], 0);
+    s.bassPlay = oneOf(raw.bassPlay, BASS_PLAYS, null);
+    s.bassHold = bool(raw.bassHold, false);
     s.choirTask = oneOf(raw.choirTask, CHOIR_TASKS.map((x) => x.id), null);
     s.lessonId = oneOf(raw.lessonId, WORKSHOP_LESSONS.map((l) => l.id), null);
     for (const [key, [lo, hi]] of Object.entries(KIT_RANGES)) s.kit[key] = num(obj(raw.kit)[key], lo, hi, KIT_DEFAULTS[key]);
@@ -2468,6 +2939,9 @@
     reset: svg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'),
     speaker: svg('<path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>'),
     speakerOff: svg('<path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9l5 6M21 9l-5 6"/>'),
+    chevron: svg('<path d="m6 9 6 6 6-6"/>'),
+    piano: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 5v8M12 5v8M16 5v8M8 13v6M12 13v6M16 13v6"/>'),
+    waves: svg('<path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 11v2"/>'),
   };
 
   // Ein Piktogramm je Drumloop und Klang-Preset (siehe `icon`) plus die
@@ -2951,7 +3425,7 @@
       const reverbIn = gain(1);
       // Hall am Pumpen vorbei, mit Vorverzögerung und Hochpass: die Fahne
       // soll weder mitpumpen noch den Bass-/Kick-Bereich zuschmieren.
-      const preDelay = ctx.createDelay(.1); preDelay.delayTime.value = .025;
+      const preDelay = ctx.createDelay(.1); preDelay.delayTime.value = .025; // Raum: setPreDelay
       const reverbHP = ctx.createBiquadFilter();
       reverbHP.type = 'highpass'; reverbHP.frequency.value = 250; reverbHP.Q.value = .7;
       const reverbReturn = gain(1, master);
@@ -2979,7 +3453,7 @@
         this.layers[id] = { input, shaper, level, reverbSend, echoSend };
       }
 
-      this.buses = { master, drums, bass, duck, synthSum, chorusWet, convolver, delay, feedback, reverbIn, reverbReturn, echoIn };
+      this.buses = { master, drums, bass, duck, synthSum, chorusWet, convolver, delay, feedback, reverbIn, reverbReturn, echoIn, preDelay };
       this.noiseBuffer = this._whiteNoise(.5);
     }
 
@@ -3011,6 +3485,12 @@
       if (!this.ctx) return;
       const node = this.layers[bus]?.level || this.buses[bus];
       node?.gain.setTargetAtTime(clamp(value, 0, 1), this.ctx.currentTime, .02);
+    }
+
+    /** Vorverzögerung des Halls in s (Raum-Makro, Redesign 4.3). */
+    setPreDelay(seconds) {
+      if (!this.ctx || !this.buses.preDelay) return;
+      this.buses.preDelay.delayTime.setTargetAtTime(clamp(seconds, 0, .09), this.ctx.currentTime, .03);
     }
 
     /** Klangabhängige Teile einer Ebene: Hall-/Echo-Anteil und Drive. */
@@ -3835,6 +4315,8 @@
       this.autoRec = { phase: 'idle', bars: 2, startStep: 0, startTime: 0, stepSec: 0, barSteps: 16, events: [], last: null, base: null };
       this._soundLabels = {};
       this.rec = { phase: 'idle', bars: 2, startStep: 0, startTime: 0, stepSec: 0, barSteps: 16, notes: [], open: new Map(), take: null };
+      // Aufnahme der Studio-Spielfläche (Redesign 3.7): Ziel, dazu/ersetzen, Schritte.
+      this.sfRec = { phase: 'idle', mode: 'add', target: null, startStep: 0, endStep: 0 };
 
       // Überlastungsanzeige: Zeitpunkte erkannter Aussetzer, letzter Scheduler-
       // Tick, letzter Vergleich Audiozeit/Wanduhr, Zähler der Browser-Statistik.
@@ -3884,6 +4366,8 @@
       this._buildKeyboard();
       this._wireKeyboard(this.$('.keyboard'), '.key');
       this._wireKeyboard(this.$('.scale-pads'), '.pad');
+      this._wireKeyboard(this.$('.sf-piano'), '.key');
+      this._wireKeyboard(this.$('.sf-scale'), '.pad');
       this._renderAll();
       this._setTab('beat');
     }
@@ -3920,6 +4404,8 @@
 
     async close() {
       this._toggleOverloadPop(false, { focus: false });
+      this._toggleViewMenu(false, { focus: false });
+      this._closeAllLayers();
       this._smpRecAbort();
       this._closeConfirm();
       this._setBeatZoom(false);
@@ -3937,7 +4423,7 @@
       // _persist in der Ablage `deconstruct`); als letzter Stand gilt der
       // Studio-Stand — mit der Ansicht, damit es beim nächsten Mal hier weitergeht.
       this._saved.last = this._dcActive && this._dcStash
-        ? { ...JSON.parse(JSON.stringify(this._dcStash.state)), view: 'deconstruct' }
+        ? { ...JSON.parse(JSON.stringify(this._dcStash.state)), view: 'learn', learnArea: 'dc' }
         : this._snapshot();
       this._persist();
       this.hidden = true;
@@ -4021,10 +4507,12 @@
     _applyState(state, { history = true } = {}) {
       if (history) this._pushHistory();
       const droneWasOn = this.state.droneOn;
-      const view = this.state.view;
+      const { view, learnArea } = this.state;
       this.state = state;
       this.state.droneOn = droneWasOn;
-      this.state.view = view; // die Ansicht ist keine Musik — Undo/Zufall lassen sie
+      // die Ansicht ist keine Musik — Undo/Zufall lassen sie
+      this.state.view = view;
+      this.state.learnArea = learnArea;
       this._afterStateChange();
     }
 
@@ -4046,35 +4534,1118 @@
 
     /* ---- Ansicht: Chor · Studio (Didaktik Paket 8) ---- */
 
-    _applyView(view) {
-      const v = VIEWS.includes(view) ? view : (this._entry === 'tools' ? 'choir' : 'studio');
+    /* Redesign: Ansichts-Auswahl, Chor-Ansicht und Lernen (siehe Phase 2/3/8). */
+    /** Ansichts-Auswahl in der Kopfleiste: Name, Häkchen, „Zufällig“ nur im Studio. */
+    _renderViewMenu() {
+      const v = this.state.view || 'studio';
+      this.$('.view-name').textContent = t(VIEW_LABEL[v]);
+      this.$('.view-btn').setAttribute('aria-label', tf('lab.viewCurrent', { name: t(VIEW_LABEL[v]) }));
+      this.$all('.view-opt').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === v)));
+      const random = this.$('.menu-random');
+      if (random) random.hidden = this._uiMode() !== 'studio';
+    }
+    _toggleViewMenu(open = this.$('.view-pop').hidden, { focus = true } = {}) {
+      const pop = this.$('.view-pop');
+      if (pop.hidden === !open) return;
+      pop.hidden = !open;
+      this.$('.view-btn').setAttribute('aria-expanded', String(open));
+      if (open) (this.$('.view-opt[aria-checked="true"]') || this.$('.view-opt')).focus();
+      else if (focus) this.$('.view-btn').focus();
+    }
+    /* ---- Chor (D1, D5): Tonart, Tempo, Stil mit Energie und Raum, dann die Elemente
+       zum Durchklicken. Zeigt denselben Stand wie das Studio; was Chor nicht abbilden
+       kann, steht als „Eigene Einstellung (Studio)“ daneben — nie still verworfen. ---- */
+
+    /** Tonart als Text („G-Dur“, „e-Moll“, „D dorisch“). */
+    _keyLabel(s = this.state) {
+      let root = spell(s.keyRoot, s.keyRoot, s.modeId, labLang);
+      if (labLang === 'de' && (s.modeId === 'minor' || s.modeId === 'dorian')) root = root.charAt(0).toLowerCase() + root.slice(1);
+      return tf(`lab.chor.keyFmt.${s.modeId}`, { root });
+    }
+    /** Folgen-Vorlagen, die zum Modus passen (Akkorde ‹ ›). */
+    _progCycle() { return PROGRESSIONS.filter((p) => p.id !== 'drone' && progFitsMode(p, this.state.modeId)); }
+    /** Rhythmen zum Durchklicken: erst die Leiter des Stils, dann die übrigen Loops gleicher Taktart. */
+    _rhythmCycle() {
+      const meter = this._meter();
+      const style = styleOf(this.state.styleId);
+      const first = style ? style.drums.filter(Boolean).map(([name]) => patternIndexByName(name)) : [];
+      const rest = [...orderIndexes(BEAT_ORDER, patternIndexByName), ...DRUM_PATTERNS.map((_, i) => i)];
+      return [...new Set([...first, ...rest])].filter((i) => i >= 0 && DRUM_PATTERNS[i].meter === meter);
+    }
+    _bassCycle() { return BASS_PLAYS.filter((p) => p !== 'offbeat' || this._meter() === '4/4'); }
+    _melodyCycle() {
+      const meter = this._meter();
+      return [-1, ...[...new Set([...orderIndexes(MELODY_ORDER, melodyIndexByName), ...MELODIES.map((_, i) => i)])].filter((i) => MELODIES[i].meter === meter)];
+    }
+    /** Vorziehen, das der Stil (sonst nichts) für neue Akkorde vorgibt. */
+    _stylePush() { const st = styleOf(this.state.styleId); return st ? PUSH_OF[st.push] : 0; }
+    /** Länge/Vorziehen an eine geänderte Akkordzahl anpassen (Vorlagenwechsel, Editor). */
+    _normChordArrays({ fresh = false } = {}) {
+      const s = this.state;
+      const n = this._progression().degrees.length;
+      if (fresh) { s.chordLen = null; s.chordPush = normChordPush(Array(n).fill(this._stylePush()), n); return; }
+      if (s.chordLen && s.chordLen.length !== n) Object.assign(s, foldChordLens(s.chordLen, n, s.chordBars));
+      if (s.chordPush && s.chordPush.length !== n) s.chordPush = normChordPush(Array.from({ length: n }, (_, i) => s.chordPush[i] ?? this._stylePush()), n);
+    }
+    /** Ganzen Stand ersetzen (Stil, Zurücksetzen) — Ansicht und Liegeton bleiben, ein Undo-Schritt. */
+    _replaceState(next) {
+      const meterBefore = this._meter();
+      this._applyState(next);
+      if (this.playing && this._meter() !== meterBefore) this.globalStep = Math.ceil(this.globalStep / this._barSteps()) * this._barSteps();
+    }
+    /** Weitere Spuren, die Chor nicht zeigt (Liegeton, 2. Akkorde-Spur, Aufnahmen). */
+    _extraTracks() {
+      const s = this.state;
+      const list = [];
+      if (s.droneOn) list.push(['drone', t('lab.track.drone')]);
+      if (s.arpOn) list.push(['arp', t('lab.track.arp')]);
+      s.sampleLanes.forEach((l) => list.push(['lane', this._sampleMeta(l.padId)?.name || t('lab.track.rec')]));
+      return list;
+    }
+
+    _renderChor() {
+      const host = this.$('.chor-view');
+      if (!host || host.hidden) return;
+      const s = this.state;
+      const meter = this._meter();
+      const diff = styleDiff(s);
+      const style = styleOf(s.styleId);
+      const check = (sel, value) => this.$all(`${sel} [role="radio"]`).forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === value)));
+      this.$('.chor-note').hidden = !(style && diff.any);
+      this.$('.chor-key-name').textContent = this._keyLabel();
+      this.$('.chor-key-name').setAttribute('aria-label', tf('lab.chor.keyAria', { key: this._keyLabel() }));
+      this.$('.chor-bpm').textContent = `${tempoSymbol(meter)} ${s.bpm}`;
+      const swingBox = this.$('.chor-swing');
+      swingBox.hidden = !swingOffered(meter);
+      check('.chor-swing', swingLevelOf(s.swing));
+      const styleBpm = style && Math.round(style.bpm);
+      const far = style && Math.abs(s.bpm - styleBpm) / styleBpm > .25;
+      const chip = this.$('.chor-style-bpm');
+      chip.hidden = !far;
+      if (far) chip.textContent = tf('lab.chor.styleBpm', { bpm: styleBpm });
+      this.$('.chor-style-name').textContent = style ? t(`lab.style.${style.id}.name`) : t('lab.chor.styleNone');
+      this.$('.chor-style-desc').textContent = style ? (diff.any ? t('lab.chor.styleAdjusted') : t(`lab.style.${style.id}.desc`)) : t('lab.chor.styleNoneDesc');
+      this.$('.chor-style-desc').classList.toggle('is-own', !!style && diff.any);
+      const energyCustom = !!style && (diff.rhythm || diff.bass);
+      this.$('.chor-energy-badge').hidden = !energyCustom;
+      this.$('.chor-energy-hint').hidden = !energyCustom;
+      this.$('.chor-energy').classList.toggle('is-off', !style);
+      this.$all('.chor-energy [role="radio"]').forEach((b) => { b.disabled = !style; });
+      check('.chor-energy', this._pendingEnergy || s.energy);
+      check('.chor-room', s.room);
+      check('.chor-hear', s.hearFocus);
+      // Akkorde: die Folge in der Tonart, ← an vorgezogenen Wechseln.
+      const prog = this._progression();
+      const tl = this._chordTimeline(prog);
+      const chords = this.$('.chor-chords');
+      chords.replaceChildren(...prog.degrees.map((_, i) => {
+        const chipEl = document.createElement('span');
+        chipEl.className = 'chor-chord';
+        // ← an vorgezogenen Wechseln; der erste Akkord kommt nach dem Einzähler immer auf der Eins.
+        chipEl.textContent = `${i && tl.push[i] ? '←' : ''}${this._nameAt(prog, i)}`;
+        return chipEl;
+      }));
+      chords.setAttribute('aria-label', tf('lab.chor.chordsAria', { list: prog.degrees.map((_, i) => `${this._nameAt(prog, i)}${tl.push[i] ? ` (${t('lab.chor.pushedShort')})` : ''}`).join(', ') }));
+      // Elemente.
+      const pattern = this._pattern();
+      const row = (el, name, sub, own = false) => {
+        const r = this.$(`.chor-el[data-el="${el}"]`);
+        r.querySelector('.chor-el-name').textContent = name;
+        const subEl = r.querySelector('.chor-el-sub');
+        subEl.textContent = sub;
+        subEl.classList.toggle('is-own', own);
+        r.classList.toggle('is-off', (el === 'melody' && (!s.melodyOn || s.mute.melody)) || (el === 'sound' && (!s.chordsOn || s.mute.chords)));
+      };
+      // Eigenes Muster: weder der Loop selbst noch die Fassung des Stils bei dieser Energie.
+      const drumsOf = (b) => JSON.stringify(DRUM_TRACKS.map((tr) => Object.entries(b[tr] || {}).sort(([x], [y]) => x - y)));
+      const resolved = style && resolveEnergy(s.styleId, s.energy);
+      const fromStyle = !!resolved && resolved.patternIndex === s.patternIndex;
+      const rhythmOwn = s.beatEdited || (drumsOf(s.beat) !== drumsOf(beatFromPattern(pattern)) && !(fromStyle && drumsOf(s.beat) === drumsOf(resolved.beat)));
+      row('rhythm', pattern.name, rhythmOwn ? t('lab.chor.ownStudio') : `${pattern.meter} · ${t(fromStyle && !diff.rhythm ? 'lab.chor.fromStyle' : 'lab.chor.loop')}`, rhythmOwn);
+      const bassMatch = s.bassPlay && JSON.stringify(Object.entries(bassVariant(pattern, s.bassPlay)).sort()) === JSON.stringify(Object.entries(s.beat.bass || {}).sort());
+      row('bass', !s.trackOn.bass || s.mute.bass ? t('lab.chor.off') : bassMatch ? t(`lab.bassPlay.${s.bassPlay}`) : t('lab.chor.ownLine'), BASS_SOUNDS.find((b) => b.id === s.bassSoundId)?.name || '', !bassMatch);
+      const soundName = `${t(`lab.chordSound.${s.chordSound}`)}${s.chordPad ? ` + ${t('lab.chor.pad')}` : ''}`;
+      row('sound', s.chordsOn && !s.mute.chords ? soundName : t('lab.chor.off'), t(s.chordVoicing === 'satb' ? 'lab.chor.voicingSatb' : 'lab.chor.voicingPop'));
+      const mel = this._melody();
+      const melOn = s.melodyOn && !s.mute.melody;
+      row('melody', melOn ? mel.name : t('lab.chor.off'), melOn ? SYNTH_PRESETS[s.sound.presetIndex]?.name || '' : tf('lab.chor.melodyHint', { name: MELODIES[s.melodyIndex].name }), s.melodyOn && !!s.melodyBars);
+      // Weitere Spuren und Zurücksetzen (D5).
+      const extra = this._extraTracks();
+      const extraBox = this.$('.chor-extra');
+      extraBox.hidden = !extra.length;
+      if (extra.length) {
+        this.$('.chor-extra-text').textContent = tf(extra.length === 1 ? 'lab.chor.extraOne' : 'lab.chor.extraMany', { n: extra.length, list: extra.map(([, name]) => name).join(', ') });
+        const muted = (!s.arpOn || s.mute.arp) && (!s.droneOn || s.mute.drone) && s.sampleLanes.every((l) => !l.on);
+        this.$('[data-action="chor-extra-mute"]').setAttribute('aria-pressed', String(muted));
+      }
+      this.$('.chor-reset').hidden = !(style && diff.any);
+      // Lernen/Aufgaben: was die Aufgabe gesetzt hat, ist markiert.
+      const task = this._uiMode() === 'tasks' ? CHOIR_TASKS.find((x) => x.id === s.choirTask) : null;
+      const marks = new Set();
+      if (task) {
+        const keys = Object.keys(task.set);
+        if (keys.includes('bpm')) marks.add('tempo');
+        if (keys.includes('progId') || keys.includes('modeId')) marks.add('chords');
+        if (keys.includes('modeId')) marks.add('key');
+        if ('groove' in task) marks.add('rhythm');
+        if (task.melody || keys.includes('melodyOn')) marks.add('melody');
+        if (keys.includes('chordsOn')) marks.add('sound');
+      }
+      this.$('.chor-pair > .chor-card:first-child').classList.toggle('is-task-set', marks.has('key'));
+      this.$('.chor-pair > .chor-card:last-child').classList.toggle('is-task-set', marks.has('tempo'));
+      this.$('.chor-chords-row').classList.toggle('is-task-set', marks.has('chords'));
+      for (const el of ['rhythm', 'bass', 'sound', 'melody']) this.$(`.chor-el[data-el="${el}"]`).classList.toggle('is-task-set', marks.has(el));
+    }
+
+    /** Akkorde, Rhythmus, Bass, Klang, Melodie ‹ › (Chor). */
+    _chorStep(el, dir) {
+      const s = this.state;
+      const step = (list, current) => { const i = list.indexOf(current); return list[mod((i < 0 ? (dir > 0 ? -1 : 0) : i) + dir, list.length)]; };
+      this._pushHistory();
+      if (el === 'rhythm') {
+        const idx = step(this._rhythmCycle(), s.patternIndex);
+        s.patternIndex = idx;
+        s.beat = beatFromPattern(this._pattern());
+        // Die Bass-Spielweise bleibt, sie wird aus der Linie des neuen Loops abgeleitet.
+        if (s.bassPlay) s.beat.bass = bassVariant(this._pattern(), s.bassPlay);
+        s.percSound = percOf(this._pattern());
+        s.beatEdited = false;
+      } else if (el === 'bass') {
+        const play = step(this._bassCycle(), s.bassPlay);
+        s.bassPlay = play;
+        s.beat.bass = bassVariant(this._pattern(), play);
+        s.trackOn.bass = true; s.mute.bass = false;
+      } else if (el === 'sound') {
+        s.chordSound = step(CHORD_SOUND_IDS, s.chordSound);
+        s.chordsOn = true;
+        this._loadInstruments();
+      } else if (el === 'melody') {
+        const cur = s.melodyOn ? s.melodyIndex : -1;
+        const next = step(this._melodyCycle(), s.melodyBars ? s.melodyIndex : cur);
+        if (next < 0) s.melodyOn = false;
+        else { this._clearMelodyEdit(); s.melodyIndex = next; s.melodyOn = true; }
+      }
+      this._afterStateChange();
+    }
+
+    _chorStyle(dir) {
+      const i = STYLE_IDS.indexOf(this.state.styleId);
+      const id = STYLE_IDS[mod((i < 0 ? (dir > 0 ? -1 : 0) : i) + dir, STYLE_IDS.length)];
+      this._replaceState(applyStyle(this.state, id));
+      this._setStatus(tf('lab.chor.styleSet', { name: t(`lab.style.${id}.name`) }));
+    }
+
+    _chorProg(dir) {
+      const s = this.state;
+      const list = this._progCycle();
+      const i = list.findIndex((p) => p.id === s.progId);
+      const next = list[mod((i < 0 ? (dir > 0 ? -1 : 0) : i) + dir, list.length)];
+      this._pushHistory();
+      this._clearProgEdit();
+      s.progId = next.id;
+      this._normChordArrays({ fresh: true });
+      this._onHarmonyChange();
+      this._setStatus(tf('lab.chor.progSet', { name: t(progKey('Name', next.id)) }));
+    }
+
+    /** Tonart-Auswahl (Antippen oder langes Drücken auf die Tonart): Grundton und Tongeschlecht. */
+    _openKeyLayer() {
+      const s = this.state;
+      const roots = this.$('.key-roots');
+      const names = Array.from({ length: 12 }, (_, pc) => spell(pc, pc, s.modeId, labLang));
+      roots.replaceChildren(...names.map((name, pc) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'chip'; b.setAttribute('role', 'radio');
+        b.dataset.action = 'key-root'; b.dataset.value = String(pc);
+        b.setAttribute('aria-checked', String(pc === s.keyRoot));
+        b.textContent = name;
+        return b;
+      }));
+      const modes = this.$('.key-modes');
+      modes.replaceChildren(...MODES.map((m) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'chip'; b.setAttribute('role', 'radio');
+        b.dataset.action = 'key-mode'; b.dataset.value = m.id;
+        b.setAttribute('aria-checked', String(m.id === s.modeId));
+        b.textContent = t(m.nameKey);
+        return b;
+      }));
+      this.$('.key-layer-now').textContent = this._keyLabel();
+      this._openLayer(this.$('.key-layer'), { focus: '[aria-checked="true"]' });
+    }
+
+    _openKeyLayerRefresh(group) {
+      if (this.$('.key-layer').hidden) return;
+      this._openKeyLayer();
+      this.$(`.key-${group} [aria-checked="true"]`)?.focus();
+    }
+    /** Spielfläche (Phase 6) und Akkordfolgen-Editor (Phase 4). */
+    /* ---- Spielflächen (E1, E5, E2). Chor: Vollbild quer (wo möglich), nur zum
+       Mitspielen — Piano (11 weiße Tasten, Akkordtöne als Punkte), Tonleiter (Töne der
+       Tonart), Samples (8 Pads, letztes: eigenen Sound aufnehmen). Studio: Leiste von
+       unten, spielt in die markierte Spur, EIN Knopf „● Aufnehmen“ (dazu · ersetzen;
+       Länge = Loop; Anschläge rasten auf die nächste Sechzehntel, minus Ausgabe-
+       Latenz). Ersetzt „Live einspielen“ (Beat) und die Aufnahme der Keys. ---- */
+
+    _openSurface() {
+      const choir = this._uiMode() !== 'studio';
+      const layer = this.$('.surface');
+      const ui = this.ui.sf = this.ui.sf || { tab: 'piano', shift: 0, dots: true, preset: 'Klavier' };
+      layer.classList.toggle('is-choir', choir);
+      layer.classList.toggle('is-studio', !choir);
+      if (!choir) ui.tab = this._studioTarget() === 'drums' ? 'pads' : ui.tab === 'pads' ? 'piano' : ui.tab;
+      this._renderSurface();
+      this._openLayer(layer, {
+        focus: '.sf-tabs [aria-selected="true"]',
+        onClose: () => {
+          if (this.sfRec.phase !== 'idle') this._sfRecStop();
+          this._releasePressedKeys();
+          if (this._sfFs) this._zoomRelease();
+          this._sfFs = false;
+          this._renderStudio();
+        },
+      });
+      if (choir && global.matchMedia?.('(pointer: coarse)').matches) {
+        this._sfFs = true;
+        (async () => {
+          try { if (!document.fullscreenElement && this.requestFullscreen) { await this.requestFullscreen({ navigationUI: 'hide' }); this._zoomFs = true; } } catch { /* ohne Vollbild */ }
+          // lock() wirft außerhalb von Vollbild und auf iOS — dann bleibt der Hochkant-Hinweis.
+          try { await global.screen?.orientation?.lock?.('landscape'); this._zoomLocked = true; } catch { /* nicht unterstützt */ }
+        })();
+      }
+    }
+
+    /** Anzeigename eines Pads: Werks-Klänge übersetzt („Kick“, „Tom hoch“), eigene wie benannt. */
+    _padName(meta) { return meta.factory ? t(`lab.smpName.${meta.file}`) : meta.name; }
+    /** Kit der Spielfläche: gewählt, sonst das Kit des Samplers — ist das leer, das erste mit Pads. */
+    _sfKit() {
+      const kits = this._allKits();
+      const chosen = kits.find((k) => k.id === this.ui.sf?.kitId);
+      if (chosen) return chosen;
+      const own = this._kit();
+      return own.pads.some(Boolean) ? own : kits.find((k) => k.pads.some(Boolean)) || own;
+    }
+    /** Klang beim Spielen: Chor — gewählter Klang; Studio — der Klang der Zielspur. */
+    _surfaceSound() {
+      if (this.$('.surface').classList.contains('is-choir')) {
+        const name = this.ui.sf?.preset || 'Klavier';
+        if (this._sfSoundCache?.name !== name) this._sfSoundCache = { name, sound: soundFromPreset(presetIndexByName(name)) };
+        return this._sfSoundCache.sound;
+      }
+      return this._studioTarget() === 'chords' ? this._chordSound() : this.state.sound;
+    }
+    /** Ein Ton der Spielfläche (gibt die Stimme zurück, Bass ist ein kurzer Anschlag). */
+    _surfaceVoice(midi) {
+      const now = this.engine.ctx.currentTime;
+      if (this.$('.surface').classList.contains('is-studio') && this._studioTarget() === 'bass') {
+        this.engine.playBass(now, midi - 24, 1, this._bassSound(), this._stepSeconds() * 3);
+        return null;
+      }
+      const sound = this._surfaceSound();
+      if (sound.sample) this.engine.ensureInstrument(sound.sample);
+      return this.engine.playTone(sound, midi, now, .3, undefined, { layer: 'keys', stepSeconds: this._stepSeconds() });
+    }
+
+    _renderSurface() {
+      const layer = this.$('.surface');
+      const ui = this.ui.sf;
+      const choir = layer.classList.contains('is-choir');
+      const s = this.state;
+      const target = this._studioTarget();
+      // Ziel ohne Tasten (Drums) → Pads; Pads nur für Drums bzw. in Chor.
+      const tabs = choir ? ['piano', 'scale', 'pads'] : target === 'drums' ? ['pads'] : ['piano', 'scale'];
+      if (!tabs.includes(ui.tab)) ui.tab = tabs[0];
+      this.$all('.sf-tabs [role="tab"]').forEach((b) => {
+        b.hidden = !tabs.includes(b.dataset.value);
+        b.setAttribute('aria-selected', String(b.dataset.value === ui.tab));
+        b.textContent = t(`lab.sf.tab.${b.dataset.value}${!choir && b.dataset.value === 'pads' ? 'Studio' : ''}`);
+      });
+      this.$('.sf-piano').hidden = ui.tab !== 'piano';
+      this.$('.sf-scale').hidden = ui.tab !== 'scale';
+      this.$('.sf-pads').hidden = ui.tab !== 'pads';
+      this.$('.sf-opts-keys').hidden = ui.tab === 'pads';
+      this.$('.sf-dots').hidden = ui.tab !== 'piano';
+      this.$('.sf-dots').setAttribute('aria-pressed', String(ui.dots));
+      this.$('.sf-opts-pads').hidden = ui.tab !== 'pads';
+      const soundSel = this.$('.sf-sound');
+      soundSel.closest('.sf-select').hidden = !choir;
+      this._options(soundSel, SURFACE_SOUNDS.map((name) => [name, name]), ui.preset);
+      const targetSel = this.$('.sf-target');
+      this.$('.sf-target-wrap').hidden = choir;
+      this._options(targetSel, this._studioTracks().filter((id) => SURFACE_TARGETS.includes(id)).map((id) => [id, this._trackName(id)]), target);
+      this.$('.sf-rec').hidden = choir;
+      // Pads: Kit-Wahl (mitgelieferte Kits + eigene).
+      const kits = this._allKits();
+      const kit = this._sfKit();
+      this.$('.sf-opts-pads').replaceChildren(...kits.map((k) => this._radioChip('sf-kit', k.id, k.name, k.id === kit.id)));
+      this._buildSurfaceKeys();
+      this._renderSurfaceNow();
+      this._renderSfRec();
+      const play = this.$('.sf-play');
+      play.innerHTML = this.playing ? UI_ICON.pause : UI_ICON.play;
+      play.setAttribute('aria-label', t(this.playing ? 'lab.stopAria' : 'lab.startAria'));
+    }
+
+    /** Tasten der Spielfläche neu bauen (Piano 11 weiße Tasten ab c′, Tonleiter, Pads). */
+    _buildSurfaceKeys() {
+      const s = this.state;
+      const ui = this.ui.sf;
+      const names = noteNames();
+      const base = 60 + 12 * ui.shift;
+      const WHITE = [0, 2, 4, 5, 7, 9, 11];
+      const whites = [];
+      for (let m = base; whites.length < 11; m++) if (WHITE.includes(mod(m, 12))) whites.push(m);
+      const w = 100 / whites.length;
+      const octMark = (m) => (m >= 72 ? '″' : m >= 60 ? '′' : '');
+      const piano = this.$('.sf-piano');
+      const keys = [];
+      whites.forEach((m, i) => {
+        const k = this._mk('button', 'key is-white');
+        k.type = 'button'; k.tabIndex = -1; k.dataset.midi = String(m);
+        k.style.left = `${i * w}%`; k.style.width = `${w}%`;
+        const label = `${names[mod(m, 12)].toLowerCase()}${octMark(m)}`;
+        k.setAttribute('aria-label', label);
+        k.append(this._mk('span', 'sf-dot'), this._mk('span', 'key-name', label));
+        keys.push(k);
+        if (i < whites.length - 1 && whites[i + 1] - m === 2) {
+          const b = this._mk('button', 'key is-black');
+          b.type = 'button'; b.tabIndex = -1; b.dataset.midi = String(m + 1);
+          b.style.left = `${(i + 1) * w - w * .3}%`; b.style.width = `${w * .6}%`;
+          b.setAttribute('aria-label', names[mod(m + 1, 12)]);
+          b.append(this._mk('span', 'sf-dot'));
+          keys.push(b);
+        }
+      });
+      piano.replaceChildren(...keys);
+      // Tonleiter: 7 Stufen + Oktave der Tonart, Grundton markiert.
+      const steps = this._mode().steps;
+      const root = 60 + foldRoot(s.keyRoot) + 12 * ui.shift;
+      this.$('.sf-scale').replaceChildren(...Array.from({ length: 8 }, (_, d) => {
+        const m = root + degreeSemis(steps, d);
+        const k = this._mk('button', `pad sf-step${d % 7 === 0 ? ' is-root' : ''}`);
+        k.type = 'button'; k.tabIndex = -1; k.dataset.midi = String(m);
+        const name = spell(mod(m, 12), s.keyRoot, s.modeId, labLang);
+        k.append(this._mk('strong', '', name), this._mk('small', '', String(d + 1)));
+        k.setAttribute('aria-label', `${name} (${d + 1})`);
+        return k;
+      }));
+      // Pads: 8 Pads des Kits; in Chor ist ein freies letztes Pad „Eigenen Sound aufnehmen“.
+      const kit = this._sfKit();
+      const choir = this.$('.surface').classList.contains('is-choir');
+      this.$('.sf-pads').replaceChildren(...Array.from({ length: SAMPLER_PADS }, (_, i) => {
+        // In Chor bleibt das 8. Pad immer „Eigenen Sound aufnehmen“ (auch bei vollen Kits).
+        const id = choir && i === SAMPLER_PADS - 1 ? null : kit.pads[i];
+        const meta = this._sampleMeta(id);
+        const b = this._mk('button', `sf-pad${meta ? '' : ' is-free'}${meta && !isFactoryId(id) ? ' is-own' : ''}`);
+        b.type = 'button';
+        if (!meta) {
+          b.dataset.action = 'sf-record-own';
+          b.append(this._mk('strong', '', choir || i === SAMPLER_PADS - 1 ? t('lab.sf.recordOwn') : '+'));
+          b.setAttribute('aria-label', t('lab.sf.recordOwn'));
+          return b;
+        }
+        const name = this._padName(meta);
+        b.append(this._mk('strong', '', name), this._mk('span', '', this._kindLabel(meta.kind)));
+        b.setAttribute('aria-label', tf('lab.sampler.padAria', { n: i + 1, name, kind: this._kindLabel(meta.kind) }));
+        b.addEventListener('pointerdown', (e) => { if (e.button > 0) return; e.preventDefault(); this._surfacePad(i); });
+        b.addEventListener('click', (e) => { if (e.detail === 0) this._surfacePad(i); });
+        return b;
+      }));
+      this._paintSurfaceDots();
+    }
+
+    /** Kopf der Spielfläche: Akkord groß, seine Töne, der nächste; Punkte auf den Akkordtönen. */
+    _renderSurfaceNow() {
+      if (this.$('.surface').hidden && !this.ui.sf) return;
+      const h = this._currentHarmony();
+      const prog = this._progression();
+      const s = this.state;
+      const [spellRoot, spellMode] = this._spellKeyAt(h.index);
+      const pcs = chordPitchClasses(h.keyRoot, h.steps, h.deg, h.sevenths);
+      this.$('.sf-chord').textContent = chordName(h.keyRoot, h.steps, h.deg, h.sevenths, s.modeId, labLang, h.alter, h.bass);
+      this.$('.sf-tones').textContent = pcs.map((pc) => spell(pc, spellRoot, spellMode, labLang).toLowerCase()).join(' · ');
+      this.$('.sf-next').textContent = prog.degrees.length > 1 ? `→ ${this._nameAt(prog, (h.index + 1) % prog.degrees.length)}` : '';
+      this._sfPcs = new Set(pcs);
+      this._paintSurfaceDots();
+    }
+    _paintSurfaceDots() {
+      const on = this.ui.sf?.dots !== false;
+      const pcs = this._sfPcs || new Set();
+      this.$all('.sf-piano .key').forEach((k) => k.classList.toggle('is-tone', on && pcs.has(mod(Number(k.dataset.midi), 12))));
+      this.$all('.sf-scale .pad').forEach((k) => k.classList.toggle('is-tone', pcs.has(mod(Number(k.dataset.midi), 12))));
+    }
+
+    /** Pad der Spielfläche: hören und (Studio, Aufnahme läuft) ins Muster legen. */
+    async _surfacePad(index) {
+      const id = this._sfKit().pads[index];
+      if (!id) return;
+      const tap = this.engine.ready ? this.engine.ctx.currentTime : null;
+      this.$all('.sf-pad')[index]?.classList.add('is-hit');
+      global.setTimeout(() => this.$all('.sf-pad')[index]?.classList.remove('is-hit'), 140);
+      await this._auditionPad(id);
+      if (tap !== null) this._surfaceTap({ padId: id, tap });
+    }
+
+    /** Anschlag während der Aufnahme ins Muster der Zielspur legen (Sechzehntel-Raster). */
+    _surfaceTap({ padId = null, midi = null, tap }) {
+      const rec = this.sfRec;
+      if (rec.phase !== 'recording' && rec.phase !== 'armed') return;
+      if (!this.playing || !this.stepClock || rec.target === 'melody') return;
+      const s = this.state;
+      const ctx = this.engine.ctx;
+      const latency = ctx.outputLatency || ctx.baseLatency || 0;
+      const g = quantizeTapStep(tap, this.stepClock.time, this.stepClock.g, this._stepSeconds(), latency);
+      if (g < rec.startStep || g >= rec.endStep) return;
+      const barSteps = this._barSteps();
+      const st = mod(g, barSteps);
+      if (rec.target === 'drums' && padId) {
+        const meta = this._sampleMeta(padId);
+        if (!meta) return;
+        if (isFactoryId(padId) && DRUM_TRACKS.includes(meta.track)) { s.beat[meta.track][st] = 1; s.trackOn[meta.track] = true; }
+        else {
+          let lane = s.sampleLanes.find((l) => l.padId === padId);
+          if (!lane) {
+            if (s.sampleLanes.length >= SAMPLER_MAX_LANES) { this._setStatus(tf('lab.sampler.lanesFull', { n: SAMPLER_MAX_LANES })); return; }
+            lane = { padId, on: true, layer: false, steps: {} };
+            s.sampleLanes.push(lane);
+          }
+          lane.steps[st] = 1;
+        }
+        s.beatEdited = true;
+      } else if (rec.target === 'bass' && midi !== null) {
+        const h = this._harmonyAt(g);
+        s.beat.bass[st] = bassDegreeOf(midi, h);
+        s.bassPlay = null;
+        s.trackOn.bass = true;
+      } else if (rec.target === 'chords') {
+        const hits = (s.chordHits || []).filter((x) => x[0] !== st);
+        hits.push([st, 2, .9]);
+        hits.sort((a, b) => a[0] - b[0]).forEach((x, i) => { x[1] = (hits[i + 1]?.[0] ?? barSteps) - x[0]; });
+        s.chordHits = hits;
+        s.chordPlay = 'rhythm';
+        s.chordsOn = true;
+      } else return;
+      this._sfRecDirty = true;
+      this._renderStudio();
+    }
+
+    /** „● Aufnehmen“: nächster Taktanfang (aus dem Stillstand nach dem Einzähler), Länge = Loop. */
+    async _sfRecToggle() {
+      const rec = this.sfRec;
+      if (rec.phase !== 'idle') { this._sfRecStop(); return; }
+      const target = this._studioTarget();
+      if (target === 'arp') { this._setStatus(t('lab.sf.recArp')); return; }
+      const s = this.state;
+      this._pushHistory();
+      const barSteps = this._barSteps();
+      const bars = clamp(chordCycleBars(this._chordTimeline()), 1, MEL_MAX_BARS);
+      if (rec.mode === 'replace') {
+        if (target === 'drums') { for (const tr of DRUM_TRACKS) s.beat[tr] = {}; s.sampleLanes.forEach((l) => { if (this._sampleMeta(l.padId)?.kind === 'hit') l.steps = {}; }); s.beatEdited = true; }
+        if (target === 'bass') { s.beat.bass = {}; s.bassPlay = null; }
+        if (target === 'chords') { s.chordHits = null; }
+      }
+      // Aus dem Stillstand: ab Schritt 0 (nach dem Einzähler) — vor dem Start scharf
+      // stellen, damit der Scheduler den Anfang der Aufnahme sieht.
+      const fresh = !this.playing;
+      if (fresh) rec.startStep = 0;
+      else {
+        let next = Math.ceil(this.globalStep / barSteps) * barSteps;
+        if (next - this.globalStep < barSteps / 2) next += barSteps;
+        rec.startStep = next;
+      }
+      rec.endStep = rec.startStep + bars * barSteps;
+      rec.target = target;
+      rec.phase = 'armed';
+      if (target === 'melody') {
+        // Die Melodie nimmt die vorhandene Tasten-Aufnahme (Töne mit Länge, Tonart-Bezug).
+        const r = this.rec;
+        r.bars = bars; r.barSteps = barSteps; r.notes = []; r.open.clear(); r.take = null; r.startTime = 0;
+        r.startStep = rec.startStep; r.phase = 'armed';
+      }
+      if (fresh) {
+        await this.start();
+        if (!this.playing) { rec.phase = 'idle'; this.rec.phase = 'idle'; this._renderSfRec(); return; }
+      }
+      this._renderSfRec();
+      this._renderTracks();
+    }
+    /** Fortschritt der Aufnahme (aus _drawSteps): armed → recording → fertig nach einem Loop. */
+    _sfRecTick(g) {
+      const rec = this.sfRec;
+      if (rec.phase === 'idle' || rec.target === 'melody') return;
+      if (rec.phase === 'armed' && g >= rec.startStep) { rec.phase = 'recording'; this._renderSfRec(); }
+      if (rec.phase === 'recording' && g >= rec.endStep) this._sfRecStop();
+      else if (rec.phase === 'recording') this._renderSfRec(g);
+    }
+    _sfRecStop() {
+      const rec = this.sfRec;
+      if (rec.phase === 'idle') return;
+      if (rec.target === 'melody' && (this.rec.phase === 'armed' || this.rec.phase === 'recording')) { this._recFinish(); return; }
+      rec.phase = 'idle';
+      this._setStatus(t(this._sfRecDirty ? 'lab.sf.recDone' : 'lab.recEmpty'));
+      this._sfRecDirty = false;
+      this._renderAll();
+      this._renderSfRec();
+    }
+    /** Die Tasten-Aufnahme ist fertig: in die Melodie (dazu = Töne zusammenführen). */
+    _sfRecMelody(take) {
+      const s = this.state;
+      const rec = this.sfRec;
+      const meter = this._meter();
+      const bars = this._recRotated(take);
+      let next = bars;
+      if (rec.mode === 'add' && s.melodyBars && s.melodyRef === 'key' && s.melodyMeter === meter) {
+        next = Array.from({ length: Math.max(bars.length, s.melodyBars.length) }, (_, i) => [...(s.melodyBars[i % s.melodyBars.length] || []), ...(bars[i % bars.length] || [])]);
+      }
+      const clean = sanitizeMelodyBars(next, meter, true);
+      if (clean) {
+        this._clearMelodyEdit();
+        s.melodyBars = clean; s.melodyMeter = meter; s.melodyRef = 'key'; s.melodyName = t('lab.sf.recName'); s.melodyOwnId = null; s.melodyOn = true;
+      }
+      rec.phase = 'idle';
+      this._setStatus(t(clean ? 'lab.sf.recDone' : 'lab.recEmpty'));
+      this._renderAll();
+      this._renderSfRec();
+    }
+    _renderSfRec(g = null) {
+      const rec = this.sfRec;
+      const btn = this.$('.sf-rec-btn');
+      if (!btn) return;
+      const on = rec.phase !== 'idle';
+      btn.setAttribute('aria-pressed', String(on));
+      btn.classList.toggle('is-rec', rec.phase === 'recording');
+      const barSteps = this._barSteps();
+      const bar = g !== null ? Math.floor((g - rec.startStep) / barSteps) + 1 : 1;
+      const total = Math.round((rec.endStep - rec.startStep) / barSteps);
+      this.$('.sf-rec-text').textContent = rec.phase === 'recording' ? tf('lab.sf.recRunning', { bar: clamp(bar, 1, total), total }) : rec.phase === 'armed' ? t('lab.sf.recArmed') : t('lab.sf.rec');
+      this.$all('.sf-rec-mode [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === rec.mode)));
+      this.$('.sf-rec-note').textContent = t(on ? 'lab.sf.recHintOn' : 'lab.sf.recHint');
+    }
+
+    /* ---- Studio (D2, D3, B2): Spuren statt Reiter. Song-Zeile (Tonart · Takt · Tempo ·
+       Raum), Akkordfolge, Spurkarten (Name, Unterzeile, M/S, Mini-Muster, Lautstärke).
+       Ein Spur-Blatt (Muster · Klang · Mix) hängt die vorhandenen Bedienfelder
+       (data-part) um und legt sie beim Schließen zurück — Handler, Selbsttests und der
+       Workshop-Fokus (der auf den Reitern arbeitet) bleiben so unverändert. ---- */
+
+    /** Ein Bedienfeld (data-part) in `host` hängen; die Heimat merkt ein Kommentar-Knoten. */
+    _placePart(name, host) {
+      const el = this.$(`[data-part="${name}"]`);
+      if (!el) return null;
+      this._partHome = this._partHome || new Map();
+      if (!this._partHome.has(el)) {
+        const mark = document.createComment(`part:${name}`);
+        el.before(mark);
+        this._partHome.set(el, mark);
+      }
+      host.append(el);
+      return el;
+    }
+    /** Umgehängte Bedienfelder (in `host` oder alle) zurück an ihren Platz. */
+    _restoreParts(host = null) {
+      for (const [el, mark] of [...(this._partHome || new Map())]) {
+        if (host && !host.contains(el)) continue;
+        mark.replaceWith(el);
+        this._partHome.delete(el);
+      }
+    }
+
+    _trackDef(id) { return STUDIO_TRACKS[id]; }
+    /** Spuren, die gerade da sind: die vier festen plus Liegeton, 2. Akkorde, Aufnahme. */
+    _studioTracks() {
+      const s = this.state;
+      return ['drums', 'bass', 'chords', 'melody', ...(s.droneOn ? ['drone'] : []), ...(s.arpOn ? ['arp'] : []), ...(s.sampleLanes.length ? ['rec'] : [])];
+    }
+    _trackMuted(id) {
+      const s = this.state;
+      if (id === 'rec') return s.sampleLanes.every((l) => !l.on);
+      const def = this._trackDef(id);
+      return !!s.mute[def.bus] || (id === 'bass' && !s.trackOn.bass) || (id === 'chords' && !s.chordsOn) || (id === 'melody' && !s.melodyOn);
+    }
+    /** Pegel eines Busses: Mix × Hören auf × Energie, stumm/Solo/ausgeblendet = 0. */
+    _busLevel(bus, s = this.state) {
+      const solo = this.ui.solo && this._trackDef(this.ui.solo)?.bus;
+      if (s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) || (solo && bus !== solo && bus !== 'keys')) return 0;
+      return s.mix[bus] * busFactor(s, bus);
+    }
+    _trackName(id) { return t(`lab.track.${id}`); }
+    _trackSub(id) {
+      const s = this.state;
+      const pattern = this._pattern();
+      switch (id) {
+        case 'drums': return [pattern.name, t(`lab.kit.${resolveKit(s.drumKit, pattern)}`), s.fills ? tf('lab.studio.fillEvery', { n: s.fills }) : t('lab.studio.noFill')].join(' · ');
+        case 'bass': {
+          const match = s.bassPlay && JSON.stringify(Object.entries(bassVariant(pattern, s.bassPlay)).sort()) === JSON.stringify(Object.entries(s.beat.bass || {}).sort());
+          return [match ? t(`lab.bassPlay.${s.bassPlay}`) : t('lab.studio.ownLine'), this._bassSound().name].join(' · ');
+        }
+        case 'chords': return [`${t(`lab.chordSound.${s.chordSound}`)}${s.chordPad ? ` + ${t('lab.chor.pad')}` : ''}`, t(`lab.studio.voicing.${s.chordVoicing}`), t(`lab.studio.play.${s.chordPlay}`)].join(' · ');
+        case 'melody': return s.melodyOn && !s.mute.melody ? [this._melody().name, SYNTH_PRESETS[s.sound.presetIndex]?.name || ''].join(' · ') : t('lab.studio.melodyOff');
+        case 'drone': return [this._keyLabel(), s.droneFifth ? t('lab.studio.withFifth') : ''].filter(Boolean).join(' · ');
+        case 'arp': return [t(ARP_MODES.find(([m]) => m === s.arpMode)?.[1] || 'lab.arpUp'), s.arpAuto ? t('lab.arpAuto') : t('lab.studio.arpManual')].join(' · ');
+        case 'rec': return tf('lab.studio.recCount', { n: s.sampleLanes.length });
+        default: return '';
+      }
+    }
+    /** Mini-Muster der Karte: Schritte eines Takts, auf denen die Spur anschlägt. */
+    _trackCells(id) {
+      const s = this.state;
+      const n = this._barSteps();
+      const on = new Set();
+      const keys = (obj) => Object.keys(obj || {}).map(Number);
+      if (id === 'drums') DRUM_TRACKS.forEach((tr) => { if (s.trackOn[tr]) keys(s.beat[tr]).forEach((st) => on.add(st)); });
+      else if (id === 'bass') keys(s.beat.bass).forEach((st) => on.add(st));
+      else if (id === 'chords') {
+        if (s.chordPlay === 'rhythm' && s.chordHits) s.chordHits.forEach(([st]) => on.add(st));
+        else if (s.chordPlay === 'arp') for (let st = 0; st < n; st += CHORD_ARP.every) on.add(st);
+        else on.add(0);
+      } else if (id === 'melody') { if (s.melodyOn && !s.mute.melody) (this._melody().bars[0] || []).forEach(([at]) => on.add(Math.floor(at))); }
+      else if (id === 'drone') for (let st = 0; st < n; st++) on.add(st);
+      else if (id === 'arp') for (let st = 0; st < n; st += s.arpDivision) on.add(st);
+      else if (id === 'rec') s.sampleLanes.forEach((l) => keys(l.steps).forEach((st) => on.add(st)));
+      return Array.from({ length: n }, (_, st) => on.has(st));
+    }
+
+    _renderStudio() {
+      const host = this.$('.studio-view');
+      if (!host || host.hidden) return;
+      const s = this.state;
+      const meter = this._meter();
+      const style = styleOf(s.styleId);
+      const set = (k, v, sub) => { this.$(`[data-song="${k}"]`).textContent = v; this.$(`[data-song-sub="${k}"]`).textContent = sub; };
+      set('key', this._keyLabel(), t('lab.studio.keySub'));
+      set('meter', meter, style ? tf('lab.studio.styleSub', { name: t(`lab.style.${style.id}.name`) }) : t('lab.studio.noStyle'));
+      const level = swingLevelOf(s.swing);
+      set('tempo', `${tempoSymbol(meter)} ${s.bpm}`, swingOffered(meter) || s.swing ? (level ? t(`lab.swingLevel.${level}`) : `${t('lab.swing')} ${Math.round(swingRatio(s.swing) * 100)} %`) : t('lab.swingLevel.straight'));
+      set('room', s.room ? t(`lab.room.${s.room}`) : t('lab.studio.roomOwn'), tf('lab.studio.reverbSub', { s: String(Math.round(s.fx.reverbLength * 10) / 10).replace('.', labLang === 'en' ? '.' : ',') }));
+      const prog = this._progression();
+      const tl = this._chordTimeline(prog);
+      this.$('.song-prog-list').textContent = prog.degrees.map((_, i) => `${i && tl.push[i] ? '←' : ''}${this._nameAt(prog, i)}`).join(' · ');
+      const target = this._studioTarget();
+      const cards = this.$('.track-cards');
+      const ids = this._studioTracks();
+      const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+      cards.innerHTML = ids.map((id) => {
+        const def = this._trackDef(id);
+        const muted = this._trackMuted(id);
+        const solo = this.ui.solo === id;
+        const name = this._trackName(id);
+        const cells = this._trackCells(id).map((on) => `<i${on ? ' class="on"' : ''}></i>`).join('');
+        const vol = def.bus && !(id === 'melody' && muted) ? `<label class="t-vol">${UI_ICON.speaker}<input type="range" min="0" max="1" step=".01" data-mix="${def.bus}" value="${s.mix[def.bus]}" aria-label="${esc(tf('lab.studio.volumeAria', { name }))}"></label>` : '';
+        return `<div class="t-card${id === target ? ' is-sel' : ''}${muted ? ' is-muted' : ''}${id === this.ui.hl ? ' is-hl' : ''}" data-track="${id}" style="--tc:${def.color}">
+          <div class="t-top"><button class="t-open" type="button" data-action="open-track" data-value="${id}" aria-haspopup="dialog"><span class="t-bar" aria-hidden="true"></span>
+            <span class="t-heads"><strong>${esc(name)}</strong><span>${esc(this._trackSub(id))}</span></span></button>
+            <button class="t-ms" type="button" data-action="track-mute" data-value="${id}" aria-pressed="${muted}" aria-label="${esc(tf('lab.studio.muteAria', { name }))}">M</button>
+            <button class="t-ms" type="button" data-action="track-solo" data-value="${id}" aria-pressed="${solo}" aria-label="${esc(tf('lab.studio.soloAria', { name }))}"${id === 'rec' ? ' hidden' : ''}>S</button></div>
+          <div class="t-cells" style="grid-template-columns:repeat(${this._barSteps()},minmax(0,1fr))" aria-hidden="true">${cells}</div>${vol}</div>`;
+      }).join('');
+      cards.querySelectorAll('input[data-mix]').forEach((el) => this._paintLevel?.(el));
+      this.$('.kbd-fab-text').textContent = tf('lab.studio.kbdFab', { name: this._trackName(target) });
+      if (!this.$('.track-layer').hidden) this._renderTrackHead();
+    }
+    /** Ziel der Spielfläche: die markierte Spur (nur Spuren, in die man spielen kann). */
+    _studioTarget() {
+      const ids = this._studioTracks().filter((id) => SURFACE_TARGETS.includes(id));
+      return ids.includes(this.ui.studioTarget) ? this.ui.studioTarget : 'chords';
+    }
+
+    _openTrack(id, tab = 'pattern') {
+      if (!this._trackDef(id)) return;
+      const layer = this.$('.track-layer');
+      if (SURFACE_TARGETS.includes(id)) this.ui.studioTarget = id;
+      this.ui.track = id;
+      layer.dataset.track = id;
+      this._showTrackTab(tab);
+      this._renderStudio();
+      this._openLayer(layer, { onClose: () => { this._restoreParts(this.$('.track-body')); this.$('.track-body').replaceChildren(); this.ui.track = null; this._renderStudio(); }, focus: '.track-tabs [aria-selected="true"]' });
+    }
+    _renderTrackHead() {
+      const id = this.ui.track;
+      if (!id) return;
+      const def = this._trackDef(id);
+      this.$('.track-title').textContent = this._trackName(id);
+      this.$('.track-sub').textContent = this._trackSub(id);
+      this.$('.track-color').style.background = def.color;
+      const lock = this.$('.track-lock');
+      lock.hidden = !def.lock;
+      if (def.lock) {
+        lock.dataset.lock = def.lock;
+        const locked = !!this.state.locks[def.lock];
+        lock.setAttribute('aria-pressed', String(locked));
+        lock.innerHTML = locked ? UI_ICON.lock : UI_ICON.unlock;
+      }
+    }
+    _showTrackTab(tab) {
+      const id = this.ui.track;
+      const def = this._trackDef(id);
+      const tabs = ['pattern', 'sound', 'mix'].filter((x) => x !== 'sound' || def.sound);
+      if (!tabs.includes(tab)) tab = 'pattern';
+      this.ui.trackTab = tab;
+      this.$all('.track-tabs [role="tab"]').forEach((b) => {
+        b.hidden = !tabs.includes(b.dataset.value);
+        b.setAttribute('aria-selected', String(b.dataset.value === tab));
+        b.tabIndex = b.dataset.value === tab ? 0 : -1;
+      });
+      const body = this.$('.track-body');
+      body.setAttribute('aria-labelledby', `tt-${tab}`);
+      this._restoreParts(body);
+      body.replaceChildren();
+      if (tab === 'mix') body.append(this._trackMixBlock(id));
+      for (const part of def[tab] || []) this._placePart(part, body);
+      if (id === 'bass' || id === 'drums') this._renderTracks();
+      if (id === 'chords') this._renderChordPart();
+      if (id === 'bass') this._renderBassPart();
+      if (id === 'rec') this._renderRecLanes();
+      if (id === 'melody' && tab === 'sound') this._renderSound();
+      this._renderTrackHead();
+      body.scrollTop = 0;
+    }
+    /** Mix der Spur: Lautstärke, Stumm/Solo; optionale Spuren lassen sich entfernen. */
+    _trackMixBlock(id) {
+      const s = this.state;
+      const def = this._trackDef(id);
+      const box = document.createElement('section');
+      box.className = 'panel track-mix';
+      const name = this._trackName(id);
+      const muted = this._trackMuted(id);
+      box.innerHTML = `${def.bus ? `<label class="slider-line"><span>${t('lab.studio.volume')}</span><input type="range" min="0" max="1" step=".01" data-mix="${def.bus}" value="${s.mix[def.bus]}" aria-label="${tf('lab.studio.volumeAria', { name })}"><output data-out="mix-${def.bus}">${Math.round(s.mix[def.bus] * 100)} %</output></label>` : ''}
+        <div class="chip-row"><button class="chip" type="button" data-action="track-mute" data-value="${id}" aria-pressed="${muted}">${t('lab.chor.mute')}</button>
+        ${id !== 'rec' ? `<button class="chip" type="button" data-action="track-solo" data-value="${id}" aria-pressed="${this.ui.solo === id}">${t('lab.studio.solo')}</button>` : ''}
+        ${['drone', 'arp'].includes(id) ? `<button class="chip" type="button" data-action="track-remove" data-value="${id}">${t('lab.studio.remove')}</button>` : ''}</div>
+        ${id === 'drums' ? `<p class="foot-note">${t('lab.studio.pumpHint')}</p>` : ''}${id === 'melody' || id === 'chords' ? `<p class="foot-note">${t('lab.studio.roomMixHint')}</p>` : ''}`;
+      return box;
+    }
+    /** Baustein Akkorde/Muster: Spielweise, Satz, Lage, Anschläge je Takt (D3). */
+    _renderChordPart() {
+      const s = this.state;
+      const check = (sel, value) => this.$all(`${sel} [role="radio"]`).forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === String(value))));
+      check('.cp-play', s.chordPlay);
+      check('.cp-voicing', s.chordVoicing);
+      check('.cp-oct', s.chordOctave || 0);
+      const n = this._barSteps();
+      const hits = new Map((s.chordHits || []).map((h) => [h[0], h]));
+      const box = this.$('.cp-hits');
+      box.style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr))`;
+      box.replaceChildren(...Array.from({ length: n }, (_, st) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = `cp-hit${hits.has(st) ? ' on' : ''}${Math.floor(st / METERS[this._meter()].group) % 2 ? ' alt' : ''}`;
+        b.dataset.action = 'cp-hit';
+        b.dataset.value = String(st);
+        b.setAttribute('aria-pressed', String(hits.has(st)));
+        b.setAttribute('aria-label', tf('lab.studio.hitAria', { n: st + 1 }));
+        return b;
+      }));
+      this.$('.cp-hits-box').hidden = s.chordPlay !== 'rhythm';
+      const cs = this.$('.cs-chips');
+      if (cs) {
+        cs.replaceChildren(...CHORD_SOUND_IDS.map((id) => this._radioChip('cs-sound', id, t(`lab.chordSound.${id}`), s.chordSound === id)));
+        this.$('.cs-pad-chips').replaceChildren(...[['', 'lab.studio.padNone'], ['airy', 'lab.studio.padAiry'], ['moon', 'lab.studio.padMoon']]
+          .map(([id, key]) => this._radioChip('cs-pad', id, t(key), (s.chordPad || '') === id)));
+      }
+    }
+    _renderBassPart() {
+      const s = this.state;
+      this.$('.bass-play-chips').replaceChildren(...this._bassCycle().map((id) => this._radioChip('bass-play', id, t(`lab.bassPlay.${id}`), s.bassPlay === id)));
+      this._setSwitch('bassHold', !!s.bassHold);
+    }
+    _renderRecLanes() {
+      const s = this.state;
+      const host = this.$('.rec-lanes');
+      host.replaceChildren(...s.sampleLanes.map((lane, i) => {
+        const meta = this._sampleMeta(lane.padId);
+        const row = document.createElement('div');
+        row.className = 'rec-lane';
+        const name = document.createElement('span');
+        name.textContent = meta ? `${meta.name}${meta.kind === 'loop' ? ` · ${tf('lab.studio.loopTempo', { bpm: meta.bpmAtRec })}` : ''}` : t('lab.sampler.missing');
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'chip';
+        btn.dataset.action = 'lane-toggle'; btn.dataset.value = String(i);
+        btn.setAttribute('aria-pressed', String(lane.on));
+        btn.textContent = t(lane.on ? 'lab.trackOn' : 'lab.trackOff');
+        row.append(name, btn);
+        return row;
+      }));
+    }
+    _radioChip(action, value, label, checked) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip'; b.setAttribute('role', 'radio');
+      b.dataset.action = action; b.dataset.value = value;
+      b.setAttribute('aria-checked', String(checked));
+      b.textContent = label;
+      return b;
+    }
+    /** Tempo-Blatt der Song-Zeile: Swing-Stufen und exakter Wert (nur Studio, 4.4). */
+    _renderSwingPart() {
+      const s = this.state;
+      const offered = swingOffered(this._meter());
+      this.$all('[data-part="swingExact"] .chor-swing [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === swingLevelOf(s.swing))));
+      this.$('[data-part="swingExact"] .chor-swing').hidden = !offered;
+      this.$('.swing-ratio').textContent = tf(this._pattern().swingUnit === 8 ? 'lab.studio.swingRatio8' : 'lab.studio.swingRatio16', { pct: Math.round(swingRatio(s.swing) * 100) });
+      this._renderBeat();
+    }
+
+    /** Kleines Blatt mit Bedienfeldern (Song-Zeile, + Spur, Übergang Keys/Sampler). */
+    _openPanelLayer(title, parts, { after = null } = {}) {
+      const layer = this.$('.panel-layer');
+      const body = this.$('.panel-layer-body');
+      this._restoreParts(body);
+      body.replaceChildren();
+      this.$('.panel-layer-title').textContent = title;
+      parts.forEach((p) => this._placePart(p, body));
+      after?.();
+      if (layer.hidden) this._openLayer(layer, { onClose: () => { this._restoreParts(body); body.replaceChildren(); } });
+    }
+
+    /* ---- Akkordfolgen-Editor (D6), gilt für alle Spuren. Länge je Akkord (½ · 1 · 2
+       Takte), Wechsel (auf der Eins · Achtel · 16tel früher), Stufe, Septakkorde, Bass
+       (Umkehrung), geliehen. Jede Änderung ist ein Undo-Schritt (↶ in der Leiste);
+       die Logik der Folge (prog-*) ist dieselbe wie im Harmonie-Reiter. ---- */
+
+    _openProgSheet() {
+      this.ui.progSel = clamp(this.ui.progSel || 0, 0, this._progression().degrees.length - 1);
+      this._renderProgSheet();
+      this._openLayer(this.$('.prog-layer'), { focus: '.d6-chord[aria-pressed="true"]' });
+    }
+    /** Hat der Rhythmus ein Sechzehntel-Raster (dann gibt es „16tel früher“)? */
+    _hasSixteenths() {
+      const beat = this.state.beat;
+      return TRACK_IDS.some((tr) => Object.keys(beat[tr] || {}).some((st) => Number(st) % 2 === 1)) || !!this.state.chordHits?.some(([st]) => st % 2 === 1);
+    }
+    /** Eine Änderung an der Folge samt Länge/Wechsel je Akkord (Parallel-Arrays). */
+    _progEdit(fn) {
+      const s = this.state;
+      this._pushHistory();
+      const n0 = this._progression().degrees.length;
+      const lens = Array.from({ length: n0 }, (_, i) => s.chordLen?.[i] ?? s.chordBars);
+      const push = Array.from({ length: n0 }, (_, i) => s.chordPush?.[i] || 0);
+      const degrees = this._progBegin();
+      fn({ degrees, alter: s.progAlter, bass: s.progBass, lens, push });
+      Object.assign(s, foldChordLens(lens, degrees.length, s.chordBars));
+      s.chordPush = normChordPush(push, degrees.length);
+      this._tlCache = null;
+      this._progCommit();
+    }
+
+    _renderProgSheet() {
+      const s = this.state;
+      const prog = this._progression();
+      const tl = this._chordTimeline(prog);
+      const n = prog.degrees.length;
+      const sel = this.ui.progSel = clamp(this.ui.progSel || 0, 0, n - 1);
+      const name = (i) => this._nameAt(prog, i);
+      this.$('.d6-sub').textContent = tf('lab.d6.sub', { key: this._keyLabel() });
+      this.$('.d6-tpl-name').textContent = this._progName();
+      this.$('.d6-tpl-sub').textContent = `${prog.degrees.map((_, i) => this._romanAt(prog, i)).join(' – ')} · ${t(s.progDegrees ? 'lab.d6.edited' : 'lab.d6.template')}`;
+      const totalBars = tl.total / tl.barSteps;
+      this.$('.d6-bars').textContent = tf(totalBars === 1 ? 'lab.d6.barsOne' : 'lab.d6.bars', { n: String(totalBars).replace('.', labLang === 'en' ? '.' : ',') });
+      const ruler = this.$('.d6-ruler');
+      ruler.replaceChildren(...Array.from({ length: Math.ceil(totalBars) }, (_, i) => {
+        const el = document.createElement('span');
+        el.textContent = String(i + 1);
+        el.style.flexGrow = String(Math.min(1, totalBars - i));
+        return el;
+      }));
+      const chords = this.$('.d6-chords');
+      chords.replaceChildren(...prog.degrees.map((_, i) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'd6-chord';
+        b.dataset.action = 'd6-sel';
+        b.dataset.value = String(i);
+        b.style.flexGrow = String(tl.lens[i] / tl.barSteps);
+        b.setAttribute('aria-pressed', String(i === sel));
+        const strong = document.createElement('strong');
+        strong.textContent = `${i && tl.push[i] ? '←' : ''}${name(i)}`;
+        const sub = document.createElement('span');
+        sub.textContent = this._romanAt(prog, i);
+        b.append(strong, sub);
+        b.setAttribute('aria-label', `${name(i)}, ${this._romanAt(prog, i)}, ${t(`lab.d6.len.${String(tl.lens[i] / tl.barSteps).replace('.', '')}`)}${tl.push[i] ? `, ${t(`lab.d6.push.${tl.push[i]}`)}` : ''}`);
+        return b;
+      }));
+      this.$('[data-action="d6-add"]').disabled = n >= PROG_MAX_CHORDS;
+      this.$('[data-action="d6-remove"]').disabled = n <= 1;
+      this.$('[data-action="d6-move"][data-value="-1"]').disabled = sel <= 0;
+      this.$('[data-action="d6-move"][data-value="1"]').disabled = sel >= n - 1;
+      const bar = Math.floor(tl.starts[sel] / tl.barSteps) + 1;
+      this.$('.d6-sel-title').textContent = tf('lab.d6.selected', { name: name(sel), bar });
+      const deg = prog.degrees[sel];
+      const degHost = this.$('.d6-degrees');
+      degHost.replaceChildren(...[0, 1, 2, 3, 4, 5, 6].map((d) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.setAttribute('role', 'radio');
+        b.className = 'd6-deg';
+        b.dataset.action = 'd6-deg';
+        b.dataset.value = String(d);
+        b.setAttribute('aria-checked', String(d === deg && !prog.alter?.[sel]));
+        b.textContent = chordName(s.keyRoot, this._stepsFor(d, prog), d, prog.sevenths, s.modeId);
+        b.title = romanNumeral(this._stepsFor(d, prog), d, prog.sevenths);
+        return b;
+      }));
+      const lenNow = tl.lens[sel] / tl.barSteps;
+      this.$all('.d6-len [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(Number(b.dataset.value) === lenNow)));
+      const pushNow = s.chordPush?.[sel] || 0;
+      const sixteenths = this._hasSixteenths();
+      this.$all('.d6-push [role="radio"]').forEach((b) => {
+        b.setAttribute('aria-checked', String(Number(b.dataset.value) === pushNow));
+        b.hidden = Number(b.dataset.value) === 1 && !sixteenths && pushNow !== 1;
+      });
+      this.$('.d6-push').hidden = n < 2;
+      this.$('.d6-push-label').hidden = n < 2;
+      this.$('.d6-push-note').hidden = sel !== 0 || n < 2;
+      this.$('[data-action="d6-sevenths"]').setAttribute('aria-pressed', String(!!prog.sevenths));
+      const bassNow = prog.bass?.[sel] || 0;
+      this.$('.d6-bass').textContent = `${t('lab.bassLabel')}: ${t(['lab.bassRoot', 'lab.bassThird', 'lab.bassFifth'][bassNow])} ›`;
+      const alterNow = prog.alter?.[sel] || '';
+      this.$('.d6-alter').textContent = `${t({ '': 'lab.alterNormal', borrow: 'lab.alterBorrow', secdom: 'lab.alterSecdom' }[alterNow])} ›`;
+      this.$('.d6-alter').setAttribute('aria-pressed', String(!!alterNow));
+      this.$('.d6-all').disabled = !s.chordPush;
+      const own = s.progOwnId && this._saved.progressions.find((p) => p.id === s.progOwnId);
+      this.$('.d6-own [data-action="prog-original"]').hidden = !s.progDegrees || !!s.progName;
+      this.$('.d6-own [data-action="prog-save"]').hidden = !!own;
+      this.$('.d6-own [data-action="prog-delete"]').hidden = !own;
+    }
+
+
+    /** Anfangstöne geben (Berater, E): Begleitung pausiert; Tonika-Dreiklang, dann die
+     *  Einsatztöne B → T → A → S aus dem SATB-Satz des ersten Akkords, Klavier. */
+    async _giveStartNotes() {
+      if (this.playing) this.stop();
+      try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
+      const s = this.state;
+      const eng = this.engine;
+      const prog = this._progression();
+      const first = voiceProgressionSatb(s.keyRoot, this._mode(), prog)[0];
+      if (!first) return;
+      const piano = soundFromPreset(presetIndexByName('Klavier'));
+      eng.ensureInstrument('piano');
+      eng.setLayerSound('keys', piano);
+      const t0 = eng.ctx.currentTime + .08;
+      let at = t0;
+      const opt = { layer: 'keys', glide: 0, stepSeconds: this._stepSeconds() };
+      if (prog.degrees[0] % 7 !== 0 || prog.alter?.[0] || prog.bass?.[0]) {
+        const tonic = voiceChord(chordPitchClasses(s.keyRoot, this._mode().steps, 0, false), first);
+        SATB.forEach((v) => eng.playTone(piano, tonic[v], at, .12, 1.6, opt));
+        at += 2;
+      }
+      const order = ['B', 'T', 'A', 'S'];
+      const focus = order.find((v) => s.satb[v] === 'focus');
+      const seq = focus ? [...order.filter((v) => v !== focus), focus] : order;
+      const [spellRoot, spellMode] = this._spellKeyAt(0);
+      const names = [];
+      seq.forEach((v) => {
+        const len = v === focus ? 1.4 : .9;
+        eng.playTone(piano, first[v], at, .2, len, opt);
+        names.push(`${v}: ${noteLabel(first[v], spellRoot, spellMode, labLang)}`);
+        at += len + .25;
+      });
+      SATB.forEach((v) => eng.playTone(piano, first[v], at, .12, 1.2, opt));
+      this._setStatus(names.join(' · '));
+      this.$('.chor-key-name')?.setAttribute('title', names.join(' · '));
+      global.setTimeout(() => this._syncEngine(), (at + 1.4 - t0) * 1000);
+    }
+
+    /** Lernen (D4): drei aufklappbare Kacheln — Aufgaben (Gruppen Singen · Hören · Rhythmus),
+     *  Kurs (Fortschritt, Weiterlernen) und de:construct (Fortschritt, Öffnen). */
+    _renderLearn() {
+      const host = this.$('.learn-view');
+      if (!host || host.hidden) return;
+      const open = this.ui.learnOpen || 'tasks';
+      const tile = (id, mark, title, sub, body) => `<section class="learn-tile${open === id ? ' is-open' : ''}">
+        <button class="learn-head" type="button" data-action="learn-toggle" data-value="${id}" aria-expanded="${open === id}" aria-controls="learn-body-${id}">
+          <span class="learn-mark" aria-hidden="true">${mark}</span><span class="learn-heads"><strong>${title}</strong><span>${sub}</span></span>${UI_ICON.chevron}</button>
+        <div class="learn-body" id="learn-body-${id}"${open === id ? '' : ' hidden'}>${body}</div></section>`;
+      const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+      const groups = LEARN_TASK_GROUPS.map(([g, ids]) => `<div class="learn-group"><span class="sub-label">${t(`lab.learn.group.${g}`)}</span><div class="chip-row">${ids
+        .map((id) => `<button class="chip" type="button" data-action="learn-task" data-value="${id}" aria-pressed="${this.state.choirTask === id}">${esc(t(`lab.task.${id}.title`))}</button>`).join('')}</div></div>`).join('');
+      const ws = this._saved.workshop;
+      const tour = WORKSHOP_LESSONS.filter((l) => l.tier === 'tour');
+      const doneTour = tour.filter((l) => ws.done[l.id]).length;
+      const next = Math.min(tour.length, doneTour + 1);
+      const dc = this._saved.deconstruct;
+      const solved = dc?.solved || {};
+      const solvedN = DC_SONGS.filter((x) => solved[x.id]).length;
+      const bar = (n, total) => `<div class="learn-prog" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${n}"><i style="width:${Math.round(100 * n / Math.max(1, total))}%"></i></div>`;
+      host.innerHTML = `<div class="learn-list">
+        ${tile('tasks', UI_ICON.waves, t('lab.learn.tasks'), tf('lab.learn.tasksSub', { n: CHOIR_TASKS.length }), groups)}
+        ${tile('course', `1–${tour.length}`, t('lab.viewWorkshop'), t('lab.menu.modeDesc.workshop'),
+          `<div class="learn-row">${bar(doneTour, tour.length)}<span>${tf('lab.ws.stepOf', { n: next, total: tour.length })}</span></div>
+           <button class="chip learn-go" type="button" data-action="learn-area" data-value="course">${t(doneTour ? 'lab.learn.continue' : 'lab.learn.start')} ›</button>`)}
+        ${tile('dc', 'de:', t('lab.viewDeconstruct'), t('lab.menu.modeDesc.deconstruct'),
+          `<div class="learn-row">${bar(solvedN, DC_SONGS.length)}<span>${tf('lab.learn.dcSolved', { n: solvedN, total: DC_SONGS.length })}</span></div>
+           <button class="chip learn-go" type="button" data-action="learn-area" data-value="dc">${t(dc ? 'lab.learn.continue' : 'lab.learn.start')} ›</button>`)}
+      </div>`;
+    }
+
+    /** Betriebsart: was gerade zu sehen ist ('choir' | 'studio' | 'learn' | 'tasks' | 'workshop' | 'deconstruct'). */
+    _uiMode() { return uiModeOf(this.state); }
+
+    /**
+     * Ansicht wählen. `view`: 'choir' | 'studio' | 'learn' (mit `area` 'tasks' |
+     * 'course' | 'dc' | null) — oder direkt eine Betriebsart 'tasks' | 'workshop' |
+     * 'deconstruct' (so rufen Selbsttests und Einstiege). Ohne gültige Ansicht: Einstieg
+     * über Tools → Chor, Easter Egg → Studio.
+     */
+    _applyView(view, area = view === 'learn' ? this.state.learnArea : null) {
+      let v = view;
+      let a = null;
+      if (MODE_AREA[view]) { v = 'learn'; a = MODE_AREA[view]; }
+      else if (view === 'learn') a = LEARN_AREAS.includes(area) ? area : null;
+      else if (!VIEWS.includes(view)) v = this._entry === 'tools' ? 'choir' : 'studio';
+      const mode = v === 'learn' ? AREA_MODE[a] || 'learn' : v;
       // Beim Verlassen des Workshops immer auf „Nachher“ zurück.
-      if (v !== 'workshop') this._wsAbReset();
+      if (mode !== 'workshop') this._wsAbReset();
       // de:construct verlassen: „Meine Version“ ablegen, Studio-Stand zurück.
-      if (v !== 'deconstruct' && this._dcActive) { this._dcSheetClose({ focus: false }); this.ui.dc.menu = false; this._dcLeave(); }
+      if (mode !== 'deconstruct' && this._dcActive) { this._dcSheetClose({ focus: false }); this.ui.dc.menu = false; this._dcLeave(); }
       this.state.view = v;
-      if (v === 'deconstruct' && !this._dcActive) this._dcEnter();
-      const choir = v === 'choir';
-      const workshop = v === 'workshop';
-      const dcView = v === 'deconstruct';
+      this.state.learnArea = a;
+      if (mode === 'deconstruct' && !this._dcActive) this._dcEnter();
+      const tasks = mode === 'tasks';
+      const workshop = mode === 'workshop';
+      const dcView = mode === 'deconstruct';
+      const simple = mode === 'choir';
+      const hub = mode === 'learn';
       // Ohne Song zeigt de:construct nur die Auswahl, keine Reiter.
       const dcEmpty = dcView && (!this._saved.deconstruct || this.ui.dc.choosing);
-      this.$all('[data-action="view"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === v)));
-      this.$('.tab-bar').hidden = choir || workshop || dcEmpty;
+      const studio = mode === 'studio';
+      // Studio zeigt Spuren statt Reiter; die Reiter bauen weiter Workshop und de:construct.
+      const noTabs = tasks || workshop || dcEmpty || simple || hub || studio;
+      this._closeAllLayers();
+      this._restoreParts();
+      this.ui.solo = null;
+      if (mode !== 'studio') this.ui.hl = null;
+      this.$('.tab-bar').hidden = noTabs;
       // de:construct baut mit den bekannten Reitern — der Sampler gehört nicht dazu.
       const smpBtn = this.$('.tab-btn[data-tab="sampler"]');
       if (smpBtn) smpBtn.hidden = dcView;
       if ((dcView || workshop) && this.ui.tab === 'sampler') this.ui.tab = 'beat';
-      this.$('.choir-view').hidden = !choir;
+      this.$('.choir-view').hidden = !tasks;
       this.$('.workshop-view').hidden = !workshop;
       this.$('.dc-view').hidden = !dcView;
-      if (choir || dcEmpty) this.$all('.tab-panel').forEach((panel) => { panel.hidden = true; });
+      // Aufgaben laufen über der Chor-Ansicht (gleiche Begleitung, Aufgabenkarte darüber).
+      const chorView = this.$('.chor-view');
+      chorView.hidden = !(simple || tasks);
+      chorView.classList.toggle('is-task', tasks);
+      // In Aufgaben steht die Chor-Ansicht unter der Aufgabenkarte (und „Jetzt“), sonst an ihrem Platz.
+      if (tasks) this.$('.choir-now-panel').after(chorView);
+      else if (chorView.parentElement !== this.$('.lab-body')) this.$('.learn-view').before(chorView);
+      this.$('.learn-view').hidden = !hub;
+      this.$('.studio-view').hidden = !studio;
+      // Lernen: über jedem Bereich die Leiste „‹ Lernen“ zurück zur Übersicht.
+      this.$('.learn-back').hidden = !(tasks || workshop || dcView);
+      if (noTabs) this.$all('.tab-panel').forEach((panel) => { panel.hidden = true; });
       else this._setTab(this.ui.tab);
       if (workshop) this._wsEnter();
+      this._renderViewMenu();
       this._renderChoir();
+      this._renderChor();
+      this._renderStudio();
+      this._renderLearn();
       this._renderDeconstruct();
       this._wsDecorate();
+      this._syncEngine();
       this._applySound(); // Klang-Rätsel: außerhalb des Workshops immer der eigene Klang
+      this._renderSheet();
     }
 
     /* ---- Ansicht: de:construct ----
@@ -4598,7 +6169,7 @@
     _renderDeconstruct() {
       const host = this.$('.dc-view');
       if (!host) return;
-      const dcView = this.state.view === 'deconstruct';
+      const dcView = this._uiMode() === 'deconstruct';
       // Markierung an der Transportleiste, nicht am Host: ein Custom Element
       // darf im Konstruktor (der _renderAll aufruft) keine Attribute setzen.
       this.$('.transport-bar').classList.toggle('is-dc-orig', dcView && !!this._saved.deconstruct && !this.ui.dc.choosing && this.ui.dc.listen === 'orig');
@@ -4758,10 +6329,10 @@
     _renderDcQuick() {
       const btn = this.$('.dc-quick');
       if (!btn) return;
-      const on = this.state.view === 'deconstruct' && !!this._saved.deconstruct && !this.ui.dc.choosing;
+      const on = this._uiMode() === 'deconstruct' && !!this._saved.deconstruct && !this.ui.dc.choosing;
       btn.hidden = !on;
       // Würfeln würde in de:construct auch Vorgegebenes (Grundton) verstellen.
-      this.$('[data-action="randomize"]').hidden = this.state.view === 'deconstruct';
+      this.$('[data-action="randomize"]').hidden = this._uiMode() !== 'studio';
       if (!on) return;
       const orig = this.ui.dc.listen === 'orig';
       btn.setAttribute('aria-pressed', String(orig));
@@ -4840,7 +6411,7 @@
 
     /** Laufende Challenge (nur in der Workshop-Ansicht wirksam). */
     _wsCh() {
-      return this.state.view === 'workshop' ? this.ui?.ws?.ch || null : null;
+      return this._uiMode() === 'workshop' ? this.ui?.ws?.ch || null : null;
     }
 
     /** Beat, der an Schritt g klingt: beim Detektiv abwechselnd zwei Takte
@@ -5028,7 +6599,7 @@
 
     /** Höchstens einmal pro Frame prüfen und Markierungen nachziehen. */
     _wsSchedule() {
-      if (this._wsFrame || this.state.view !== 'workshop') return;
+      if (this._wsFrame || this._uiMode() !== 'workshop') return;
       this._wsFrame = global.requestAnimationFrame(() => {
         this._wsFrame = 0;
         this._wsChEval();
@@ -5041,7 +6612,7 @@
      *  fallen. Erreicht bleibt erreicht. */
     _wsCheck() {
       const ws = this.ui.ws;
-      if (!ws || this.state.view !== 'workshop' || ws.ab?.showing === 'before') return;
+      if (!ws || this._uiMode() !== 'workshop' || ws.ab?.showing === 'before') return;
       const { lesson } = ws;
       const ctx = this._wsCtx();
       const reachedBefore = ws.reached;
@@ -5076,7 +6647,7 @@
     /** Aus _enterKey: gespielten Ton als Tonleiterstufe der Tonart merken. */
     _wsNote(midi) {
       const ws = this.ui.ws;
-      if (!ws || this.state.view !== 'workshop') return;
+      if (!ws || this._uiMode() !== 'workshop') return;
       const pc = mod(midi - this.state.keyRoot, 12);
       const steps = this._mode().steps;
       let deg = null;
@@ -5181,7 +6752,7 @@
       this.$all('.ws-dim, .ws-focus, .ws-from, .ws-to, .ws-hide, .ws-hint').forEach((el) => el.classList.remove('ws-dim', 'ws-focus', 'ws-from', 'ws-to', 'ws-hide', 'ws-hint'));
       this.$all('.tab-panel[inert], .ws-panel [inert]').forEach((el) => { el.inert = false; });
       const ws = this.ui.ws;
-      if (this.state.view !== 'workshop' || !ws) return;
+      if (this._uiMode() !== 'workshop' || !ws) return;
       const { lesson } = ws;
       const focusEls = lesson.focus.flatMap((key) => this._wsFocusEls(key));
       const home = this.$(`.tab-panel[data-tab-panel="${lesson.tab}"]`);
@@ -5475,13 +7046,34 @@
     }
     /** Klang der Akkorde: Synth-Chor (fest, 'Airy Choir') oder echter Chor ('Chor Ooh';
      *  ohne geladene Samples übernimmt die Engine den Ersatzklang 'Airy Choir'). */
-    _chordSound() { return this.state.chordSound === 'choir' ? CHOIR_CHORD_SOUND : CHORD_SOUND; }
+    _chordSound() {
+      const s = this.state;
+      const key = `${s.chordSound}|${s.energy}`;
+      if (this._chordSoundCache?.key === key) return this._chordSoundCache.sound;
+      const entry = CHORD_SOUNDS.find(([id]) => id === s.chordSound) || CHORD_SOUNDS[0];
+      const base = s.chordSound === 'choir' ? CHOIR_CHORD_SOUND : s.chordSound === 'synth' ? CHORD_SOUND : soundFromPreset(presetIndexByName(entry[1]));
+      // Energie: Voll etwas heller, Still etwas dunkler (nur der Filter, nie die Lage).
+      const bright = ENERGY_BRIGHT[s.energy] ?? 1;
+      const sound = bright === 1 ? base : { ...base, cutoff: clamp(base.cutoff * bright, 100, 12000) };
+      this._chordSoundCache = { key, sound };
+      return sound;
+    }
+    /** Art des Akkord-Klangs ('pad' | 'keys') — bestimmt den Anteil am Raum. */
+    _chordSoundKind() { return (CHORD_SOUNDS.find(([id]) => id === this.state.chordSound) || CHORD_SOUNDS[0])[2]; }
+    /** Pad-Layer unter den Akkorden ([Klang, Pegel]) oder null. */
+    _chordPadSound() {
+      const pad = CHORD_PADS[this.state.chordPad];
+      if (!pad) return null;
+      if (this._padSoundCache?.name !== pad[0]) this._padSoundCache = { name: pad[0], sound: soundFromPreset(presetIndexByName(pad[0])) };
+      return [this._padSoundCache.sound, pad[1]];
+    }
     /** Sample-Instrumente laden, die gerade gebraucht werden (Melodieklang, Akkorde). */
     _loadInstruments() {
       if (!this.engine.ready) return;
       const s = this.state;
       if (s.sound.sample) this.engine.ensureInstrument(s.sound.sample).then(() => this._renderSampleNote());
-      if (s.chordSound === 'choir') this.engine.ensureInstrument('choir');
+      const chordSample = this._chordSound().sample;
+      if (chordSample) this.engine.ensureInstrument(chordSample);
     }
     _renderSampleNote() {
       const note = this.$('.sample-note');
@@ -5490,17 +7082,25 @@
     _bassSound() { return BASS_SOUNDS.find((b) => b.id === this.state.bassSoundId) || BASS_SOUNDS[0]; }
 
     /** Harmonie an einem Schritt: Tonart, Modus, Akkordstufe. */
-    _harmonyAt(g) {
+    /** `pushed: false` — ohne vorgezogene Wechsel (Melodie, siehe chordAtStep). */
+    _harmonyAt(g, pushed = true) {
       const s = this.state;
       const prog = this._progression();
-      const barSteps = this._barSteps();
-      const bar = Math.floor(g / barSteps);
-      const index = Math.floor(bar / s.chordBars) % prog.degrees.length;
+      const at = chordAtStep(this._chordTimeline(prog), g, pushed);
+      const index = at.index;
       const deg = prog.degrees[index];
       return {
         keyRoot: s.keyRoot, steps: this._stepsFor(deg, prog, index), deg, sevenths: !!prog.sevenths, alter: prog.alter?.[index] || null, bass: prog.bass?.[index] || 0,
-        index, chordStart: g % (barSteps * s.chordBars) === 0,
+        index, chordStart: at.chordStart, start: at.start, end: at.end,
       };
+    }
+    /** Zeitleiste der klingenden Folge (Länge/Vorziehen je Akkord). */
+    _chordTimeline(prog = this._progression()) {
+      const s = this.state;
+      const barSteps = this._barSteps();
+      const key = `${prog.degrees.length}|${barSteps}|${s.chordBars}|${s.chordLen}|${s.chordPush}`;
+      if (this._tlCache?.key !== key) this._tlCache = { key, tl: chordTimelineOf(s, prog.degrees.length, barSteps) };
+      return this._tlCache.tl;
     }
 
     _currentHarmony() { return (!this._shownOriginal() && this.shown?.h) || this._harmonyAt(this.shown?.g || 0); }
@@ -5573,15 +7173,24 @@
       if (!this.engine.ready) return;
       // de:construct auf A: Pegel und Effekte des Originals.
       if (this._dcHearsOriginal() && this.state !== this._saved.deconstruct.original) { this._dcHeard(() => this._syncEngine()); return; }
-      const s = this.state;
-      // Gesamtlautstärke bleibt beim A/B-Wechsel die eigene.
-      this.engine.setMaster((this._dcMine || s).mix.master);
-      for (const bus of BUSES) this.engine.setBusLevel(bus, s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) ? 0 : s.mix[bus]);
-      for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, this._heardSound());
-      this.engine.setLayerSound('chords', this._chordSound());
+      this._applyLevels(this.engine, (this._dcMine || this.state).mix.master);
       this._loadInstruments();
-      this.engine.setLayerSound('drone', DRONE_SOUND);
-      this.engine.setFx(s.fx, this._stepSeconds());
+      this.engine.setFx(this.state.fx, this._stepSeconds());
+    }
+
+    /** Pegel, Klänge und Raum der Ebenen in eine Engine (live oder Lasttest):
+     *  state.mix mal „Hören auf“ und Energie-Ausgleich (busFactor); unter einem
+     *  Raum ersetzt dessen Hallanteil (ROOM_SEND je Ebene) den Anteil der Klänge. */
+    _applyLevels(eng, master) {
+      const s = this.state;
+      eng.setMaster(master * (ENERGY_TRIM[s.energy]?.all ?? 1));
+      for (const bus of BUSES) eng.setBusLevel(bus, this._busLevel(bus, s));
+      const room = ROOMS[s.room];
+      const wet = (sound, factor) => (room ? { ...sound, reverbWet: clamp(room.wet * factor, 0, 1) } : sound);
+      for (const layer of SOUND_LAYERS) eng.setLayerSound(layer, wet(this._heardSound(), ROOM_SEND[layer]));
+      eng.setLayerSound('chords', wet(this._chordSound(), this._chordSoundKind() === 'pad' ? ROOM_SEND.chordsPad : ROOM_SEND.chordsKeys));
+      eng.setLayerSound('drone', wet(DRONE_SOUND, ROOM_SEND.drone));
+      eng.setPreDelay(room ? room.pre / 1000 : .025);
     }
 
     async start() {
@@ -5593,7 +7202,10 @@
       }
       this.playing = true;
       this._stopArpClock(); // ab jetzt spielt der Arp im Groove-Scheduler
-      this.globalStep = 0;
+      // Einzähler (ein Takt Klick, nur aus dem Stillstand; nicht in Workshop und de:construct,
+      // deren Aufgaben auf den ersten Schlag zählen): Schritte −Takt … −1.
+      this.globalStep = this._countInSteps();
+      this._bassTie = null;
       this.scheduledSteps.length = 0;
       this.nextStepTime = this.engine.ctx.currentTime + .06;
       this._ovl.lastTick = 0; this._ovl.ratioWall = 0; this._ovl.underruns = this._playbackStats()?.underrunEvents || 0;
@@ -5605,6 +7217,7 @@
     }
 
     stop() {
+      if (this._pendingEnergy) this._commitEnergy();
       this.playing = false;
       clearTimeout(this.schedulerTimer);
       cancelAnimationFrame(this.visualFrame);
@@ -5619,6 +7232,7 @@
       this._showMelodyStep(-1);
       this._showRecLoopStep(-1);
       if (this.autoRec.phase !== 'idle') this._autoFinish();
+      if (this.sfRec.phase !== 'idle' && this.sfRec.target !== 'melody') this._sfRecStop();
       if (this.rec.phase === 'recording') this._recFinish();
       else if (this.rec.phase === 'armed') { this.rec.phase = 'idle'; this._renderRec(); }
       this._renderTransport();
@@ -5630,6 +7244,7 @@
     randomize() {
       this._wsAbReset();
       this._pushHistory();
+      this._meterBeforeRandom = this._meter();
       const s = this.state;
       const locks = s.locks;
       if (!locks.beat) {
@@ -5637,15 +7252,20 @@
         s.beat = beatFromPattern(this._pattern());
         s.percSound = percOf(this._pattern());
         s.beatEdited = false;
-        // Tempi als Viertel gedacht — in 6/8 in punktierte Viertel umgerechnet.
-        this._setBpm(pick([78, 86, 94, 102, 108, 116, 124, 132]) * 2 / eighthsPerBeat(this._meter()));
-        s.swing = pick([0, 0, 0, .25, .45]);
+        // Redesign: „Zufällig“ verändert nie Tonart oder Tempo (auch nicht den Swing) —
+        // Taktart bleibt, damit das Tempo gleich gemeint bleibt.
+        if (this._meter() !== this._meterBeforeRandom) {
+          const same = orderIndexes(BEAT_ORDER, patternIndexByName).filter((i) => DRUM_PATTERNS[i].meter === this._meterBeforeRandom);
+          s.patternIndex = pick(same.length ? same : [s.patternIndex]);
+          s.beat = beatFromPattern(this._pattern());
+          s.percSound = percOf(this._pattern());
+        }
+        if (s.bassPlay) s.beat.bass = bassVariant(this._pattern(), s.bassPlay);
       }
       if (!locks.harmony) {
-        s.keyRoot = Math.floor(Math.random() * 12);
-        s.modeId = pick(MODES).id;
         s.progId = pick(progsForRandom(s.modeId)).id;
         this._clearProgEdit();
+        this._normChordArrays({ fresh: true });
       }
       if (!locks.melody) {
         const candidates = orderIndexes(MELODY_ORDER, melodyIndexByName).map((i) => [MELODIES[i], i]).filter(([m]) => m.meter === this._meter());
@@ -5981,11 +7601,7 @@
       try {
         this._dcHeard(() => {
           const s = this.state;
-          eng.setMaster(s.mix.master);
-          for (const bus of BUSES) eng.setBusLevel(bus, s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) ? 0 : s.mix[bus]);
-          for (const layer of SOUND_LAYERS) eng.setLayerSound(layer, this._heardSound());
-          eng.setLayerSound('chords', this._chordSound());
-          eng.setLayerSound('drone', DRONE_SOUND);
+          this._applyLevels(eng, s.mix.master);
           // Hall-Impuls sofort in der gewünschten Länge (live kommt er entprellt per Timer).
           const length = clamp(s.fx.reverbLength, .2, 4);
           eng._reverbLength = length;
@@ -6065,6 +7681,19 @@
       this._watchOverload(ctx);
       while (this.nextStepTime < ctx.currentTime + .1) {
         const g = this.globalStep;
+        if (g < 0) {
+          // Einzähler: nur Klicks auf den Zählzeiten, die Anzeige zählt mit.
+          const barSteps = this._barSteps();
+          const st = g + barSteps;
+          const beats = METERS[this._meter()].beats;
+          if (beats.includes(st)) this._smpClick(this.nextStepTime, st === 0);
+          this.scheduledSteps.push({ g, time: this.nextStepTime, h: this._harmonyAt(0), side: 'mine', countIn: beats.filter((b) => b <= st).length });
+          this.nextStepTime += this._stepSeconds();
+          this.globalStep++;
+          continue;
+        }
+        // Energie wechselt nur an einer Grenze von zwei Takten (4.1).
+        if (this._pendingEnergy && g % (2 * this._barSteps()) === 0) this._commitEnergy();
         const h = this._harmonyAt(g);
         if (this.autoRec.phase === 'armed' && g === this.autoRec.startStep) {
           this.autoRec.startTime = this.nextStepTime;
@@ -6158,17 +7787,19 @@
         if (track === 'kick' && s.pump > 0) this.engine.duckAt(swung, s.pump, stepSec * 4);
       }
       if (hearBeat && s.sampleLanes.length) this._playLanes(g, step, swung, stepSec, h);
-      if (s.trackOn.bass && beat.bass?.[step] !== undefined && this._dcHears('bass')) {
-        this.engine.playBass(swung, this._bassMidi(h, beat.bass[step]), 1, this._bassSound(), bassNoteSteps(beat.bass, step, barSteps) * stepSec * .92);
-      }
+      // Vorgezogene Wechsel (chordPush): die Melodie ist über dem Takt-Akkord geschrieben und
+      // nimmt die Harmonie ohne Vorziehen, ebenso der Bass mit „bleibt auf der Eins“.
+      const pushedAny = this._chordTimeline().push.some(Boolean);
+      const hMel = pushedAny ? this._harmonyAt(g, false) : h;
+      if (s.trackOn.bass && this._dcHears('bass')) this._playBassStep(g, step, swung, stepSec, barSteps, beat.bass || {}, s.bassHold ? hMel : h);
 
-      if (h.chordStart && s.chordsOn && this._dcHears('chords')) this._playChord(h, swung, stepSec * barSteps * s.chordBars);
+      if (s.chordsOn && this._dcHears('chords')) this._playChordStep(g, step, swung, stepSec, barSteps, h);
       // Nach einer Aufnahme loopt die Aufnahme statt der Melodie, bis sie
       // gespeichert oder verworfen ist; beim Einzählen/Aufnehmen: Stille.
       const recPhase = this.rec.phase;
       if (recPhase === 'done') {
-        if (this.rec.looping) this._playMelodyStep(g, h, swung, stepSec, this.rec.loopBars, 'key', true);
-      } else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording' && this._dcHears('melody')) this._playMelodyStep(g, h, swung, stepSec);
+        if (this.rec.looping) this._playMelodyStep(g, hMel, swung, stepSec, this.rec.loopBars, 'key', true);
+      } else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording' && this._dcHears('melody')) this._playMelodyStep(g, hMel, swung, stepSec);
 
       if (s.arpOn && this._dcHears('all')) {
         const trigger = this._arpTrigger(g);
@@ -6311,16 +7942,70 @@
       }, delay);
     }
 
-    _playChord(h, time, duration) {
+    /** Ein Basston je Schritt. „Bass zieht mit vor“: schlägt ein vorgezogener Akkord an,
+     *  wo die Linie schweigt, kommt der Grundton schon dort und klingt über die Eins
+     *  (der Ton auf der Eins entfällt dann — übergebunden). */
+    _playBassStep(g, step, time, stepSec, barSteps, bass, h) {
+      const s = this.state;
+      const push = this._chordTimeline().push[h.index] || 0;
+      if (!s.bassHold && push && h.chordStart && g === h.start) {
+        // Am vorgezogenen Wechsel immer der Grundton des neuen Akkords (auch wenn die Linie
+        // dort einen anderen Ton hätte), übergebunden über die Eins.
+        const down = mod(step + push, barSteps);
+        const len = push + (bass[down] !== undefined ? bassNoteSteps(bass, down, barSteps) : 0);
+        this._bassTie = bass[down] !== undefined ? g + push : null;
+        this.engine.playBass(time, this._bassMidi(h, 0), 1, this._bassSound(), Math.max(1, len) * stepSec * .92);
+        return;
+      }
+      if (bass[step] === undefined) return;
+      if (this._bassTie === g) { this._bassTie = null; return; }
+      this.engine.playBass(time, this._bassMidi(h, bass[step]), 1, this._bassSound(), bassNoteSteps(bass, step, barSteps) * stepSec * .92);
+    }
+
+    /** Akkorde-Spur je Schritt: gehalten (je Akkordanfang), rhythmisch (Anschläge je Takt,
+     *  dazu jeder Wechsel — auch ein vorgezogener) oder Arpeggio; darunter ggf. der Pad-Layer. */
+    _playChordStep(g, step, time, stepSec, barSteps, h) {
+      const s = this.state;
+      const left = Math.max(1, h.end - g);
+      // Workshop, de:construct und Chor-Aufgaben spielen die Akkorde wie früher gehalten.
+      const play = ['workshop', 'deconstruct'].includes(this._uiMode()) ? 'held' : s.chordPlay;
+      if (h.chordStart) { const pad = this._chordPadSound(); if (pad) this._playChord(h, time, left * stepSec, pad[1], pad[0]); }
+      if (play === 'held' || (play === 'rhythm' && !s.chordHits)) {
+        if (h.chordStart) this._playChord(h, time, left * stepSec);
+        return;
+      }
+      if (play === 'arp') {
+        for (const hit of chordCompAt('arp', null, step, barSteps)) {
+          const root = 48 + mod(h.keyRoot + degreeSemis(h.steps, h.deg), 12) + 12 * s.chordOctave;
+          const midi = root + degreeSemis(h.steps, h.deg + hit.deg) - degreeSemis(h.steps, h.deg);
+          this.engine.playTone(this._chordSound(), midi, time, .16 * hit.vel, Math.min(left, hit.len * 1.8) * stepSec, { layer: 'chords', glide: 0, stepSeconds: stepSec });
+        }
+        return;
+      }
+      const hits = chordCompAt('rhythm', s.chordHits, step, barSteps);
+      if (!hits.length && h.chordStart) {
+        // Wechsel zwischen zwei Anschlägen (z. B. vorgezogen): bis zum nächsten Anschlag klingen lassen.
+        const next = s.chordHits.map(([st]) => mod(st - step, barSteps)).filter((d) => d > 0);
+        hits.push({ len: next.length ? Math.min(...next) : barSteps, vel: .9 });
+      }
+      for (const hit of hits) this._playChord(h, time, Math.min(left, hit.len) * stepSec, hit.vel);
+    }
+
+    /** Akkord im Satz der Folge. `level`: Faktor auf die Lautstärke; `sound`: anderer
+     *  Klang (Pad-Layer). Die Lage (chordOctave) verschiebt alle Stimmen um Oktaven. */
+    _playChord(h, time, duration, level = 1, sound = this._chordSound()) {
       const voicing = this._voicings()[h.index];
       if (!voicing) return;
       const s = this.state;
       const anyFocus = SATB.some((v) => s.satb[v] === 'focus');
+      const shift = 12 * (s.chordOctave || 0);
       for (const voice of SATB) {
         const mode = s.satb[voice];
         if (mode === 'mute') continue;
-        const velocity = mode === 'focus' ? .22 : anyFocus ? .05 : .11;
-        this.engine.playTone(this._chordSound(), voicing[voice], time, velocity, duration * .97,
+        const velocity = (mode === 'focus' ? .22 : anyFocus ? .05 : .11) * level;
+        let midi = voicing[voice] + shift;
+        if (midi < 36) midi += 12;
+        this.engine.playTone(sound, midi, time, velocity, duration * .97,
           { layer: 'chords', glide: 0, stepSeconds: this._stepSeconds() });
       }
     }
@@ -6336,14 +8021,14 @@
       if (ref === 'key') return null;
       const s = this.state;
       const prog = this._progression();
-      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}|${(prog.alter || []).join()}|${s.chordBars}|${s.melodyOctave}|${altBars}|${this._barSteps()}|${JSON.stringify(bars)}`;
+      const key = `${s.keyRoot}|${s.modeId}|${prog.degrees.join(',')}|${!!prog.sevenths}|${!!prog.dominant}|${!!prog.dom7}|${(prog.alter || []).join()}|${s.chordBars}|${s.chordLen}|${s.melodyOctave}|${altBars}|${this._barSteps()}|${JSON.stringify(bars)}`;
       if (this._melShiftCache?.key === key) return this._melShiftCache.shifts;
       const barSteps = this._barSteps();
       const gcd = (a, b) => (b ? gcd(b, a % b) : a);
       const lcm = (a, b) => (a * b) / gcd(a, b);
-      const count = lcm(lcm(bars.length, prog.degrees.length * s.chordBars), altBars ? 2 : 1);
+      const count = lcm(lcm(bars.length, chordCycleBars(this._chordTimeline(prog))), altBars ? 2 : 1);
       const modeSteps = this._mode().steps;
-      const shifts = melodyBarShifts(bars, count, (bar, deg, alt) => melodyMidi(deg, alt, this._harmonyAt(bar * barSteps), 'chord', modeSteps, s.melodyOctave), altBars);
+      const shifts = melodyBarShifts(bars, count, (bar, deg, alt) => melodyMidi(deg, alt, this._harmonyAt(bar * barSteps, false), 'chord', modeSteps, s.melodyOctave), altBars);
       this._melShiftCache = { key, shifts };
       return shifts;
     }
@@ -6387,12 +8072,20 @@
       const now = this.engine.ctx.currentTime;
       let latest;
       while (this.scheduledSteps.length && this.scheduledSteps[0].time <= now + .01) latest = this.scheduledSteps.shift();
+      if (latest?.countIn) {
+        this._renderBeatDots(latest.g + this._barSteps(), true);
+        this._setStatus(tf('lab.countIn', { n: latest.countIn }));
+        this.shown = null;
+        latest = null;
+      }
       if (latest) {
+        if (this.shown === null && latest.g === 0) this._setStatus(t('lab.statusRunning'));
         const chordChanged = latest.h.index !== this.shown?.h?.index || latest.side !== this.shown?.side;
         this.shown = latest;
         this._showStep(latest, chordChanged);
       }
       if (this.rec.phase === 'armed' || this.rec.phase === 'recording') this._recTick(now);
+      if (this.sfRec.phase !== 'idle' && this.shown) this._sfRecTick(this.shown.g);
       if (this.autoRec.phase !== 'idle') this._autoTick(now);
       this.visualFrame = global.requestAnimationFrame(() => this._drawSteps());
     }
@@ -6408,12 +8101,53 @@
       this._renderBeatDots(step);
       this._showMelodyStep(g);
       this._showRecLoopStep(g);
-      if (chordChanged) this._renderNow();
-      if (this.state.view === 'choir') this._renderChoirNow(g);
-      else if (this.state.view === 'workshop') this._wsChShow(g);
+      if (chordChanged) { this._renderNow(); if (!this.$('.surface').hidden) this._renderSurfaceNow(); }
+      if (this._uiMode() === 'tasks') this._renderChoirNow(g);
+      else if (this._uiMode() === 'workshop') this._wsChShow(g);
     }
 
-    _setStatus(text) { this.$all('.status-line').forEach((el) => { el.textContent = text; }); }
+    _setStatus(text) {
+      this.$all('.status-line').forEach((el) => { el.textContent = text; });
+      // Schmale Leiste ohne Statuszeile: Wichtiges kurz als Toast (Routine-Meldungen nicht).
+      const line = this.$('.transport-bar .status-line');
+      if (!text || !line || line.offsetParent !== null || this.hidden) return;
+      if ([t('lab.statusRunning'), t('lab.statusReady')].includes(text) || text.startsWith(t('lab.countIn').split('{')[0])) return;
+      this._toast(text);
+    }
+    _toast(text) {
+      const el = this.$('.toast');
+      el.textContent = text;
+      el.hidden = false;
+      clearTimeout(this._toastTimer);
+      this._toastTimer = global.setTimeout(() => { el.hidden = true; }, 2600);
+    }
+    /* Blätter und Dialoge des Redesigns (Akkordfolge, Tonart, Spur-Blätter, Spielfläche …):
+       ein Stapel — Escape und der Hintergrund schließen das oberste, Tab bleibt darin
+       (_trapFocus), danach kehrt der Fokus zum Auslöser zurück. */
+    _openLayer(el, { onClose = null, focus = null } = {}) {
+      this._layers = this._layers || [];
+      if (this._layers.some((l) => l.el === el)) return;
+      this._layers.push({ el, onClose, back: this.shadowRoot.activeElement });
+      el.hidden = false;
+      requestAnimationFrame(() => (focus ? el.querySelector(focus) : el.querySelector('[data-autofocus], button, input, select'))?.focus());
+    }
+    _closeLayer(el = this._layers?.[this._layers.length - 1]?.el, { focus = true } = {}) {
+      const i = (this._layers || []).findIndex((l) => l.el === el);
+      if (i < 0) return;
+      const [layer] = this._layers.splice(i, 1);
+      layer.el.hidden = true;
+      layer.onClose?.();
+      if (focus && layer.back?.isConnected) layer.back.focus();
+    }
+    _closeAllLayers() { while (this._layers?.length) this._closeLayer(undefined, { focus: false }); }
+
+    /** „Meine Sounds“ (Sampler-Bibliothek). Bis zur eigenen Ansicht: Studio, Reiter Sampler. */
+    _openSounds(view = 'library') {
+      if (this._uiMode() !== 'studio') this._applyView('studio');
+      this._primeSamples();
+      this._openPanelLayer(t('lab.menu.sounds'), ['sampler']);
+      this._samplerGo(view);
+    }
 
     /* ---- Halten-Roll: eine je Loop eigene, artikulierte Rhythmuszelle nur
        solange der Pad-Knopf gedrückt ist (siehe DRUM_PATTERNS.roll). ---- */
@@ -6501,6 +8235,8 @@
       this._renderTransport();
       this._renderNow();
       this._renderChoir();
+      this._renderChor();
+      this._renderStudio();
       this._renderWorkshop();
       this._renderDeconstruct();
       this._wsDecorate();
@@ -6538,11 +8274,11 @@
     }
 
     _renderLock(which) {
-      const btn = this.$(`[data-action="lock"][data-lock="${which}"]`);
-      if (!btn) return;
       const locked = this.state.locks[which];
-      btn.setAttribute('aria-pressed', String(locked));
-      btn.innerHTML = locked ? UI_ICON.lock : UI_ICON.unlock;
+      this.$all(`[data-action="lock"][data-lock="${which}"]`).forEach((btn) => {
+        btn.setAttribute('aria-pressed', String(locked));
+        btn.innerHTML = locked ? UI_ICON.lock : UI_ICON.unlock;
+      });
     }
 
     /* ---- Beat ---- */
@@ -6554,14 +8290,15 @@
       this._renderLock('beat');
       this._renderTracks();
 
-      this.$('[data-field="swing"]').value = String(s.swing);
-      this.$('[data-out="swing"]').textContent = `${Math.round(s.swing * 100)} %`;
-      this.$('[data-field="pump"]').value = String(s.pump);
-      this.$('[data-out="pump"]').textContent = `${Math.round(s.pump * 100)} %`;
+      // Swing steht zweimal (Beat-Reiter, Tempo der Song-Zeile im Studio): beide mitziehen.
+      this.$all('[data-field="swing"]').forEach((el) => { el.value = String(s.swing); });
+      this.$all('[data-out="swing"]').forEach((el) => { el.textContent = `${Math.round(s.swing * 100)} %`; });
+      this.$all('[data-field="pump"]').forEach((el) => { el.value = String(s.pump); });
+      this.$all('[data-out="pump"]').forEach((el) => { el.textContent = `${Math.round(s.pump * 100)} %`; });
       this.$('.dc-meter').value = this._meter();
       this._chips(this.$('.bass-chips'), BASS_SOUNDS.map((b) => ({ value: b.id, label: b.name })), s.bassSoundId, 'bass-sound');
-      this.$('.kit-panel').hidden = s.view === 'workshop';
-      this.$('.live-panel').hidden = s.view === 'workshop';
+      this.$('.kit-panel').hidden = uiModeOf(s) === 'workshop';
+      this.$('.live-panel').hidden = uiModeOf(s) === 'workshop';
       this._chips(this.$('.kit-chips'), DRUM_KITS.map((id) => ({ value: id, label: t(`lab.kit.${id}`) })), s.drumKit, 'drum-kit');
       this._chips(this.$('.fill-chips'), FILL_LENGTHS.map((n) => ({ value: n, label: t(`lab.fill.${n}`) })), s.fills, 'fills');
       this._renderKit();
@@ -6585,11 +8322,14 @@
       const meter = METERS[this._meter()];
       const host = this.$('.track-list');
       // Workshop und de:construct bauen mit den bekannten fünf Schlagzeugspuren.
-      const hidePerc = s.view === 'workshop' || s.view === 'deconstruct';
+      const hidePerc = uiModeOf(s) === 'workshop' || uiModeOf(s) === 'deconstruct';
       const laneRows = (track) => s.sampleLanes.flatMap((lane, i) => {
         const meta = this._sampleMeta(lane.padId);
         const target = meta ? (meta.kind === 'hit' ? meta.track : 'bass') : 'bass';
-        return target === track ? [this._laneRow(lane, i, meta, meter)] : [];
+        if (target !== track) return [];
+        const row = this._laneRow(lane, i, meta, meter);
+        row.dataset.group = track;
+        return [row];
       });
       host.replaceChildren(...TRACK_IDS.filter((track) => !(hidePerc && track === 'perc')).flatMap((track) => {
         const on = s.trackOn[track];
@@ -6660,7 +8400,7 @@
         row.append(roll, label, cells, toggle);
         return [row, ...laneRows(track)];
       }));
-      if (this.state.view === 'workshop') this._wsDecorate();
+      if (this._uiMode() === 'workshop') this._wsDecorate();
     }
 
     /** Zeile einer Sample-Spur: Vorhören, Name, Zellen (Anschlagstärke, bei Tönen der klingende Ton), An/Aus. */
@@ -7503,6 +9243,23 @@
       }
       nodes.push(names);
 
+      // Sound aufnehmen (E4): „Danach verwenden als …“ — Pad (Standard), im Groove, nur speichern.
+      if (smp.draftNew) {
+        const use = this._mk('section', 'panel smp-panel snd-after');
+        use.append(this._panelHead(t('lab.snd.after')));
+        const row = this._mk('div', 'chip-row');
+        row.setAttribute('role', 'radiogroup');
+        row.setAttribute('aria-label', t('lab.snd.after'));
+        const current = this.ui.smpUse || 'pad';
+        const groove = d.kind === 'loop' ? t('lab.snd.afterRec') : d.kind === 'tone' ? t('lab.snd.afterBass') : tf('lab.snd.afterLane', { track: this._roleLabel(d) });
+        for (const [id, label] of [['pad', tf('lab.snd.afterPad', { n: smp.sel + 1 })], ['beat', groove], ['save', t('lab.snd.afterSave')]]) {
+          const b = this._radioChip('snd-after', id, label, current === id);
+          row.append(b);
+        }
+        use.append(row);
+        nodes.push(use);
+      }
+
       const foot = this._mk('div', 'smp-foot');
       for (const [action, key, cls] of [['smp-to-beat', 'lab.sampler.toBeat', 'chip'], ['smp-cancel', 'lab.sampler.cancel', 'chip'], ['smp-delete', 'lab.sampler.delete', 'chip is-danger']]) {
         const b = this._mk('button', cls, t(key));
@@ -7587,10 +9344,17 @@
           this._setStatus(tf('lab.sampler.saved', { n: smp.sel + 1, name: meta.name }));
         }
       }
+      const wasNew = smp.draftNew;
+      const use = this.ui.smpUse || 'pad';
+      this.ui.smpUse = null;
       smp.draft = null; smp.draftBuffer = null; smp.draftPeaks = null;
-      this._samplerGo('pads');
+      this._samplerGo(smp.returnTo || 'pads');
+      smp.returnTo = null;
       if (pending) await pending;
-      this._renderTracks(); this._renderLive(); this._renderSampler();
+      // E4: danach verwenden als — im Groove (Sample-Spur) oder nur speichern (Pad wieder frei).
+      if (save && d && wasNew && use === 'beat') this._padToBeat(d.id);
+      if (save && d && wasNew && use === 'save' && this._ownKit().pads[smp.sel] === d.id) { this._ownKit().pads[smp.sel] = null; this._samplerGo('library'); }
+      this._renderTracks(); this._renderLive(); this._renderSampler(); this._renderStudio();
     }
 
     _editorKind(kind) {
@@ -7625,32 +9389,95 @@
 
     /* -- Bibliothek -- */
 
+    /** Meine Sounds (E3): eigene Aufnahmen dieses Geräts mit Filter Alle · Schläge · Töne ·
+     *  Phrasen, je Sound Anhören, Name, Art/Länge, Mini-Wellenform, „verwendet als …“ und ⋯
+     *  (Editor: umbenennen, löschen, Tonhöhe, Schnitt). Werks-Klänge eingeklappt darunter. */
     _renderSamplerLibrary(root) {
       const smp = this.sampler;
-      const nodes = [this._smpHead(t('lab.sampler.libTitle'))];
-      const section = (titleKey, metas, emptyKey) => {
-        const panel = this._mk('section', 'panel smp-panel');
-        panel.append(this._panelHead(t(titleKey)));
-        if (!metas.length) panel.append(this._mk('p', 'smp-hint', t(emptyKey)));
-        const list = this._mk('div', 'smp-lib');
-        for (const meta of metas) {
-          const row = this._mk('div', 'smp-lib-row');
-          const listen = this._mk('button', 'chip', '▶');
-          listen.type = 'button'; listen.dataset.action = 'smp-lib-listen'; listen.dataset.value = meta.id;
-          listen.setAttribute('aria-label', `${t('lab.sampler.listen')}: ${meta.name}`);
-          const use = this._mk('button', 'smp-lib-use');
-          use.type = 'button'; use.dataset.action = 'smp-lib-use'; use.dataset.value = meta.id;
-          use.append(this._mk('strong', '', meta.name), this._mk('span', '', `${this._kindLabel(meta.kind)} · ${this._roleLabel(meta)}`));
-          row.append(listen, use);
-          list.append(row);
-        }
-        panel.append(list);
-        return panel;
-      };
-      nodes.push(this._mk('p', 'smp-hint', tf('lab.sampler.libHint', { n: smp.sel + 1 })));
-      nodes.push(section('lab.sampler.libFactory', FACTORY_SAMPLES, ''));
-      nodes.push(section('lab.sampler.libOwn', [...smp.meta.values()].sort((a, b) => b.createdAt - a.createdAt), 'lab.sampler.libEmpty'));
+      const filter = this.ui.smpFilter || 'all';
+      const own = [...smp.meta.values()].sort((a, b) => b.createdAt - a.createdAt);
+      const nodes = [this._smpHead(t('lab.menu.sounds'))];
+      const top = this._mk('div', 'snd-top');
+      top.append(this._mk('span', 'snd-count', tf('lab.snd.count', { n: own.length, max: SAMPLER_MAX_SAMPLES })));
+      const kits = this._mk('button', 'chip', t('lab.snd.kits'));
+      kits.type = 'button'; kits.dataset.action = 'smp-back';
+      top.append(kits);
+      nodes.push(top);
+      const rec = this._mk('button', 'snd-new');
+      rec.type = 'button'; rec.dataset.action = 'smp-record'; rec.dataset.first = '';
+      rec.append(this._mk('i'), document.createTextNode(t('lab.snd.new')));
+      rec.disabled = own.length >= SAMPLER_MAX_SAMPLES;
+      nodes.push(rec);
+      const tabs = this._mk('div', 'seg snd-filter');
+      tabs.setAttribute('role', 'radiogroup');
+      tabs.setAttribute('aria-label', t('lab.snd.filter'));
+      for (const [id, key] of [['all', 'lab.snd.all'], ['hit', 'lab.snd.hits'], ['tone', 'lab.snd.tones'], ['loop', 'lab.snd.phrases']]) {
+        const b = this._mk('button', '', t(key));
+        b.type = 'button'; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(filter === id));
+        b.dataset.action = 'snd-filter'; b.dataset.value = id;
+        tabs.append(b);
+      }
+      nodes.push(tabs);
+      const list = this._mk('section', 'snd-list');
+      const shown = own.filter((m) => filter === 'all' || m.kind === filter);
+      if (!shown.length) list.append(this._mk('p', 'smp-hint', t(own.length ? 'lab.snd.noneOfKind' : 'lab.sampler.libEmpty')));
+      for (const meta of shown) list.append(this._soundRow(meta));
+      nodes.push(list);
+      const how = this._mk('div', 'snd-how');
+      how.append(this._mk('strong', '', t('lab.snd.howTitle')), this._mk('p', '', t('lab.snd.how')));
+      nodes.push(how);
+      // Werks-Klänge: wie bisher auf das gewählte Pad legen.
+      const fac = this._mk('details', 'snd-factory');
+      fac.append(this._mk('summary', '', t('lab.sampler.libFactory')));
+      fac.append(this._mk('p', 'smp-hint', tf('lab.sampler.libHint', { n: smp.sel + 1 })));
+      const flist = this._mk('div', 'smp-lib');
+      for (const meta of FACTORY_SAMPLES) {
+        const row = this._mk('div', 'smp-lib-row');
+        const listen = this._mk('button', 'chip', '▶');
+        listen.type = 'button'; listen.dataset.action = 'smp-lib-listen'; listen.dataset.value = meta.id;
+        listen.setAttribute('aria-label', `${t('lab.sampler.listen')}: ${meta.name}`);
+        const use = this._mk('button', 'smp-lib-use');
+        use.type = 'button'; use.dataset.action = 'smp-lib-use'; use.dataset.value = meta.id;
+        use.append(this._mk('strong', '', this._padName(meta)), this._mk('span', '', `${this._kindLabel(meta.kind)} · ${this._roleLabel(meta)}`));
+        row.append(listen, use);
+        flist.append(row);
+      }
+      fac.append(flist);
+      nodes.push(fac);
       root.replaceChildren(...nodes);
+    }
+    /** Zeile eines Sounds in Meine Sounds. */
+    _soundRow(meta) {
+      const s = this.state;
+      const row = this._mk('div', 'snd-row');
+      const listen = this._mk('button', 'snd-play');
+      listen.type = 'button'; listen.dataset.action = 'smp-lib-listen'; listen.dataset.value = meta.id;
+      listen.setAttribute('aria-label', `${t('lab.sampler.listen')}: ${meta.name}`);
+      listen.innerHTML = UI_ICON.play;
+      const mid = this._mk('div', 'snd-mid');
+      const line = this._mk('div', 'snd-line');
+      const len = Math.max(0, (meta.trim?.[1] ?? 0) - (meta.trim?.[0] ?? 0));
+      const kind = meta.kind === 'tone' && meta.detectedMidi !== null ? `${this._kindLabel('tone')} · ${noteLabel(meta.detectedMidi, 0, 'major', labLang)} · ${this._secLabel(len)}`
+        : meta.kind === 'loop' ? `${t('lab.snd.phrase')} · ${tf('lab.sampler.roleLoop', { n: meta.loopBars })} · ♩ ${meta.bpmAtRec}` : `${this._kindLabel(meta.kind)} · ${this._secLabel(len)}`;
+      line.append(this._mk('strong', '', meta.name), this._mk('span', '', kind));
+      const wave = this._mk('div', 'snd-wave');
+      wave.setAttribute('aria-hidden', 'true');
+      const buffer = this._bufferNow(meta.id);
+      const peaks = buffer ? this._peaks14(meta.id, buffer) : null;
+      if (peaks) wave.append(...peaks.map((p) => { const i = this._mk('i'); i.style.height = `${Math.max(2, Math.round(p * 18))}px`; return i; }));
+      else this._loadBuffer(meta.id).then((b) => { if (b && wave.isConnected && !wave.childElementCount) { this._renderSampler(); } }).catch(() => {});
+      // verwendet als …: Pads in Kits, Spuren im Raster.
+      const uses = [];
+      s.sampler.kits.forEach((k) => k.pads.forEach((id, i) => { if (id === meta.id) uses.push(tf('lab.snd.usePad', { n: i + 1, kit: k.name })); }));
+      if (s.sampleLanes.some((l) => l.padId === meta.id)) uses.push(meta.kind === 'loop' ? t('lab.snd.useRec') : meta.kind === 'tone' ? t('lab.snd.useBass') : tf('lab.snd.useLane', { track: this._roleLabel(meta) }));
+      const use = this._mk('span', `snd-use${uses.length ? '' : ' is-free'}`, uses.length ? `${t('lab.snd.usedAs')} ${uses.join(' · ')}` : t('lab.snd.unused'));
+      if (meta.kind === 'loop') use.append(document.createTextNode(` · ${tf('lab.studio.loopTempo', { bpm: meta.bpmAtRec })}`));
+      mid.append(line, wave, use);
+      const more = this._mk('button', 'snd-more', '⋯');
+      more.type = 'button'; more.dataset.action = 'snd-more'; more.dataset.value = meta.id;
+      more.setAttribute('aria-label', tf('lab.snd.moreAria', { name: meta.name }));
+      row.append(listen, mid, more);
+      return row;
     }
 
     /* -- Im Beat -- */
@@ -7782,8 +9609,7 @@
           if (meta.detectedMidi === null) continue;
           const target = sampleToneTarget(meta.toneRole, meta.detectedMidi, chordPitchClasses(h.keyRoot, h.steps, h.deg, h.sevenths).slice(0, 3));
           // Dauer: bis zum nächsten Treffer der Spur im Takt bzw. zum Akkordwechsel.
-          const chordSteps = barSteps * s.chordBars;
-          const untilChord = chordSteps - (g % chordSteps);
+          const untilChord = Math.max(1, h.end - g);
           const untilNext = bassNoteSteps(lane.steps, step, barSteps);
           const steps = Math.min(untilChord, untilNext);
           this.engine.playPad(buffer, meta, when, level, { rate: sampleToneRate(target, meta.detectedMidi, meta.detectedCents, meta.pitch), duration: Math.max(.05, steps * stepSec * .92), layer: 'keys' });
@@ -8520,10 +10346,12 @@
       this.$all('.bpm-input').forEach((el) => { el.value = String(this.state.bpm); });
       this.$all('.bpm-out').forEach((el) => { el.textContent = `${tempoSymbol(this._meter())} = ${this.state.bpm}`; });
       this.$('[data-action="undo"]').disabled = !this.history.length;
+      const sfPlay = this.$('.sf-play');
+      if (sfPlay) { sfPlay.innerHTML = this.playing ? UI_ICON.pause : UI_ICON.play; sfPlay.setAttribute('aria-label', t(this.playing ? 'lab.stopAria' : 'lab.startAria')); }
       this._renderDcQuick();
     }
 
-    _renderBeatDots(step) {
+    _renderBeatDots(step, counting = false) {
       const meter = METERS[this._meter()];
       const host = this.$('.beat-dots');
       if (host.childElementCount !== meter.beats.length) {
@@ -8531,7 +10359,42 @@
       }
       let current = -1;
       meter.beats.forEach((b, i) => { if (step >= b) current = i; });
-      Array.from(host.children).forEach((dot, i) => dot.classList.toggle('is-now', this.playing && i === current));
+      Array.from(host.children).forEach((dot, i) => {
+        dot.classList.toggle('is-now', this.playing && i === current);
+        dot.classList.toggle('is-count', counting && i <= current);
+      });
+    }
+
+    /** Länge des Einzählers in Schritten (negativ) — 0, wenn keiner. */
+    _countInSteps() {
+      // Aufnahme aus dem Stillstand zählt immer einen Takt ein (Berater), sonst nach Menü.
+      if (this.sfRec?.phase === 'armed' && this.sfRec.startStep === 0) return -this._barSteps();
+      if (!this.state.countIn || ['workshop', 'deconstruct'].includes(this._uiMode())) return 0;
+      return -this._barSteps();
+    }
+
+    /** Energie wählen: im Stillstand sofort, beim Spielen an der nächsten Grenze von
+     *  zwei Takten (_commitEnergy im Scheduler). Ein Undo-Schritt. */
+    _setEnergy(energy) {
+      if (!ENERGY_IDS.includes(energy) || !this.state.styleId) return;
+      const custom = styleDiff(this.state).rhythm || styleDiff(this.state).bass;
+      this._pushHistory();
+      if (custom) this._setStatus(t('lab.chor.resetHint'));
+      if (!this.playing) { this._applyEnergyNow(energy); return; }
+      this._pendingEnergy = energy;
+      this._setStatus(t('lab.chor.energyNext'));
+      this._renderChor();
+    }
+    _applyEnergyNow(energy) {
+      const next = applyEnergy(this.state, energy);
+      const { view, learnArea, droneOn } = this.state;
+      this.state = Object.assign(next, { view, learnArea, droneOn });
+      this._afterStateChange();
+    }
+    _commitEnergy() {
+      const energy = this._pendingEnergy;
+      this._pendingEnergy = null;
+      this._applyEnergyNow(energy);
     }
 
     /** Akkord-/Tonart-Anzeige in der Transportleiste plus Akkordleiste und
@@ -9008,6 +10871,11 @@
         return row;
       }));
       this.$('.code-out').value = encodeState(this.state);
+      const master = this.$('.menu-master input');
+      master.value = String(this.state.mix.master);
+      this.$('.menu-master output').textContent = `${Math.round(this.state.mix.master * 100)} %`;
+      this.$('[data-switch="countIn"]').checked = !!this.state.countIn;
+      this._renderViewMenu();
       this.$('.storage-hint').textContent = t(this._storage ? 'lab.autoSaveHint' : 'lab.noStorageHint');
     }
 
@@ -9131,7 +10999,7 @@
       host.addEventListener('pointercancel', end);
     }
 
-    _midiForKey(key) { return 12 * (this.state.octave + 1) + Number(key.dataset.offset); }
+    _midiForKey(key) { return key.dataset.midi ? Number(key.dataset.midi) : 12 * (this.state.octave + 1) + Number(key.dataset.offset); }
 
     /** Die sichtbare Taste zu einer MIDI-Note in der gerade gezeigten Fläche. */
     _keyElFor(midi) {
@@ -9168,9 +11036,16 @@
       this.keyVoices.set(id, entry);
       this._recNoteOn(id, midi);
       this._paintHeld();
+      const surface = !!keyEl?.closest?.('.surface');
+      const tap = this.engine.ready ? this.engine.ctx.currentTime : null;
       (async () => {
         try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
         if (this.keyVoices.get(id) !== entry) return;
+        if (surface && !(arp && this._studioTarget() === 'arp')) {
+          entry.voice = this._surfaceVoice(midi);
+          this._surfaceTap({ midi, tap: tap ?? this.engine.ctx.currentTime });
+          return;
+        }
         if (arp) { this._ensureArpClock(); return; }
         entry.voice = this.engine.playTone(this.state.sound, midi, this.engine.ctx.currentTime, .3, undefined,
           { layer: 'keys', stepSeconds: this._stepSeconds() });
@@ -9206,7 +11081,7 @@
       const pressed = new Set();
       this.keyVoices.forEach((held) => pressed.add(held.midi));
       const latched = this._latchActive() ? this.latchedNotes : new Set();
-      this.$all('.keyboard .key, .scale-pads .pad').forEach((el) => {
+      this.$all('.keyboard .key, .scale-pads .pad, .sf-piano .key, .sf-scale .pad').forEach((el) => {
         const midi = this._midiForKey(el);
         el.classList.toggle('is-hot', pressed.has(midi) || latched.has(midi));
         el.classList.toggle('is-latched', latched.has(midi) && !pressed.has(midi));
@@ -9461,6 +11336,14 @@
       rec.open.forEach((open) => rec.notes.push({ ...open, t1: Math.min(now, end) }));
       rec.open.clear();
       rec.take = rec.startTime ? this._recToBars() : null;
+      if (this.sfRec.phase !== 'idle' && this.sfRec.target === 'melody') {
+        // Aufnahme der Spielfläche: direkt in die Melodie, kein eigener Speicherschritt.
+        const take = rec.take && rec.take.some((bar) => bar.length) ? rec.take : null;
+        rec.phase = 'idle'; rec.take = null; rec.looping = false; rec.loopBars = null;
+        if (take) this._sfRecMelody(take); else { this.sfRec.phase = 'idle'; this._setStatus(t('lab.recEmpty')); this._renderSfRec(); }
+        this._renderRec();
+        return;
+      }
       rec.phase = rec.take && rec.take.some((bar) => bar.length) ? 'done' : 'idle';
       // Fertig: direkt im Loop weiterspielen (der Groove läuft ja noch).
       rec.loopBars = rec.phase === 'done' ? this._recRotated(rec.take) : null;
@@ -9607,6 +11490,7 @@
     _wireControls() {
       this.shadowRoot.addEventListener('click', (event) => {
         // Ein Tipp außerhalb schließt das „⋯“-Menü.
+        if (!this.$('.view-pop').hidden && !event.target.closest('.view-wrap')) this._toggleViewMenu(false, { focus: false });
         if (this.ui.dc.menu && !event.target.closest('.dc-menu-wrap')) { this.ui.dc.menu = false; this.ui.dc.revealAsk = false; this._renderDeconstruct(); }
         const target = event.target.closest('[data-action]');
         if (!target || target.disabled) return;
@@ -9621,15 +11505,22 @@
           this._onTempoChange();
         } else if (el.dataset.field === 'swing' || el.dataset.field === 'pump') {
           s[el.dataset.field] = Number(el.value);
-          this.$(`[data-out="${el.dataset.field}"]`).textContent = `${Math.round(Number(el.value) * 100)} %`;
+          this.$all(`[data-out="${el.dataset.field}"]`).forEach((o) => { o.textContent = `${Math.round(Number(el.value) * 100)} %`; });
+          this.$all(`[data-field="${el.dataset.field}"]`).forEach((o) => { if (o !== el) o.value = el.value; });
+          if (el.dataset.field === 'swing') this._renderStudio();
         } else if (el.dataset.kit) {
           s.kit[el.dataset.kit] = Number(el.value);
           this._renderKit();
         } else if (el.dataset.mix) {
           s.mix[el.dataset.mix] = Number(el.value);
+          if (el.dataset.mix === 'master') this.$all('[data-out="master"]').forEach((o) => { o.textContent = `${Math.round(s.mix.master * 100)} %`; });
           this._paintLevel(el);
-          if (el.dataset.mix === 'master') this.engine.setMaster(s.mix.master);
-          else this.engine.setBusLevel(el.dataset.mix, s.mute[el.dataset.mix] ? 0 : s.mix[el.dataset.mix]);
+          if (el.dataset.mix === 'master') this.engine.setMaster(s.mix.master * (ENERGY_TRIM[s.energy]?.all ?? 1));
+          else {
+            this.engine.setBusLevel(el.dataset.mix, this._busLevel(el.dataset.mix));
+            this.$all(`input[data-mix="${el.dataset.mix}"]`).forEach((o) => { if (o !== el) o.value = el.value; });
+            this.$all(`[data-out="mix-${el.dataset.mix}"]`).forEach((o) => { o.textContent = `${Math.round(Number(el.value) * 100)} %`; });
+          }
         } else if (el.classList.contains('prog-name')) {
           const name = el.value.trim().slice(0, 40);
           if (name && s.progOwnId) {
@@ -9653,8 +11544,10 @@
         const el = event.target;
         const s = this.state;
         const field = el.dataset.field;
-        if (field === 'chordBars') { s.chordBars = Number(el.value); this._renderNow(); }
+        if (field === 'chordBars') { s.chordBars = Number(el.value); s.chordLen = null; this._renderNow(); }
         else if (field === 'meter') this._handleAction('meter', el.value, el);
+        else if (field === 'sfSound') { this.ui.sf.preset = SURFACE_SOUNDS.includes(el.value) ? el.value : 'Klavier'; }
+        else if (field === 'sfTarget') { this._releasePressedKeys(); this.ui.studioTarget = el.value; this._renderSurface(); this._renderStudio(); }
         else if (field === 'arpMode') s.arpMode = el.value;
         else if (field === 'arpDivision') s.arpDivision = Number(el.value);
         else if (field === 'arpRhythm') s.arpRhythm = el.value;
@@ -9683,6 +11576,9 @@
     }
 
     _onHarmonyChange() {
+      this._normChordArrays();
+      this._renderChor();
+      if (!this.$('.prog-layer').hidden) this._renderProgSheet();
       this._voicingCache = null;
       this._renderHarmony();
       this._renderNow();
@@ -9719,6 +11615,8 @@
       if (key === 'progSevenths') { this._progBegin(); s.progSevenths = on; this._progCommit(); return; }
       if (key === 'progDominant') { this._progBegin(); s.progDominant = on; this._progCommit(); return; }
       if (key === 'chordAdd9') { this._pushHistory(); s.chordAdd9 = on; this._renderSatb(); return; }
+      if (key === 'bassHold') { this._pushHistory(); s.bassHold = on; return; }
+      if (key === 'countIn') { s.countIn = on; return; }
       s[key] = on; // melodyOn, chordsOn
     }
 
@@ -9726,7 +11624,146 @@
       const s = this.state;
       switch (action) {
         case 'close': this.close(); break;
-        case 'view': this._applyView(value); this._closeSheet(); break;
+        case 'view': this._toggleViewMenu(false); this._applyView(value, null); this._closeSheet({ focus: false }); this.$('.view-btn').focus(); break;
+        case 'view-menu': this._toggleViewMenu(); break;
+        case 'learn-home': this._applyView('learn', null); break;
+        case 'learn-area': this._applyView('learn', value); break;
+        case 'learn-toggle': this.ui.learnOpen = (this.ui.learnOpen || 'tasks') === value ? 'none' : value; this._renderLearn(); this.$(`.learn-head[data-value="${value}"]`)?.focus(); break;
+        case 'learn-task': this._applyView('learn', 'tasks'); this._applyChoirTask(value); break;
+        case 'ws-open-studio': {
+          // Kurs → Studio: derselbe Stand, die Spur der Einheit hervorgehoben und ihr Blatt offen.
+          const lesson = this.ui.ws?.lesson;
+          const [track, tab] = LESSON_TRACK[lesson?.tab] || [null, 'pattern'];
+          this._applyView('studio');
+          this.ui.hl = track;
+          this._renderStudio();
+          if (track) this._openTrack(track, tab);
+          break;
+        }
+        case 'my-sounds': this._closeSheet({ focus: false }); this._openSounds(); break;
+        case 'layer-close': this._closeLayer(target.closest('.layer')); break;
+        // Chor (D1, D5)
+        case 'chor-key': this._pushHistory(); s.keyRoot = mod(s.keyRoot + Number(value), 12); this._onHarmonyChange(); this._retuneDrone(); this._renderHarmony(); break;
+        case 'chor-key-pick': this._openKeyLayer(); break;
+        case 'key-root': this._pushHistory(); s.keyRoot = Number(value); this._onHarmonyChange(); this._retuneDrone(); this._renderHarmony(); this._openKeyLayerRefresh('roots'); break;
+        case 'key-mode': this._pushHistory(); s.modeId = value; this._onHarmonyChange(); this._renderHarmony(); this._openKeyLayerRefresh('modes'); break;
+        case 'chor-bpm': this._setBpm(s.bpm + Number(value)); this._onTempoChange(); this._renderChor(); break;
+        case 'chor-swing': this._pushHistory(); s.swing = swingValueOf(value); this._renderBeat(); this._renderChor(); break;
+        case 'chor-style-bpm': { const st = styleOf(s.styleId); if (st) { this._pushHistory(); this._setBpm(st.bpm); this._onTempoChange(); this._renderChor(); } break; }
+        case 'chor-style': this._chorStyle(Number(value)); break;
+        case 'chor-energy': this._setEnergy(value); this._renderChor(); break;
+        case 'chor-room': this._pushHistory(); setRoom(s, value); this._syncEngine(); this._renderFx(); this._renderChor(); break;
+        case 'chor-hear': this._pushHistory(); s.hearFocus = HEAR_IDS.includes(value) ? value : 'balanced'; this._syncEngine(); this._renderChor(); break;
+        case 'chor-prog': this._chorProg(Number(value)); break;
+        case 'chor-el': this._chorStep(target.dataset.el, Number(value)); break;
+        case 'chor-reset': if (s.styleId) { this._replaceState(applyStyle(s, s.styleId, s.energy)); this._setStatus(t('lab.chor.resetDone')); } break;
+        case 'chor-extra-mute': {
+          this._pushHistory();
+          const mute = target.getAttribute('aria-pressed') !== 'true';
+          s.mute.arp = mute; s.mute.drone = mute; s.sampleLanes.forEach((l) => { l.on = !mute; });
+          this._syncEngine(); this._renderMixer(); this._renderChor();
+          break;
+        }
+        case 'start-notes': this._giveStartNotes(); break;
+        case 'surface-open': this._openSurface(); break;
+        case 'prog-sheet': this._openProgSheet(); break;
+        // Spielfläche (E1, E5, E2)
+        case 'sf-tab': this._releasePressedKeys(); this.ui.sf.tab = value; this._renderSurface(); this.$(`.sf-tabs [data-value="${value}"]`)?.focus(); break;
+        case 'sf-dots': this.ui.sf.dots = !this.ui.sf.dots; this.$('.sf-dots').setAttribute('aria-pressed', String(this.ui.sf.dots)); this._paintSurfaceDots(); break;
+        case 'sf-shift': this.ui.sf.shift = clamp(this.ui.sf.shift + Number(value), -2, 1); this._buildSurfaceKeys(); break;
+        case 'sf-kit': this.ui.sf.kitId = value; this._primeSamples(); this._renderSurface(); this.$(`.sf-opts-pads [data-value="${value}"]`)?.focus(); break;
+        case 'sf-record-own': this._closeLayer(this.$('.surface'), { focus: false }); this._openSounds('record'); break;
+        case 'sf-rec': this._sfRecToggle(); break;
+        case 'sf-rec-mode': this.sfRec.mode = value === 'replace' ? 'replace' : 'add'; this._renderSfRec(); break;
+        // Studio (D2, D3)
+        case 'open-track': if (!this.$('.track-layer').hidden) this._closeLayer(this.$('.track-layer'), { focus: false }); this._openTrack(value, target?.dataset.tab || 'pattern'); break;
+        case 'track-tab': this._showTrackTab(value); this.$(`.track-tabs [data-value="${value}"]`)?.focus(); break;
+        case 'track-mute': {
+          this._pushHistory();
+          const mute = !this._trackMuted(value);
+          if (value === 'rec') s.sampleLanes.forEach((l) => { l.on = !mute; });
+          else {
+            s.mute[this._trackDef(value).bus] = mute;
+            if (!mute && value === 'bass') s.trackOn.bass = true;
+            if (!mute && value === 'chords') s.chordsOn = true;
+            if (!mute && value === 'melody') s.melodyOn = true;
+          }
+          this._syncEngine(); this._renderAll();
+          if (this.ui.track) this._showTrackTab(this.ui.trackTab);
+          break;
+        }
+        case 'track-solo': this.ui.solo = this.ui.solo === value ? null : value; this._syncEngine(); this._renderStudio(); if (this.ui.track) this._showTrackTab(this.ui.trackTab); break;
+        case 'track-remove':
+          this._pushHistory();
+          if (value === 'drone') this._setDrone(false); else if (value === 'arp') { s.arpOn = false; this._renderKeys(); }
+          this._closeLayer(this.$('.track-layer'), { focus: false });
+          this._renderStudio(); this.$('.add-track')?.focus();
+          break;
+        case 'add-track': this._openPanelLayer(t('lab.studio.addTitle'), ['addTrack']); break;
+        case 'add-track-pick':
+          this._closeLayer(this.$('.panel-layer'), { focus: false });
+          if (value === 'drone') { this._setDrone(true); this._renderStudio(); this._openTrack('drone'); }
+          else if (value === 'arp') { this._pushHistory(); s.arpOn = true; s.arpAuto = true; this._renderKeys(); this._renderStudio(); this._openTrack('arp'); }
+          else this._openSounds('record');
+          break;
+        case 'song-key': this._openKeyLayer(); break;
+        case 'song-meter': this._openPanelLayer(t('lab.studio.meter'), ['meterSel'], { after: () => this.$all('.meter-chips [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === this._meter()))) }); break;
+        case 'song-meter-set': if (value !== this._meter()) { this._pushHistory(); this._handleAction('meter', value, target); } this.$all('.meter-chips [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === this._meter()))); break;
+        case 'song-tempo': this._openPanelLayer(t('lab.studio.tempo'), ['tempo', 'swingExact'], { after: () => this._renderSwingPart() }); break;
+        case 'song-room': this._openPanelLayer(t('lab.studio.room'), ['roomSel', 'fx'], { after: () => { this._renderFx(); this.$all('.chor-room [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === s.room))); } }); break;
+        case 'panel-layer': {
+          const parts = value === 'keys' ? ['arp', 'keyboard', 'rec'] : ['sampler'];
+          if (value === 'sampler') { this._primeSamples(); this._renderSampler(); }
+          this._openPanelLayer(t(value === 'keys' ? 'lab.tabKeys' : 'lab.tabSampler'), parts);
+          break;
+        }
+        case 'cp-play': this._pushHistory(); s.chordPlay = value; if (value === 'rhythm' && !s.chordHits) s.chordHits = [[0, 4, 1], [4, 4, .8], [8, 4, .9], [12, 4, .8]].filter(([st]) => st < this._barSteps()); s.chordsOn = true; this._renderChordPart(); this._renderStudio(); this.$(`.cp-play [data-value="${value}"]`)?.focus(); break;
+        case 'cp-voicing': this._pushHistory(); s.chordVoicing = value === 'satb' ? 'satb' : 'pop'; this._voicingCache = null; this._renderSatb(); this._renderChordPart(); this._renderStudio(); this._renderChor(); this.$(`.cp-voicing [data-value="${value}"]`)?.focus(); break;
+        case 'cp-oct': this._pushHistory(); s.chordOctave = clamp(Number(value), -1, 1); this._renderChordPart(); this.$(`.cp-oct [data-value="${value}"]`)?.focus(); break;
+        case 'cp-hit': {
+          this._pushHistory();
+          const st = Number(value);
+          const hits = (s.chordHits || []).filter((h) => h[0] !== st);
+          if (hits.length === (s.chordHits || []).length) hits.push([st, 2, .85]);
+          // Länge je Anschlag: bis zum nächsten Anschlag (höchstens bis Taktende).
+          hits.sort((x, y) => x[0] - y[0]).forEach((h, i) => { h[1] = (hits[i + 1]?.[0] ?? this._barSteps()) - h[0]; });
+          s.chordHits = hits.length ? hits : null;
+          if (!s.chordHits) s.chordPlay = 'held';
+          this._renderChordPart(); this._renderStudio();
+          this.$(`.cp-hit[data-value="${value}"]`)?.focus();
+          break;
+        }
+        case 'cs-sound': this._pushHistory(); s.chordSound = CHORD_SOUND_IDS.includes(value) ? value : 'synth'; s.chordsOn = true; this._syncEngine(); this._renderChordPart(); this._renderStudio(); this._renderChor(); this.$(`.cs-chips [data-value="${value}"]`)?.focus(); break;
+        case 'cs-pad': this._pushHistory(); s.chordPad = CHORD_PADS[value] ? value : null; this._renderChordPart(); this._renderStudio(); this._renderChor(); this.$(`.cs-pad-chips [data-value="${value}"]`)?.focus(); break;
+        case 'bass-play': this._pushHistory(); s.bassPlay = value; s.beat.bass = bassVariant(this._pattern(), value); s.trackOn.bass = true; this._renderTracks(); this._renderBassPart(); this._renderStudio(); this.$(`.bass-play-chips [data-value="${value}"]`)?.focus(); break;
+        case 'lane-toggle': { const lane = s.sampleLanes[Number(value)]; if (lane) { this._pushHistory(); lane.on = !lane.on; this._renderTracks(); this._renderRecLanes(); this._renderStudio(); } break; }
+        case 'd6-sel': this.ui.progSel = Number(value); this._renderProgSheet(); this.$(`.d6-chord[data-value="${value}"]`)?.focus(); { const p = this._progression(); this._previewChord(p.degrees[this.ui.progSel], this.ui.progSel); } break;
+        case 'd6-deg': this._progEdit(({ degrees, alter }) => { degrees[this.ui.progSel] = Number(value); alter[this.ui.progSel] = null; }); this._previewChord(Number(value), this.ui.progSel); this.$(`.d6-deg[data-value="${value}"]`)?.focus(); break;
+        case 'd6-len': this._progEdit(({ lens }) => { lens[this.ui.progSel] = Number(value); }); this.$(`.d6-len [data-value="${value}"]`)?.focus(); break;
+        case 'd6-push': this._progEdit(({ push }) => { push[this.ui.progSel] = Number(value); }); this.$(`.d6-push [data-value="${value}"]`)?.focus(); break;
+        case 'd6-all-one': this._progEdit(({ push }) => { push.fill(0); }); this._setStatus(t('lab.d6.allOneDone')); break;
+        case 'd6-sevenths': this._pushHistory(); this._progBegin(); s.progSevenths = !this._progression().sevenths; this._progCommit(); break;
+        case 'd6-bass': this._progEdit(({ bass }) => { bass[this.ui.progSel] = ((bass[this.ui.progSel] || 0) + 1) % 3; }); this._previewChord(this._progression().degrees[this.ui.progSel], this.ui.progSel); break;
+        case 'd6-alter': this._progEdit(({ alter }) => { const order = [null, 'borrow', 'secdom']; alter[this.ui.progSel] = order[(order.indexOf(alter[this.ui.progSel] || null) + 1) % 3]; }); this._previewChord(this._progression().degrees[this.ui.progSel], this.ui.progSel); break;
+        case 'd6-add': this._progEdit(({ degrees, alter, bass, lens, push }) => {
+          if (degrees.length >= PROG_MAX_CHORDS) return;
+          const i = this.ui.progSel;
+          for (const list of [degrees, alter, bass, lens]) list.splice(i + 1, 0, list[i]);
+          push.splice(i + 1, 0, this._stylePush());
+          this.ui.progSel = i + 1;
+        }); break;
+        case 'd6-remove': this._progEdit(({ degrees, alter, bass, lens, push }) => {
+          if (degrees.length <= 1) return;
+          for (const list of [degrees, alter, bass, lens, push]) list.splice(this.ui.progSel, 1);
+          this.ui.progSel = Math.max(0, this.ui.progSel - 1);
+        }); break;
+        case 'd6-move': this._progEdit((lists) => {
+          const i = this.ui.progSel;
+          const to = i + Number(value);
+          if (to < 0 || to >= lists.degrees.length) return;
+          for (const list of Object.values(lists)) [list[i], list[to]] = [list[to], list[i]];
+          this.ui.progSel = to;
+        }); this.$(`[data-action="d6-move"][data-value="${value}"]`)?.focus(); break;
         case 'choir-task': this._applyChoirTask(value); break;
         case 'choir-part': {
           this.ui.choirPart = value;
@@ -9826,6 +11863,12 @@
           s.beat = beatFromPattern(this._pattern());
           s.percSound = percOf(this._pattern());
           s.beatEdited = false;
+          // Redesign: Bass-Spielweise und Anschläge der Akkorde folgen dem neuen Takt; ohne 4/4 kein Swing.
+          if (s.bassPlay) s.beat.bass = bassVariant(this._pattern(), s.bassPlay);
+          s.chordHits = sanitizeHits(s.chordHits, this._barSteps());
+          if (!s.chordHits && s.chordPlay === 'rhythm') s.chordPlay = 'held';
+          if (!swingOffered(value)) s.swing = 0;
+          s.sampleLanes = sanitizeSampleLanes(s.sampleLanes, this._barSteps());
           this._convertTempo();
           this._onTempoChange();
           this.ui.beatCat = 'all';
@@ -9931,6 +11974,9 @@
           break;
         }
         case 'smp-lib-listen': this._auditionPad(value); break;
+        case 'snd-filter': this.ui.smpFilter = value; this._renderSampler(); this.$(`.snd-filter [data-value="${value}"]`)?.focus(); break;
+        case 'snd-more': this.sampler.returnTo = 'library'; this._openEditor(value); break;
+        case 'snd-after': this.ui.smpUse = value; this.$all('.snd-after [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === value))); break;
         case 'smp-lib-use': this._assignPad(this.sampler.sel, value); this._primeSamples(); this._samplerGo('pads'); this._renderLive(); break;
         case 'lane-cell': this._toggleLaneCell(Number(target.dataset.lane), Number(target.dataset.step)); break;
         case 'lane-toggle': { const lane = s.sampleLanes[Number(value)]; if (lane) { lane.on = !lane.on; this._renderTracks(); } break; }
@@ -10123,8 +12169,9 @@
         // Mixer & Klang
         case 'mute':
           s.mute[value] = !s.mute[value];
-          this.engine.setBusLevel(value, s.mute[value] ? 0 : s.mix[value]);
+          this.engine.setBusLevel(value, this._busLevel(value));
           this._renderMixer();
+          this._renderStudio();
           break;
         case 'preset-cat': this.ui.presetCat = value === this.ui.presetCat ? 'all' : value; this._renderSound(); break;
         case 'pick-preset':
@@ -10212,7 +12259,9 @@
       if (event.key === 'Escape') {
         event.preventDefault();
         if (!this.$('.confirm').hidden) this._closeConfirm();
+        else if (!this.$('.view-pop').hidden) this._toggleViewMenu(false);
         else if (this.ui.picker) this._closePicker();
+        else if (this._layers?.length) this._closeLayer();
         else if (!this.$('.dc-sheet').hidden) this._dcSheetClose();
         else if (!this.$('.ovl-pop').hidden) this._toggleOverloadPop(false);
         else if (this.ui.dc.menu) { this.ui.dc.menu = false; this.ui.dc.revealAsk = false; this._renderDeconstruct(); this.$('.dc-more')?.focus(); }
@@ -10221,6 +12270,15 @@
         else this.close();
         return;
       }
+      if (!this.$('.view-pop').hidden && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+        event.preventDefault();
+        const opts = this.$all('.view-opt');
+        const i = opts.indexOf(this.shadowRoot.activeElement);
+        const n = event.key === 'Home' ? 0 : event.key === 'End' ? opts.length - 1 : mod(i + (event.key === 'ArrowDown' ? 1 : -1), opts.length);
+        opts[n].focus();
+        return;
+      }
+      if (event.key === 'Tab' && !this.$('.view-pop').hidden) this._toggleViewMenu(false, { focus: false });
       if (event.key === 'Tab') { this._trapFocus(event); return; }
       if (this._isTyping() || event.metaKey || event.ctrlKey || event.altKey) return;
 
@@ -10260,7 +12318,7 @@
     }
 
     _trapFocus(event) {
-      const scope = [this.$('.confirm-card'), this.$('.picker-card'), this.$('.sheet'), this.$('.dc-sheet-card')].find((el) => !el.closest('[hidden]')) || this.shadowRoot;
+      const scope = [this.$('.confirm-card'), this.$('.picker-card'), this._layers?.[this._layers.length - 1]?.el, this.$('.sheet'), this.$('.dc-sheet-card')].find((el) => el && !el.closest('[hidden]')) || this.shadowRoot;
       const focusable = Array.from(scope.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea, summary'))
         .filter((el) => el.offsetParent !== null || el === this.shadowRoot.activeElement)
         .filter((el) => scope !== this.shadowRoot || !el.closest('.sheet, .picker'));
@@ -10308,7 +12366,7 @@
     --surface-2: #fff1e2;
     --line: #f1ddd0;
     --text: #241b3d;
-    --muted: #8c81a6;
+    --muted: #6b5f86; /* Redesign: 4,5:1 auf Weiß (vorher #8c81a6) */
     --bad: #e0445a;
     --warn: #a86a00;
     position: fixed; inset: 0; z-index: 2147483000;
@@ -10375,6 +12433,62 @@
   .icon-btn {
     width: 40px; height: 40px; flex: 0 0 auto; display: grid; place-items: center;
     border: 1px solid var(--line); border-radius: 13px; background: var(--surface-2); color: var(--muted);
+  }
+  /* Redesign: Kopfleiste mit 44-px-Tippflächen und Ansichts-Auswahl (Chor · Studio · Lernen). */
+  .transport-bar .icon-btn { width: 44px; height: 44px; }
+  .transport-bar .ovl-btn { width: 44px; height: 44px; border-radius: 13px; }
+  .transport-bar .ovl-btn .ovl-ico { width: 20px; height: 20px; }
+  .view-wrap { flex: 0 0 auto; } /* Menü hängt an der Leiste (rechtsbündig), nicht am Knopf */
+  .view-btn {
+    min-height: 44px; padding: 0 8px 0 13px; border-radius: 13px; border: 1px solid var(--text); background: var(--text); color: #fff;
+    display: inline-flex; align-items: center; gap: 4px; font-size: .86rem; font-weight: 800; white-space: nowrap;
+  }
+  .view-btn svg { width: 16px; height: 16px; stroke-width: 2.2; }
+  .view-pop {
+    position: absolute; top: calc(100% + 6px); right: max(12px, env(safe-area-inset-right)); z-index: 21; width: min(calc(100% - 24px), 300px); display: grid; gap: 4px; padding: 6px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(36, 27, 61, .22);
+  }
+  .view-opt { display: grid; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 10px; min-height: 44px; }
+  .view-opt strong { font-size: .88rem; }
+  .view-opt span { font-size: .7rem; color: var(--muted); line-height: 1.35; }
+  .view-opt[aria-checked="true"] { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--accent); }
+  .view-opt[aria-checked="true"] strong { color: var(--accent); }
+  .view-opt:hover { background: var(--surface-2); }
+  .beat-dots i.is-count { background: var(--text); }
+  .ovl-bt { color: var(--muted); }
+  .menu-master { margin: 0 0 8px; grid-template-columns: 1fr 44px; row-gap: 4px; }
+  .menu-master > span { grid-column: 1 / -1; }
+  .learn-back { padding: 0 0 8px; }
+  .learn-list { display: grid; gap: 10px; }
+  .learn-tile { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 12px 14px; display: grid; gap: 10px; }
+  .learn-tile.is-open { border: 2px solid var(--accent); padding: 11px 13px; }
+  .learn-head { display: flex; align-items: center; gap: 12px; text-align: left; min-height: 44px; width: 100%; }
+  .learn-head > svg { width: 20px; height: 20px; color: var(--muted); transition: transform .2s; }
+  .learn-tile.is-open .learn-head > svg { transform: rotate(180deg); }
+  .learn-mark { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 12px; background: var(--surface-2); color: var(--text); display: grid; place-items: center; font-size: .8rem; font-weight: 900; }
+  .learn-mark svg { width: 22px; height: 22px; }
+  .learn-heads { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .learn-heads strong { font-size: 1.02rem; }
+  .learn-heads span { font-size: .74rem; color: var(--muted); line-height: 1.35; }
+  .learn-body { display: grid; gap: 10px; }
+  .learn-group { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+  .learn-group .chip { min-height: 40px; }
+  .learn-row { display: flex; align-items: center; gap: 10px; font-size: .76rem; font-weight: 700; color: var(--muted); }
+  .learn-prog { flex: 1; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .learn-prog i { display: block; height: 100%; background: var(--accent); }
+  .learn-go { justify-self: start; min-height: 44px; }
+  @media (prefers-reduced-motion: reduce) { .learn-head > svg { transition: none; } }
+  .toast {
+    position: absolute; left: 50%; top: calc(max(8px, env(safe-area-inset-top)) + 54px); transform: translateX(-50%); z-index: 30;
+    max-width: calc(100% - 32px); margin: 0; padding: 8px 14px; border-radius: 999px; background: var(--text); color: #fff;
+    font-size: .76rem; font-weight: 700; box-shadow: 0 8px 20px -8px rgba(36, 27, 61, .6);
+  }
+  /* Wird es eng: erst Statuszeile, dann Akkordname weglassen — nie Play, Ansicht, Menü. */
+  @media (max-width: 400px) { .transport-bar { gap: 6px; } .transport-bar .status-line { display: none; } }
+  @media (max-width: 359px) {
+    .transport-bar { gap: 4px; padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+    .transport-bar .now-chord { display: none; }
+    .view-btn { padding: 0 6px 0 10px; }
   }
 
   .tab-bar {
@@ -11166,7 +13280,7 @@
   .rec-result .mel-mini { border: 1px solid var(--line); }
   .rec-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 
-  .picker { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; justify-content: flex-end; }
+  .picker { position: absolute; inset: 0; z-index: 12; /* über den Blättern des Redesigns (.layer) */ display: flex; flex-direction: column; justify-content: flex-end; }
   .picker-backdrop { position: absolute; inset: 0; background: rgba(36,27,61,.38); opacity: 0; transition: opacity .22s; }
   .picker-card {
     position: relative; width: 100%; max-width: 560px; margin: 0 auto; height: 82%; display: flex; flex-direction: column;
@@ -11205,6 +13319,289 @@
   .picker-now strong { font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .picker-done { padding: 11px 24px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: .8rem; }
   @media (prefers-reduced-motion: reduce) { .picker-card, .picker-backdrop { transition: none; } }
+
+
+  /* ---- Chor (D1, D5) ---- */
+  .chor-view { display: grid; gap: 10px; }
+  .chor-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .chor-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .chor-label { font-size: .64rem; font-weight: 800; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+  .chor-label-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .chor-tap { min-height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); font-size: .66rem; font-weight: 800; color: var(--text); }
+  .chor-step { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+  .chor-pm { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 1.15rem; font-weight: 700; color: var(--text); }
+  .chor-val { flex: 1; min-width: 0; text-align: center; font-size: 1.04rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 40px; display: grid; place-items: center; }
+  button.chor-val { border-radius: 10px; }
+  .chor-dark { min-height: 40px; border-radius: 999px; background: var(--text); color: #fff; font-size: .74rem; font-weight: 800; padding: 0 10px; }
+  .chor-style-bpm { min-height: 36px; font-size: .68rem; }
+  .seg { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 3px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 3px; flex: 1; min-width: 0; }
+  .seg > button { min-height: 38px; border-radius: 9px; padding: 0 2px; font-size: .7rem; font-weight: 700; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seg > button[aria-checked="true"], .seg > button[aria-selected="true"] { background: var(--surface); color: var(--text); font-weight: 800; box-shadow: 0 1px 3px rgba(36, 27, 61, .18); }
+  .seg-sm > button { min-height: 32px; font-size: .66rem; }
+  .seg.is-off { opacity: .5; }
+  .chor-row { display: flex; align-items: center; gap: 4px; min-height: 50px; }
+  .chor-row > .chor-label { width: 64px; flex: 0 0 auto; }
+  .chor-style-desc { white-space: normal !important; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
+  .chor-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .chor-text strong { font-size: .92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chor-text span { font-size: .7rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chor-text .is-own, .chor-el-sub.is-own { color: #2f5fb8; font-weight: 700; }
+  .chor-arrow { width: 40px; height: 44px; flex: 0 0 auto; font-size: 1.3rem; color: var(--text); border-radius: 10px; }
+  .chor-style .chor-seg-row { display: flex; align-items: center; gap: 8px; }
+  .chor-seg-row > .chor-label { width: 62px; flex: 0 0 auto; display: grid; gap: 2px; }
+  .chor-badge { font-size: .58rem; font-weight: 800; color: #2f5fb8; text-transform: none; letter-spacing: 0; }
+  .chor-energy-hint { margin: 0 0 0 70px; text-wrap: pretty; font-size: .66rem; color: var(--muted); }
+  .chor-elements { padding: 2px 4px 2px 12px; gap: 0; }
+  .chor-elements .chor-row + .chor-row { border-top: 1px solid var(--line); }
+  .chor-el.is-off .chor-el-name { color: var(--muted); }
+  .chor-chords { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-height: 44px; border-radius: 10px; padding: 3px 0; }
+  .chor-chord { flex: 0 0 auto; padding: 5px 6px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font-size: .86rem; font-weight: 800; color: var(--text); }
+  .chor-extra { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--surface); border: 1px dashed var(--line); border-radius: 14px; padding: 6px 8px 6px 12px; font-size: .74rem; font-weight: 700; color: var(--muted); }
+  .chor-extra .chip { min-height: 40px; }
+  .chor-reset { justify-self: start; min-height: 44px; }
+  .chor-note { display: flex; gap: 8px; align-items: flex-start; background: #eef3ff; border: 1px solid #b9cdf5; color: #1f3f7a; border-radius: 14px; padding: 8px 10px; }
+  .chor-note svg { width: 18px; height: 18px; flex: 0 0 auto; margin-top: 1px; }
+  .chor-note p { margin: 0; font-size: .74rem; line-height: 1.4; }
+  .chor-hear-row { display: flex; align-items: center; gap: 8px; }
+  .chor-hear-row > .chor-label { width: 62px; flex: 0 0 auto; }
+  .chor-hear > button { font-size: .66rem; }
+  .chor-piano { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 13px; background: var(--text); color: #fff; display: grid; place-items: center; }
+  @media (max-width: 359px) {
+    .chor-row > .chor-label, .chor-seg-row > .chor-label, .chor-hear-row > .chor-label { width: 54px; font-size: .58rem; }
+    .chor-energy-hint { margin-left: 54px; }
+    .chor-pm { width: 30px; height: 36px; font-size: 1rem; }
+    .chor-card { padding: 8px 7px; }
+    .chor-val { font-size: .9rem; }
+    .seg > button, .chor-hear > button { font-size: .58rem; }
+    .chor-chord { font-size: .78rem; padding: 4px 5px; }
+    .chor-text strong { font-size: .84rem; }
+  }
+
+
+  /* Lernen/Aufgaben: Aufgabenkarte über der Chor-Ansicht, gesetzte Werte markiert. */
+  .is-task-set { box-shadow: inset 3px 0 0 var(--accent); }
+  .chor-card.is-task-set { box-shadow: 0 0 0 2px var(--accent); }
+  .chor-view.is-task { margin-top: 10px; }
+  /* ---- Blätter des Redesigns (Bottom-Sheet, Ebenen-Stapel _openLayer) ---- */
+  .layer { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; justify-content: flex-end; }
+  .layer-backdrop { position: absolute; inset: 0; background: rgba(36, 27, 61, .42); }
+  .layer-card {
+    position: relative; max-height: 92%; overflow-y: auto; background: var(--bg); border-radius: 24px 24px 0 0;
+    padding: 10px max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    display: flex; flex-direction: column; gap: 10px; box-shadow: 0 -12px 30px -12px rgba(36, 27, 61, .4);
+  }
+  .layer-grab { align-self: center; width: 40px; height: 5px; border-radius: 3px; background: var(--line); flex: 0 0 auto; }
+  .layer-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+  .layer-head h2 { margin: 0; font-size: 1.08rem; }
+  .layer-sub { font-size: .74rem; color: var(--muted); }
+  .layer-done { min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--text); color: #fff; font-size: .8rem; font-weight: 800; flex: 0 0 auto; }
+  .layer .chip-row .chip { min-height: 40px; }
+  .layer .chip[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+
+
+  /* ---- Studio (D2, D3, B2) ---- */
+  .studio-view { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; position: relative; }
+  .song-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .song-cell { min-height: 56px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; justify-content: center; padding: 4px 8px; text-align: left; min-width: 0; }
+  .song-k { font-size: .56rem; font-weight: 800; letter-spacing: .05em; color: var(--muted); text-transform: uppercase; }
+  .song-v { font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .song-sub { font-size: .62rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .song-prog { min-height: 48px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); display: flex; align-items: center; gap: 8px; padding: 0 10px; text-align: left; }
+  .song-prog-list { flex: 1; min-width: 0; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .song-prog-edit { font-size: .72rem; font-weight: 700; color: var(--muted); white-space: nowrap; }
+  .track-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .t-card, .t-heads { min-width: 0; }
+  .t-card { grid-template-columns: minmax(0, 1fr); }
+  .t-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 8px 8px 10px 10px; display: grid; gap: 7px; }
+  .t-card.is-sel { border: 2px solid var(--accent); padding: 7px 7px 9px 9px; }
+  .t-card.is-muted { opacity: .6; }
+  .t-card.is-hl { box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .35); }
+  .t-top { display: flex; align-items: center; gap: 6px; }
+  .t-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: left; min-height: 44px; border-radius: 10px; }
+  .t-bar { width: 10px; height: 34px; border-radius: 5px; background: var(--tc); flex: 0 0 auto; }
+  .t-heads { min-width: 0; display: flex; flex-direction: column; }
+  .t-heads strong { font-size: .92rem; }
+  .t-heads span { font-size: .7rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .t-ms { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 11px; border: 1px solid var(--line); background: var(--bg); font-size: .74rem; font-weight: 800; color: var(--text); }
+  .t-ms[aria-pressed="true"] { background: var(--text); border-color: var(--text); color: #fff; }
+  .t-cells { display: grid; gap: 2px; padding-left: 20px; }
+  .t-cells i { height: 12px; border-radius: 3px; background: var(--line); }
+  .t-cells i.on { background: var(--tc); }
+  .t-vol { display: flex; align-items: center; gap: 8px; padding-left: 20px; color: var(--muted); }
+  .t-vol svg { width: 16px; height: 16px; flex: 0 0 auto; }
+  .t-vol input { flex: 1; accent-color: var(--accent); min-height: 32px; }
+  .add-track { min-height: 48px; border-radius: 16px; border: 2px dashed var(--line); font-size: .78rem; font-weight: 700; color: var(--text); }
+  .studio-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .studio-tools .chip { min-height: 40px; }
+  .studio-fab-space { height: 84px; }
+  .kbd-fab {
+    position: sticky; bottom: 12px; justify-self: center; min-height: 48px; padding: 0 20px; border-radius: 999px; background: var(--text); color: #fff;
+    font-size: .82rem; font-weight: 800; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 8px 20px -8px rgba(36, 27, 61, .6); margin-top: -60px; z-index: 2;
+    max-width: 100%; white-space: nowrap; overflow: hidden;
+  }
+  .kbd-fab-text { overflow: hidden; text-overflow: ellipsis; }
+  .kbd-fab svg { width: 20px; height: 20px; }
+  .track-head { justify-content: flex-start; }
+  .track-color { width: 10px; height: 36px; border-radius: 5px; flex: 0 0 auto; }
+  .track-heads { flex: 1; min-width: 0; display: grid; }
+  .track-heads h2 { font-size: 1.05rem; margin: 0; }
+  .track-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track-tabs > button[hidden] { display: none; }
+  .track-body { display: grid; gap: 10px; }
+  .track-body > .panel, .panel-layer-body > .panel { margin: 0; }
+  .track-layer .layer-card, .panel-layer .layer-card { min-height: 70%; }
+  /* Ein Raster, zwei Blätter: Drums ohne Bass-Zeile, Bass nur mit ihr. */
+  .track-layer[data-track="drums"] .track-row[data-track="bass"], .track-layer[data-track="drums"] .track-row[data-group="bass"] { display: none; }
+  .track-layer[data-track="bass"] .track-row:not([data-track="bass"]):not([data-group="bass"]) { display: none; }
+  .track-layer[data-track="bass"] .kit-box, .track-layer[data-track="bass"] .dc-pattern-head .reset-beat { display: none; }
+  .track-layer .groove-swing, .track-layer .chordsound-chips, .track-layer .voicing-chips { display: none; }
+  .cp-hits { display: grid; gap: 3px; }
+  .cp-hit { height: 34px; border-radius: 5px; background: var(--line); }
+  .cp-hit.alt { background: #e7d6c8; }
+  .cp-hit.on { background: #2f6fd6; }
+  [data-part="chordPlay"] { display: grid; gap: 6px; }
+  [data-part="chordPlay"] .seg { flex: none; }
+  .rec-lanes { display: grid; gap: 6px; margin: 8px 0; }
+  .rec-lane { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .78rem; font-weight: 700; }
+  .add-list { display: grid; gap: 4px; }
+  .add-list .menu-item span { display: grid; gap: 2px; }
+  .add-list .menu-item small { font-size: .7rem; color: var(--muted); font-weight: 600; }
+  .track-mix .chip-row .chip { min-height: 40px; }
+  @media (max-width: 359px) {
+    .song-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .t-ms { width: 40px; }
+  }
+
+
+  /* ---- Spielfläche (E1, E5 Chor quer; E2 Studio von unten) ---- */
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .surface { z-index: 9; }
+  .sf-card { position: relative; background: var(--bg); display: flex; flex-direction: column; gap: 8px; padding: 8px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  .surface.is-choir .sf-card { position: absolute; inset: 0; padding-top: max(8px, env(safe-area-inset-top)); }
+  .surface.is-choir .sf-backdrop { display: none; }
+  .surface.is-studio .sf-card { border-radius: 24px 24px 0 0; max-height: 78%; overflow-y: auto; box-shadow: 0 -12px 30px -12px rgba(36, 27, 61, .4); }
+  .sf-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sf-play { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; }
+  .sf-now { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1 1 120px; }
+  .sf-chord { font-size: 1.5rem; font-weight: 900; color: var(--accent); }
+  .sf-tones, .sf-next { font-size: .74rem; color: var(--muted); font-weight: 700; white-space: nowrap; }
+  .sf-tabs { flex: 0 1 auto; min-width: 0; }
+  .sf-tabs > button { padding: 0 10px; }
+  .sf-tabs > button[hidden] { display: none; }
+  .sf-opts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .sf-opts .chip { min-height: 40px; }
+  .sf-select select { min-height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); padding: 0 8px; font-weight: 700; font-size: .78rem; }
+  .sf-target-wrap { display: flex; align-items: center; gap: 6px; font-size: .74rem; font-weight: 700; }
+  .sf-shift { display: flex; gap: 2px; }
+  .sf-shift button { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-size: 1.2rem; }
+  .sf-close { margin-left: auto; width: 44px; height: 44px; }
+  .surface.is-studio .sf-head { padding-right: 52px; }
+  .surface.is-studio .sf-close { position: absolute; top: 8px; right: max(12px, env(safe-area-inset-right)); }
+  .sf-body { flex: 1; min-height: 0; display: flex; }
+  .sf-body > * { flex: 1; min-width: 0; }
+  .surface.is-studio .sf-body { min-height: 220px; }
+  .sf-piano { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; min-height: 180px; }
+  .sf-piano .key { position: absolute; top: 0; touch-action: none; }
+  .sf-piano .key.is-white { bottom: 0; border: 1px solid var(--line); border-radius: 0 0 12px 12px; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 10px; padding-bottom: 12px; }
+  .sf-piano .key.is-black { height: 58%; border-radius: 0 0 8px 8px; background: #2d2639; z-index: 3; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; }
+  .sf-piano .key-name { font-size: .7rem; color: var(--muted); font-weight: 700; }
+  .sf-dot { width: 12px; height: 12px; border-radius: 50%; visibility: hidden; background: var(--accent); }
+  .sf-piano .key.is-tone .sf-dot { visibility: visible; }
+  .sf-piano .key.is-white.is-tone { background: rgba(var(--accent-rgb), .08); }
+  .sf-piano .key.is-hot { background: var(--accent) !important; }
+  .sf-piano .key.is-hot .sf-dot { background: #fff; }
+  .sf-piano .key.is-hot .key-name { color: #fff; }
+  .sf-scale { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .sf-step { border-radius: 14px; border: 2px solid var(--line); background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 120px; }
+  .sf-step strong { font-size: 1.1rem; }
+  .sf-step small { font-size: .7rem; color: var(--muted); font-weight: 700; }
+  .sf-step.is-root { border-color: var(--accent); }
+  .sf-step.is-tone { background: rgba(var(--accent-rgb), .08); }
+  .sf-step.is-hot { background: var(--accent); color: #fff; }
+  .sf-step.is-hot small { color: #fff; }
+  .sf-pads { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: minmax(64px, 1fr); gap: 8px; touch-action: manipulation; }
+  .sf-pad { border-radius: 18px; border: 2px solid var(--line); background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 4px; min-width: 0; }
+  .sf-pad strong { font-size: .9rem; overflow: hidden; text-overflow: ellipsis; max-width: 100%; white-space: nowrap; }
+  .sf-pad span { font-size: .66rem; color: var(--muted); }
+  .sf-pad.is-own { background: #eef3ff; border-color: #b9cdf5; }
+  .sf-pad.is-free { border-style: dashed; color: var(--muted); }
+  .sf-pad.is-hit { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .sf-rec { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 8px; align-items: center; }
+  .sf-rec-btn { min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: .8rem; }
+  .sf-rec-btn i { width: 12px; height: 12px; border-radius: 50%; background: var(--bad); }
+  .sf-rec-btn[aria-pressed="true"] { background: var(--text); color: #fff; border-color: var(--text); }
+  .sf-rec-btn.is-rec i { animation: sf-blink 1s steps(2) infinite; }
+  @keyframes sf-blink { 50% { opacity: .2; } }
+  .sf-rec-note { grid-column: 1 / -1; margin: 0; font-size: .68rem; color: var(--muted); line-height: 1.4; }
+  .sf-rotate { display: none; }
+  @media (orientation: portrait) {
+    .surface.is-choir .sf-rotate { display: flex; position: absolute; inset: 0; z-index: 5; background: var(--bg); flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px; }
+    .surface.is-choir .sf-rotate svg { width: 56px; height: 56px; color: var(--accent); }
+    .surface.is-choir .sf-rotate p { margin: 0; font-weight: 800; }
+    /* Hochkant bleibt der Kopf bedienbar (Schließen, Play) über dem Hinweis. */
+    .surface.is-choir .sf-head { position: relative; z-index: 6; }
+  }
+  @media (prefers-reduced-motion: reduce) { .sf-rec-btn.is-rec i { animation: none; } }
+
+
+  /* ---- Meine Sounds (E3) und Aufnehmen (E4) ---- */
+  .snd-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; }
+  .snd-count { font-size: .74rem; color: var(--muted); font-weight: 700; }
+  .snd-top .chip { min-height: 40px; }
+  .snd-new { width: 100%; min-height: 52px; border-radius: 16px; background: var(--text); color: #fff; font-weight: 800; font-size: .86rem; display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; }
+  .snd-new i { width: 14px; height: 14px; border-radius: 50%; background: var(--bad); }
+  .snd-filter { margin-bottom: 8px; }
+  .snd-list { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 2px 10px; display: grid; }
+  .snd-row { display: flex; align-items: center; gap: 10px; min-height: 74px; }
+  .snd-row + .snd-row { border-top: 1px solid var(--line); }
+  .snd-play { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line); display: grid; place-items: center; color: var(--text); }
+  .snd-play svg { width: 18px; height: 18px; }
+  .snd-mid { flex: 1; min-width: 0; display: grid; gap: 3px; }
+  .snd-line { display: flex; gap: 2px 8px; align-items: baseline; min-width: 0; flex-wrap: wrap; }
+  .panel-layer:has([data-part="sampler"]) .panel-layer-title { visibility: hidden; }
+  .snd-line strong { font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .snd-line span { font-size: .68rem; color: var(--muted); white-space: nowrap; }
+  .snd-wave { display: flex; align-items: center; gap: 2px; height: 20px; }
+  .snd-wave i { width: 4px; border-radius: 1px; background: var(--accent); }
+  .snd-use { font-size: .68rem; font-weight: 700; color: #2f5fb8; }
+  .snd-use.is-free { color: var(--muted); font-weight: 600; }
+  .snd-more { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 12px; font-size: 1.2rem; color: var(--muted); }
+  .snd-how { margin-top: 10px; background: var(--surface-2); border-radius: 14px; padding: 10px 12px; font-size: .74rem; line-height: 1.45; }
+  .snd-how p { margin: 4px 0 0; }
+  .snd-factory { margin-top: 10px; }
+  .snd-factory > summary { cursor: pointer; font-size: .78rem; font-weight: 700; color: var(--muted); min-height: 44px; display: flex; align-items: center; }
+  .snd-after .chip { min-height: 40px; }
+
+  /* ---- Akkordfolgen-Editor (D6) ---- */
+  .d6-tpl { display: flex; align-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 4px; }
+  .d6-tpl .chor-text { text-align: center; }
+  .d6-box { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 10px; display: grid; gap: 8px; }
+  .d6-box-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .d6-legend { font-size: .68rem; color: var(--muted); }
+  .d6-ruler { display: flex; gap: 4px; }
+  .d6-ruler span { flex: 1 1 0; font-size: .6rem; font-weight: 800; color: var(--muted); border-left: 1px solid var(--line); padding-left: 4px; }
+  .d6-chords { display: flex; gap: 4px; }
+  .d6-chord { flex: 1 1 0; min-width: 0; min-height: 64px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    background: var(--surface); border: 1px solid var(--line); color: var(--text); overflow: hidden; }
+  .d6-chord strong { font-size: .92rem; white-space: nowrap; }
+  .d6-chord span { font-size: .66rem; color: var(--muted); }
+  .d6-chord[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .d6-chord[aria-pressed="true"] span { color: #fff; }
+  .d6-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+  .d6-tools .chip { min-height: 40px; }
+  .d6-sel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 10px 12px; display: grid; gap: 6px; }
+  .d6-sel-title { font-size: .9rem; }
+  .d6-degrees { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .d6-deg { min-height: 40px; padding: 0; border-radius: 10px; font-size: .72rem; font-weight: 800; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+  .d6-deg[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .d6-push-note { margin: 0; font-size: .66rem; color: var(--muted); }
+  .d6-opts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .d6-opts .chip { min-height: 40px; }
+  .d6-all { justify-self: center; min-height: 44px; }
+  .d6-tpl-open { text-align: center; min-height: 44px; border-radius: 10px; }
+  .d6-own { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .d6-own .chip { min-height: 40px; }
 
   /* Menü: Schublade von rechts (auf dem Handy fast bildschirmbreit) */
   .sheet { position: absolute; inset: 0; z-index: 5; display: flex; justify-content: flex-end; }
@@ -11264,6 +13661,12 @@
     <div class="now-line"><div class="beat-dots" aria-hidden="true"></div><strong class="now-chord"></strong></div>
     <p class="status-line" role="status">${t('lab.statusReady')}</p>
   </div>
+  <div class="view-wrap">
+    <button class="view-btn" type="button" data-action="view-menu" aria-haspopup="menu" aria-expanded="false"><span class="view-name"></span>${UI_ICON.chevron}</button>
+    <div class="view-pop" role="menu" aria-label="${t('lab.viewAria')}" hidden>
+      ${VIEWS.map((v) => `<button class="view-opt" type="button" role="menuitemradio" aria-checked="false" data-action="view" data-value="${v}"><strong>${t(VIEW_LABEL[v])}</strong><span>${t(`lab.menu.modeDesc.${v}`)}</span></button>`).join('')}
+    </div>
+  </div>
   <button class="ovl-btn" type="button" data-action="overload" aria-expanded="false" aria-label="${t('lab.ovl.ariaIdle')}" title="${t('lab.ovl.ariaIdle')}"><svg class="ovl-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-5"/></svg><span class="ovl-bang" aria-hidden="true">!</span></button>
   <div class="ovl-pop" role="dialog" aria-label="${t('lab.ovl.titleIdle')}" hidden>
     <strong class="ovl-title">${t('lab.ovl.titleIdle')}</strong>
@@ -11283,6 +13686,7 @@
     </div>
     <p class="ovl-test" role="status"></p>
     <p class="ovl-note" role="status"></p>
+    <p class="ovl-bt">${t('lab.ovl.bluetooth')}</p>
     <button class="chip" type="button" data-action="overload-close">${t('lab.ovl.close')}</button>
   </div>
   <button class="dc-check-btn" type="button" data-action="dc-check-active"></button>
@@ -11296,6 +13700,155 @@
 </nav>
 
 <div class="lab-body">
+  <nav class="learn-back" hidden><button class="chip" type="button" data-action="learn-home">‹ ${t('lab.viewLearn')}</button></nav>
+  <section class="chor-view" hidden aria-label="${t('lab.viewChoir')}">
+    <!-- Chor (D1, D5): derselbe Stand wie im Studio, nur weniger Details. -->
+    <div class="chor-note" role="status" hidden>${UI_ICON.edit}<p>${t('lab.chor.adjusted')}</p></div>
+    <div class="chor-pair">
+      <section class="chor-card">
+        <span class="chor-label" id="chor-key-label">${t('lab.chor.key')}</span>
+        <div class="chor-step">
+          <button class="chor-pm" type="button" data-action="chor-key" data-value="-1" aria-label="${t('lab.chor.keyDown')}">−</button>
+          <button class="chor-val chor-key-name" type="button" data-action="chor-key-pick" aria-haspopup="dialog" aria-describedby="chor-key-label"></button>
+          <button class="chor-pm" type="button" data-action="chor-key" data-value="1" aria-label="${t('lab.chor.keyUp')}">+</button>
+        </div>
+        <button class="chor-dark" type="button" data-action="start-notes">${t('lab.chor.startNotes')}</button>
+      </section>
+      <section class="chor-card">
+        <div class="chor-label-row"><span class="chor-label" id="chor-tempo-label">${t('lab.chor.tempo')}</span><button class="chor-tap" type="button" data-action="tap-tempo">${t('lab.tapTempo')}</button></div>
+        <div class="chor-step">
+          <button class="chor-pm" type="button" data-action="chor-bpm" data-value="-1" aria-label="${t('lab.chor.slower')}">−</button>
+          <strong class="chor-val chor-bpm" aria-live="polite"></strong>
+          <button class="chor-pm" type="button" data-action="chor-bpm" data-value="1" aria-label="${t('lab.chor.faster')}">+</button>
+        </div>
+        <div class="seg seg-sm chor-swing" role="radiogroup" aria-label="${t('lab.swing')}">
+          ${SWING_LEVELS.map(([id]) => `<button type="button" role="radio" aria-checked="false" data-action="chor-swing" data-value="${id}">${t(`lab.swingLevel.${id}`)}</button>`).join('')}
+        </div>
+        <button class="chip chor-style-bpm" type="button" data-action="chor-style-bpm" hidden></button>
+      </section>
+    </div>
+    <section class="chor-card chor-style">
+      <div class="chor-row">
+        <span class="chor-label">${t('lab.chor.style')}</span>
+        <div class="chor-text"><strong class="chor-style-name"></strong><span class="chor-style-desc"></span></div>
+        <button class="chor-arrow" type="button" data-action="chor-style" data-value="-1" aria-label="${t('lab.chor.stylePrev')}">‹</button>
+        <button class="chor-arrow" type="button" data-action="chor-style" data-value="1" aria-label="${t('lab.chor.styleNext')}">›</button>
+      </div>
+      <div class="chor-seg-row"><span class="chor-label" id="chor-energy-label">${t('lab.chor.energy')}<b class="chor-badge chor-energy-badge" hidden>${t('lab.chor.adjustedShort')}</b></span>
+        <div class="seg chor-energy" role="radiogroup" aria-labelledby="chor-energy-label">
+          ${ENERGY_IDS.map((id) => `<button type="button" role="radio" aria-checked="false" data-action="chor-energy" data-value="${id}">${t(`lab.energy.${id}`)}</button>`).join('')}
+        </div></div>
+      <p class="chor-energy-hint" hidden>${t('lab.chor.energyReset')}</p>
+      <div class="chor-seg-row"><span class="chor-label" id="chor-room-label">${t('lab.chor.room')}</span>
+        <div class="seg chor-room" role="radiogroup" aria-labelledby="chor-room-label">
+          ${ROOM_IDS.map((id) => `<button type="button" role="radio" aria-checked="false" data-action="chor-room" data-value="${id}">${t(`lab.room.${id}`)}</button>`).join('')}
+        </div></div>
+    </section>
+    <section class="chor-card chor-elements">
+      <div class="chor-row chor-chords-row">
+        <span class="chor-label">${t('lab.chor.chords')}</span>
+        <button class="chor-chords" type="button" data-action="prog-sheet" aria-haspopup="dialog"></button>
+        <button class="chor-arrow" type="button" data-action="chor-prog" data-value="-1" aria-label="${t('lab.chor.progPrev')}">‹</button>
+        <button class="chor-arrow" type="button" data-action="chor-prog" data-value="1" aria-label="${t('lab.chor.progNext')}">›</button>
+      </div>
+      ${['rhythm', 'bass', 'sound', 'melody'].map((el) => `<div class="chor-row chor-el" data-el="${el}">
+        <span class="chor-label">${t(`lab.chor.el.${el}`)}</span>
+        <div class="chor-text"><strong class="chor-el-name"></strong><span class="chor-el-sub"></span></div>
+        <button class="chor-arrow" type="button" data-action="chor-el" data-el="${el}" data-value="-1" aria-label="${t(`lab.chor.el.${el}`)}: ${t('lab.prevAria')}">‹</button>
+        <button class="chor-arrow" type="button" data-action="chor-el" data-el="${el}" data-value="1" aria-label="${t(`lab.chor.el.${el}`)}: ${t('lab.nextAria')}">›</button>
+      </div>`).join('')}
+    </section>
+    <div class="chor-extra" hidden><span class="chor-extra-text"></span><button class="chip" type="button" data-action="chor-extra-mute" aria-pressed="false">${t('lab.chor.mute')}</button></div>
+    <button class="chip chor-reset" type="button" data-action="chor-reset" hidden>${t('lab.chor.reset')}</button>
+    <section class="chor-hear-row">
+      <span class="chor-label" id="chor-hear-label">${t('lab.chor.hear')}</span>
+      <div class="seg chor-hear" role="radiogroup" aria-labelledby="chor-hear-label">
+        ${HEAR_IDS.map((id) => `<button type="button" role="radio" aria-checked="false" data-action="chor-hear" data-value="${id}">${t(`lab.hear.${id}`)}</button>`).join('')}
+      </div>
+      <button class="chor-piano" type="button" data-action="surface-open" aria-label="${t('lab.chor.piano')}" title="${t('lab.chor.piano')}">${UI_ICON.piano}</button>
+    </section>
+  </section>
+  <section class="studio-view" hidden aria-label="${t('lab.viewStudio')}">
+    <!-- Studio (D2): Song-Zeile, Akkordfolge, Spurkarten. Antippen → Blatt Muster · Klang · Mix. -->
+    <div class="song-row" role="group" aria-label="${t('lab.studio.song')}">
+      ${['key', 'meter', 'tempo', 'room'].map((k) => `<button class="song-cell" type="button" data-action="song-${k}" aria-haspopup="dialog"><span class="song-k">${t(`lab.studio.${k}`)}</span><strong class="song-v" data-song="${k}"></strong><span class="song-sub" data-song-sub="${k}"></span></button>`).join('')}
+    </div>
+    <button class="song-prog" type="button" data-action="prog-sheet" aria-haspopup="dialog"><span class="song-k">${t('lab.studio.prog')}</span><strong class="song-prog-list"></strong><span class="song-prog-edit">${t('lab.studio.edit')} ›</span></button>
+    <div class="track-cards"></div>
+    <button class="add-track" type="button" data-action="add-track" aria-haspopup="dialog">${t('lab.studio.addTrack')}</button>
+    <div class="studio-tools"><span class="sub-label">${t('lab.studio.more')}</span>
+      <button class="chip" type="button" data-action="my-sounds">${t('lab.menu.sounds')}</button>
+    </div>
+    <div class="studio-fab-space" aria-hidden="true"></div>
+    <button class="kbd-fab" type="button" data-action="surface-open">${UI_ICON.piano}<span class="kbd-fab-text"></span></button>
+  </section>
+  <div class="studio-parts" hidden>
+    <!-- Neue Bausteine der Spur-Blätter (werden beim Öffnen in das Blatt gehängt). -->
+    <section data-part="bassPlay" class="panel">
+      <span class="sub-label" id="bass-play-label">${t('lab.studio.bassPlay')}</span>
+      <div class="chip-row bass-play-chips" role="radiogroup" aria-labelledby="bass-play-label"></div>
+      <div class="switch-row">${toggle('bassHold', 'lab.studio.bassHold')}</div>
+      <p class="foot-note">${t('lab.studio.bassLineHint')}</p>
+    </section>
+    <section data-part="chordPlay" class="panel">
+      <p class="foot-note">${t('lab.studio.chordsHint')}</p>
+      <span class="chor-label" id="cp-play-label">${t('lab.studio.playStyle')}</span>
+      <div class="seg cp-play" role="radiogroup" aria-labelledby="cp-play-label">
+        ${CHORD_PLAYS.map((id) => `<button type="button" role="radio" aria-checked="false" data-action="cp-play" data-value="${id}">${t(`lab.studio.play.${id}`)}</button>`).join('')}
+      </div>
+      <span class="chor-label" id="cp-voicing-label">${t('lab.studio.voicing')}</span>
+      <div class="seg cp-voicing" role="radiogroup" aria-labelledby="cp-voicing-label">
+        ${['satb', 'pop'].map((id) => `<button type="button" role="radio" aria-checked="false" data-action="cp-voicing" data-value="${id}">${t(`lab.studio.voicing.${id}`)}</button>`).join('')}
+      </div>
+      <span class="chor-label" id="cp-oct-label">${t('lab.studio.register')}</span>
+      <div class="seg cp-oct" role="radiogroup" aria-labelledby="cp-oct-label">
+        ${[-1, 0, 1].map((o) => `<button type="button" role="radio" aria-checked="false" data-action="cp-oct" data-value="${o}">${t(`lab.studio.register.${o + 1}`)}</button>`).join('')}
+      </div>
+      <div class="cp-hits-box">
+        <span class="chor-label" id="cp-hits-label">${t('lab.studio.hits')}</span>
+        <div class="cp-hits" role="group" aria-labelledby="cp-hits-label"></div>
+      </div>
+    </section>
+    <section data-part="chordSoundSel" class="panel">
+      <span class="sub-label" id="cs-label">${t('lab.studio.chordSound')}</span>
+      <div class="chip-row cs-chips" role="radiogroup" aria-labelledby="cs-label"></div>
+      <span class="sub-label" id="cs-pad-label">${t('lab.studio.padLayer')}</span>
+      <div class="chip-row cs-pad-chips" role="radiogroup" aria-labelledby="cs-pad-label"></div>
+    </section>
+    <section data-part="arpSoundNote" class="panel"><p class="foot-note">${t('lab.studio.arpSound')}</p>
+      <button class="chip" type="button" data-action="open-track" data-value="melody" data-tab="sound">${t('lab.studio.toMelodySound')}</button></section>
+    <section data-part="recNote" class="panel"><p class="foot-note">${t('lab.studio.recHint')}</p>
+      <div class="rec-lanes"></div>
+      <button class="chip" type="button" data-action="my-sounds">${t('lab.menu.sounds')}</button></section>
+    <section data-part="swingExact" class="panel">
+      <span class="chor-label">${t('lab.swing')}</span>
+      <div class="seg chor-swing" role="radiogroup" aria-label="${t('lab.swing')}">
+        ${SWING_LEVELS.map(([id]) => `<button type="button" role="radio" aria-checked="false" data-action="chor-swing" data-value="${id}">${t(`lab.swingLevel.${id}`)}</button>`).join('')}
+      </div>
+      <label class="slider-line"><span>${t('lab.studio.swingExact')}</span><input type="range" data-field="swing" min="0" max="1" step=".01"><output data-out="swing"></output></label>
+      <p class="foot-note swing-ratio"></p>
+    </section>
+    <section data-part="roomSel" class="panel">
+      <div class="seg chor-room" role="radiogroup" aria-label="${t('lab.chor.room')}">
+        ${ROOM_IDS.map((id) => `<button type="button" role="radio" aria-checked="false" data-action="chor-room" data-value="${id}">${t(`lab.room.${id}`)}</button>`).join('')}
+      </div>
+      <p class="foot-note">${t('lab.studio.roomHint')}</p>
+    </section>
+    <section data-part="meterSel" class="panel">
+      <div class="chip-row meter-chips" role="radiogroup" aria-label="${t('lab.studio.meter')}">
+        ${METER_IDS.map((id) => `<button class="chip" type="button" role="radio" aria-checked="false" data-action="song-meter-set" data-value="${id}">${id}</button>`).join('')}
+      </div>
+      <p class="foot-note">${t('lab.studio.meterHint')}</p>
+    </section>
+    <section data-part="addTrack" class="panel">
+      <div class="add-list">
+        <button class="menu-item" type="button" data-action="add-track-pick" data-value="drone"><span><strong>${t('lab.track.drone')}</strong><small>${t('lab.studio.add.drone')}</small></span></button>
+        <button class="menu-item" type="button" data-action="add-track-pick" data-value="rec"><span><strong>${t('lab.track.rec')}</strong><small>${t('lab.studio.add.rec')}</small></span></button>
+        <button class="menu-item" type="button" data-action="add-track-pick" data-value="arp"><span><strong>${t('lab.track.arp')}</strong><small>${t('lab.studio.add.arp')}</small></span></button>
+      </div>
+    </section>
+  </div>
+  <section class="learn-view" hidden></section>
   <section class="choir-view" hidden>
     <section class="panel">
       <div class="panel-head"><h2>${t('lab.choirTask')}</h2>${help('choirHelp')}</div>
@@ -11314,7 +13867,7 @@
       <div class="chip-row choir-grooves"></div>
       <div class="choir-tempo">${tempoRow}</div>
     </section>
-    <section class="panel">
+    <section class="panel choir-old" hidden>
       <div class="panel-head"><h2>${t('lab.key')}</h2></div>
       <div class="select-grid">
         <label class="select-field"><span>${t('lab.keyRoot')}</span><select data-field="keyRoot"></select></label>
@@ -11370,6 +13923,7 @@
         </div>
         <p class="ws-ab-hint" hidden></p>
         <p class="ws-to-studio">${t('lab.ws.toStudio')}</p>
+        <button class="chip ws-open-studio" type="button" data-action="ws-open-studio">${t('lab.learn.toStudio')} ›</button>
       </div>
       <p class="ws-live" aria-live="polite"></p>
     </section>
@@ -11443,12 +13997,12 @@
     </section>
   </section>
   <section class="tab-panel" data-tab-panel="beat">
-    <section class="panel tempo-panel">${tempoRow}</section>
-    <section class="panel dc-tpl-panel">
+    <section data-part="tempo" class="panel tempo-panel">${tempoRow}</section>
+    <section data-part="loop" class="panel dc-tpl-panel">
       <div class="panel-head"><h2>${t('lab.drumloop')}</h2>${lockBtn('beat')}</div>
       ${pickerTrigger('beat')}
     </section>
-    <section class="panel beat-panel">
+    <section data-part="grid" class="panel beat-panel">
       <div class="zoom-head"><h2>${t('lab.pattern')}</h2><button class="chip zoom-done" type="button" data-action="beat-zoom-close">${t('lab.zoomClose')}</button></div>
       <div class="panel-head dc-pattern-head"><h2>${t('lab.pattern')}</h2>${help('editHint')}<button class="chip reset-beat" type="button" data-action="reset-beat">${t('lab.resetBeat')}</button>${zoomBtn}</div>
       <div class="dc-tools">
@@ -11469,12 +14023,12 @@
         <div class="pill-row"><button class="chip" type="button" data-action="kit-reset">${t('lab.kitReset')}</button></div>
       </details>
     </section>
-    <section class="panel dc-bass-panel live-panel">
+    <section data-part="live" class="panel dc-bass-panel live-panel">
       <div class="panel-head"><h2>${t('lab.sampler.liveTitle')}</h2>${help('helpLive')}<label class="switch live-switch"><input type="checkbox" role="switch" data-switch="liveWrite" checked><span class="switch-track" aria-hidden="true"></span><span>${t('lab.sampler.liveWrite')}</span></label></div>
       ${helpText('helpLive')}
       <div class="live-pads" role="group" aria-label="${t('lab.sampler.liveTitle')}"></div>
     </section>
-    <section class="panel dc-bass-panel kit-panel">
+    <section data-part="kit" class="panel dc-bass-panel kit-panel">
       <div class="panel-head"><h2>${t('lab.drumKit')}</h2>${help('helpKit')}</div>
       ${helpText('helpKit')}
       <div class="chip-row kit-chips" role="group" aria-label="${t('lab.drumKit')}"></div>
@@ -11482,21 +14036,21 @@
       ${helpText('helpFills')}
       <div class="chip-row fill-chips" role="group" aria-label="${t('lab.fills')}"></div>
     </section>
-    <section class="panel dc-bass-panel">
+    <section data-part="bassSound" class="panel dc-bass-panel">
       <div class="panel-head"><h2>${t('lab.bassSound')}</h2>${help('helpBass')}</div>
       ${helpText('helpBass')}
       <div class="chip-row bass-chips"></div>
     </section>
-    <section class="panel">
+    <section data-part="groove" class="panel">
       <div class="panel-head"><h2>${t('lab.groove')}</h2>${help('helpGroove')}</div>
       ${helpText('helpGroove')}
-      <label class="slider-line"><span>${t('lab.swing')}</span><input type="range" data-field="swing" min="0" max="1" step=".01"><output data-out="swing"></output></label>
+      <label class="slider-line groove-swing"><span>${t('lab.swing')}</span><input type="range" data-field="swing" min="0" max="1" step=".01"><output data-out="swing"></output></label>
       <label class="slider-line"><span>${t('lab.pump')}</span><input type="range" data-field="pump" min="0" max="1" step=".01"><output data-out="pump"></output></label>
     </section>
   </section>
 
   <section class="tab-panel" data-tab-panel="harmony" hidden>
-    <section class="panel">
+    <section data-part="key" class="panel">
       <div class="panel-head"><h2>${t('lab.key')}</h2>${help('helpKey')}<span class="item-name key-name"></span>${lockBtn('harmony')}</div>
       ${helpText('helpKey')}
       <div class="select-grid">
@@ -11504,13 +14058,14 @@
         <label class="select-field"><span>${t('lab.keyMode')}</span><select data-field="modeId"></select></label>
       </div>
     </section>
-    <section class="panel">
+    <section data-part="prog" class="panel">
       <div class="panel-head"><h2>${t('lab.progression')}</h2>${help('helpProgression')}</div>
       ${helpText('helpProgression')}
       ${pickerTrigger('prog')}
       <p class="prog-info"></p>
       <div class="chord-strip"></div>
       <button class="mel-edit-link" type="button" data-action="prog-edit">${UI_ICON.edit}${t('lab.progEdit')}</button>
+      <button class="mel-edit-link" type="button" data-action="prog-sheet" aria-haspopup="dialog">${UI_ICON.edit}${t('lab.d6.open')}</button>
       <div class="prog-editor" hidden>
         <div class="mel-top">
           <span class="prog-count"></span>
@@ -11541,7 +14096,7 @@
         <select data-field="chordBars"><option value="1">${t('lab.everyBar')}</option><option value="2">${t('lab.everyTwoBars')}</option></select>
       </label>
     </section>
-    <section class="panel">
+    <section data-part="satb" class="panel">
       <div class="panel-head"><h2>${t('lab.satbTitle')}</h2>${help('satbHint')}</div>
       ${helpText('satbHint')}
       <div class="switch-row">${toggle('chordsOn', 'lab.chordsPlay')}</div>
@@ -11550,7 +14105,7 @@
       <div class="chip-row chordsound-chips" role="group" aria-label="${t('lab.chordSoundLabel')}"></div>
       <div class="satb-list"></div>
     </section>
-    <section class="panel">
+    <section data-part="drone" class="panel">
       <div class="panel-head"><h2>${t('lab.drone')}</h2>${help('droneHint')}</div>
       ${helpText('droneHint')}
       <div class="switch-row">${toggle('droneOn', 'lab.droneOn')}${toggle('droneFifth', 'lab.droneFifth')}</div>
@@ -11558,11 +14113,11 @@
   </section>
 
   <section class="tab-panel" data-tab-panel="sampler" hidden>
-    <div class="sampler-root"></div>
+    <div class="sampler-root" data-part="sampler"></div>
   </section>
 
   <section class="tab-panel" data-tab-panel="melody" hidden>
-    <section class="panel">
+    <section data-part="melody" class="panel">
       <div class="panel-head">
         <h2>${t('lab.melody')}</h2>${help('melodyHint')}
         ${lockBtn('melody')}${bareToggle('melodyOn', 'lab.melodyOn')}
@@ -11606,7 +14161,7 @@
   </section>
 
   <section class="tab-panel" data-tab-panel="sound" hidden>
-    <section class="panel">
+    <section data-part="sound" class="panel">
       <div class="panel-head"><h2>${t('lab.sound')}</h2>${help('helpSound')}${lockBtn('sound')}</div>
       ${helpText('helpSound')}
       ${pickerTrigger('sound')}
@@ -11675,7 +14230,7 @@
       </details>
     </section>
 
-    <section class="panel">
+    <section data-part="fx" class="panel">
       <div class="panel-head"><h2>${t('lab.effects')}</h2>${help('helpEffects')}</div>
       ${helpText('helpEffects')}
       <div class="fx-groups">
@@ -11694,7 +14249,7 @@
   </section>
 
   <section class="tab-panel" data-tab-panel="mixer" hidden>
-    <section class="panel">
+    <section data-part="mixer" class="panel">
       <div class="panel-head"><h2>${t('lab.mixer')}</h2>${help('helpMixer')}</div>
       ${helpText('helpMixer')}
       <div class="mixer-list"></div>
@@ -11702,7 +14257,7 @@
   </section>
 
   <section class="tab-panel" data-tab-panel="keys" hidden>
-    <section class="panel">
+    <section data-part="arp" class="panel">
       <div class="panel-head"><h2>${t('lab.arpeggiator')}</h2>${help('helpArp')}${bareToggle('arpOn', 'lab.arpOn')}</div>
       ${helpText('helpArp')}
       <div class="switch-row arp-switches">${toggle('latchOn', 'lab.latch')}${toggle('arpAuto', 'lab.arpAuto')}</div>
@@ -11726,7 +14281,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section data-part="keyboard" class="panel">
       <div class="panel-head"><h2>${t('lab.miniKeyboard')}</h2>${help('keysHint')}</div>
       ${helpText('keysHint')}
       <div class="keyboard-head">
@@ -11737,7 +14292,7 @@
       <div class="scale-pads" hidden></div>
     </section>
 
-    <section class="panel rec-panel">
+    <section data-part="rec" class="panel rec-panel">
       <div class="panel-head"><h2>${t('lab.recTitle')}</h2>${help('recHint')}</div>
       ${helpText('recHint')}
       <div class="rec-row">
@@ -11791,18 +14346,147 @@
       </details>
       <p class="foot-note storage-hint"></p>
     </section>
-    <section class="menu-sec" aria-labelledby="gl-menu-mode">
-      <h3 class="menu-sec-title" id="gl-menu-mode">${t('lab.menu.mode')}</h3>
-      <div class="mode-list" role="group" aria-labelledby="gl-menu-mode">
-        ${VIEWS.map((v) => `<button class="mode-item" type="button" data-action="view" data-value="${v}" aria-pressed="false"><strong>${t(VIEW_LABEL[v])}</strong><span>${t(`lab.menu.modeDesc.${v}`)}</span></button>`).join('')}
-      </div>
+    <section class="menu-sec" aria-labelledby="gl-menu-play">
+      <h3 class="menu-sec-title" id="gl-menu-play">${t('lab.menu.play')}</h3>
+      <label class="slider-line menu-master"><span>${t('lab.menu.master')}</span><input type="range" data-mix="master" min="0" max="1" step=".01"><output data-out="master"></output></label>
+      <div class="switch-row">${toggle('countIn', 'lab.menu.countIn')}</div>
     </section>
     <section class="menu-sec menu-actions">
+      <button class="menu-item" type="button" data-action="my-sounds">${UI_ICON.waves}<span>${t('lab.menu.sounds')}</span></button>
+      <button class="menu-item menu-random" type="button" data-action="randomize">${UI_ICON.dice}<span>${t('lab.menu.random')}</span></button>
       <button class="menu-item" type="button" data-action="menu-audio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-5"/></svg><span>${t('lab.ovl.titleIdle')}</span></button>
-      <button class="menu-item" type="button" data-action="randomize">${UI_ICON.dice}<span>${t('lab.randomAria')}</span></button>
       <button class="menu-item" type="button" data-action="close">${UI_ICON.close}<span>${t('lab.closeAria')}</span></button>
     </section>
   </div>
+</div>
+
+<p class="toast" role="status" aria-live="polite" hidden></p>
+
+<div class="layer surface" hidden>
+  <div class="layer-backdrop sf-backdrop" data-action="layer-close"></div>
+  <section class="sf-card" role="dialog" aria-modal="true" aria-labelledby="sf-title">
+    <h2 class="sr-only" id="sf-title">${t('lab.sf.title')}</h2>
+    <div class="sf-rotate" aria-live="polite"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M3 14a9 9 0 0 0 7 7M3 14l-1 3M3 14l3 1"/></svg><p>${t('lab.sf.rotate')}</p></div>
+    <header class="sf-head">
+      <button class="sf-play" type="button" data-action="toggle-transport" aria-label="${t('lab.startAria')}">${UI_ICON.play}</button>
+      <div class="sf-now" aria-live="polite"><strong class="sf-chord"></strong><span class="sf-tones"></span><span class="sf-next"></span></div>
+      <div class="seg sf-tabs" role="tablist" aria-label="${t('lab.sf.title')}">
+        ${['piano', 'scale', 'pads'].map((id) => `<button type="button" role="tab" aria-selected="false" data-action="sf-tab" data-value="${id}">${t(`lab.sf.tab.${id}`)}</button>`).join('')}
+      </div>
+      <div class="sf-opts sf-opts-keys">
+        <button class="chip sf-dots" type="button" data-action="sf-dots" aria-pressed="true">${t('lab.sf.chordTones')}</button>
+        <label class="sf-select"><span class="sr-only">${t('lab.sf.sound')}</span><select class="sf-sound" data-field="sfSound" aria-label="${t('lab.sf.sound')}"></select></label>
+        <div class="sf-shift" role="group" aria-label="${t('lab.sf.register')}">
+          <button type="button" data-action="sf-shift" data-value="-1" aria-label="${t('lab.sf.lower')}">‹</button>
+          <button type="button" data-action="sf-shift" data-value="1" aria-label="${t('lab.sf.higher')}">›</button>
+        </div>
+      </div>
+      <div class="sf-opts sf-opts-pads" role="radiogroup" aria-label="${t('lab.sf.kit')}"></div>
+      <label class="sf-select sf-target-wrap"><span>${t('lab.sf.playsIn')}</span><select class="sf-target" data-field="sfTarget"></select></label>
+      <button class="icon-btn sf-close" type="button" data-action="layer-close" aria-label="${t('lab.sf.close')}">${UI_ICON.close}</button>
+    </header>
+    <div class="sf-body">
+      <div class="sf-piano" role="group" aria-label="${t('lab.sf.tab.piano')}"></div>
+      <div class="sf-scale" role="group" aria-label="${t('lab.sf.tab.scale')}" hidden></div>
+      <div class="sf-pads" role="group" aria-label="${t('lab.sf.tab.pads')}" hidden></div>
+    </div>
+    <div class="sf-rec">
+      <button class="sf-rec-btn" type="button" data-action="sf-rec" aria-pressed="false"><i aria-hidden="true"></i><span class="sf-rec-text">${t('lab.sf.rec')}</span></button>
+      <div class="seg sf-rec-mode" role="radiogroup" aria-label="${t('lab.sf.recMode')}">
+        <button type="button" role="radio" aria-checked="true" data-action="sf-rec-mode" data-value="add">${t('lab.sf.add')}</button>
+        <button type="button" role="radio" aria-checked="false" data-action="sf-rec-mode" data-value="replace">${t('lab.sf.replace')}</button>
+      </div>
+      <p class="sf-rec-note"></p>
+    </div>
+  </section>
+</div>
+
+<div class="layer track-layer" hidden>
+  <div class="layer-backdrop" data-action="layer-close"></div>
+  <section class="layer-card" role="dialog" aria-modal="true" aria-labelledby="track-layer-title">
+    <div class="layer-grab" aria-hidden="true"></div>
+    <div class="layer-head track-head"><span class="track-color" aria-hidden="true"></span>
+      <div class="track-heads"><h2 id="track-layer-title" class="track-title"></h2><span class="layer-sub track-sub"></span></div>
+      <button class="lock-btn track-lock" type="button" data-action="lock" aria-pressed="false" aria-label="${t('lab.studio.lockAria')}" title="${t('lab.studio.lockAria')}"></button>
+      <button class="layer-done" type="button" data-action="layer-close">${t('lab.pickerDone')}</button></div>
+    <div class="seg track-tabs" role="tablist" aria-label="${t('lab.studio.areas')}">
+      ${['pattern', 'sound', 'mix'].map((id) => `<button type="button" role="tab" id="tt-${id}" aria-selected="false" aria-controls="track-body" data-action="track-tab" data-value="${id}">${t(`lab.studio.tab.${id}`)}</button>`).join('')}
+    </div>
+    <div class="track-body" id="track-body" role="tabpanel"></div>
+  </section>
+</div>
+
+<div class="layer panel-layer" hidden>
+  <div class="layer-backdrop" data-action="layer-close"></div>
+  <section class="layer-card" role="dialog" aria-modal="true" aria-labelledby="panel-layer-title">
+    <div class="layer-grab" aria-hidden="true"></div>
+    <div class="layer-head"><h2 id="panel-layer-title" class="panel-layer-title"></h2>
+      <button class="layer-done" type="button" data-action="layer-close">${t('lab.pickerDone')}</button></div>
+    <div class="panel-layer-body"></div>
+  </section>
+</div>
+
+<div class="layer prog-layer" hidden>
+  <div class="layer-backdrop" data-action="layer-close"></div>
+  <section class="layer-card" role="dialog" aria-modal="true" aria-labelledby="prog-layer-title">
+    <div class="layer-grab" aria-hidden="true"></div>
+    <div class="layer-head"><div><h2 id="prog-layer-title">${t('lab.d6.title')}</h2><span class="layer-sub d6-sub"></span></div>
+      <button class="layer-done" type="button" data-action="layer-close">${t('lab.pickerDone')}</button></div>
+    <div class="d6-tpl">
+      <button class="chor-arrow" type="button" data-action="chor-prog" data-value="-1" aria-label="${t('lab.chor.progPrev')}">‹</button>
+      <button class="chor-text d6-tpl-open" type="button" data-action="picker-open" data-picker="prog" aria-haspopup="dialog"><strong class="d6-tpl-name"></strong><span class="d6-tpl-sub"></span></button>
+      <button class="chor-arrow" type="button" data-action="chor-prog" data-value="1" aria-label="${t('lab.chor.progNext')}">›</button>
+    </div>
+    <div class="d6-box">
+      <div class="d6-box-head"><span class="chor-label d6-bars"></span><span class="d6-legend">${t('lab.d6.legend')}</span></div>
+      <div class="d6-ruler" aria-hidden="true"></div>
+      <div class="d6-chords" role="group" aria-label="${t('lab.d6.chordsAria')}"></div>
+      <div class="d6-tools">
+        <button class="chip" type="button" data-action="d6-add">+ ${t('lab.progAdd')}</button>
+        <button class="chip" type="button" data-action="d6-remove">− ${t('lab.d6.remove')}</button>
+        <button class="chip" type="button" data-action="d6-move" data-value="-1" aria-label="${t('lab.progMoveLeft')}">‹</button>
+        <button class="chip" type="button" data-action="d6-move" data-value="1" aria-label="${t('lab.progMoveRight')}">›</button>
+      </div>
+    </div>
+    <section class="d6-sel" aria-labelledby="d6-sel-title">
+      <strong class="d6-sel-title" id="d6-sel-title"></strong>
+      <span class="chor-label">${t('lab.d6.chord')}</span>
+      <div class="d6-degrees" role="radiogroup" aria-label="${t('lab.d6.chord')}"></div>
+      <span class="chor-label" id="d6-len-label">${t('lab.d6.length')}</span>
+      <div class="seg d6-len" role="radiogroup" aria-labelledby="d6-len-label">
+        ${CHORD_LENS.map((len) => `<button type="button" role="radio" aria-checked="false" data-action="d6-len" data-value="${len}">${t(`lab.d6.len.${String(len).replace('.', '')}`)}</button>`).join('')}
+      </div>
+      <span class="chor-label d6-push-label" id="d6-push-label">${t('lab.d6.push')}</span>
+      <div class="seg d6-push" role="radiogroup" aria-labelledby="d6-push-label">
+        ${CHORD_PUSHES.map((p) => `<button type="button" role="radio" aria-checked="false" data-action="d6-push" data-value="${p}">${t(`lab.d6.push.${p}`)}</button>`).join('')}
+      </div>
+      <p class="d6-push-note" hidden>${t('lab.d6.pushFirst')}</p>
+      <div class="d6-opts">
+        <button class="chip" type="button" data-action="d6-sevenths" aria-pressed="false">${t('lab.d6.seventhsAll')}</button>
+        <button class="chip d6-bass" type="button" data-action="d6-bass"></button>
+        <button class="chip d6-alter" type="button" data-action="d6-alter"></button>
+      </div>
+    </section>
+    <button class="chip d6-all" type="button" data-action="d6-all-one">${t('lab.d6.allOne')}</button>
+    <div class="d6-own">
+      <button class="chip" type="button" data-action="prog-original">${t('lab.melOriginal')}</button>
+      <button class="chip" type="button" data-action="prog-save">${t('lab.melSave')}</button>
+      <button class="chip" type="button" data-action="prog-delete">${t('lab.melDelete')}</button>
+    </div>
+  </section>
+</div>
+
+<div class="layer key-layer" hidden>
+  <div class="layer-backdrop" data-action="layer-close"></div>
+  <section class="layer-card" role="dialog" aria-modal="true" aria-labelledby="key-layer-title">
+    <div class="layer-grab" aria-hidden="true"></div>
+    <div class="layer-head"><div><h2 id="key-layer-title">${t('lab.chor.key')}</h2><span class="layer-sub key-layer-now"></span></div>
+      <button class="layer-done" type="button" data-action="layer-close">${t('lab.pickerDone')}</button></div>
+    <span class="sub-label" id="key-roots-label">${t('lab.keyRoot')}</span>
+    <div class="chip-row key-roots" role="radiogroup" aria-labelledby="key-roots-label"></div>
+    <span class="sub-label" id="key-modes-label">${t('lab.keyMode')}</span>
+    <div class="chip-row key-modes" role="radiogroup" aria-labelledby="key-modes-label"></div>
+  </section>
 </div>
 
 <div class="confirm" hidden>
@@ -11859,6 +14543,283 @@
 
   if (!customElements.get('chor-groove-lab')) customElements.define('chor-groove-lab', GrooveLabView);
 
+  /** Selbsttests des Redesigns (reine Funktionen; Aufruf aus runMusicSelfTests in app.js
+   *  und in der Konsole über ChorGrooveLab._test.redesignSelfTest()). Liefert Fehlertexte. */
+  function redesignSelfTest() {
+    const failed = [];
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const fail = (msg) => failed.push(`Redesign: ${msg}`);
+    // 1. Akkord-Zeitleiste: ohne Länge/Vorziehen genau die alte Rechnung (Takt / chordBars).
+    for (const bars of [1, 2]) {
+      for (const n of [1, 3, 4]) {
+        const tl = chordTimeline(n, 16, bars, null, null);
+        for (let g = 0; g < 16 * 8 * bars; g++) {
+          const at = chordAtStep(tl, g);
+          const old = Math.floor(Math.floor(g / 16) / bars) % n;
+          if (at.index !== old || at.chordStart !== (g % (16 * bars) === 0)) { fail(`Zeitleiste ${n}×${bars} bei ${g}: ${at.index}/${at.chordStart} statt ${old}`); break; }
+        }
+      }
+    }
+    {
+      // Achtel früher bei allen vier Akkorden: Wechsel auf 14, 30, 46 und über die Loop-Grenze auf 62;
+      // der allererste Takt beginnt auf 0, die Melodie (ohne Vorziehen) wechselt auf der Eins.
+      const tl = chordTimeline(4, 16, 1, null, [2, 2, 2, 2]);
+      const starts = [];
+      for (let g = 0; g < 128; g++) if (chordAtStep(tl, g).chordStart) starts.push(g);
+      if (!same(starts, [0, 14, 30, 46, 62, 78, 94, 110, 126])) fail(`Vorziehen: Wechsel auf ${starts}`);
+      if (chordAtStep(tl, 62).index !== 0 || chordAtStep(tl, 61).index !== 3 || chordAtStep(tl, 64).chordStart) fail('Vorziehen über die Loop-Grenze');
+      if (chordAtStep(tl, 14, false).index !== 0 || chordAtStep(tl, 16, false).index !== 1) fail('Harmonie ohne Vorziehen');
+      const at = chordAtStep(tl, 14);
+      if (at.start !== 14 || at.end !== 30) fail(`Akkord 2 klingt ${at.start}–${at.end}`);
+      // 16tel früher, Längen ½ · 1 · 2 Takte.
+      const tl2 = chordTimeline(3, 16, 1, [.5, 1, 2], [0, 1, 0]);
+      if (tl2.total !== 56 || !same(tl2.starts, [0, 8, 24])) fail(`Längen: ${tl2.starts} / ${tl2.total}`);
+      if (chordAtStep(tl2, 7).index !== 1 || !chordAtStep(tl2, 7).chordStart || chordAtStep(tl2, 23).index !== 1) fail('Länge ½ Takt mit 16tel früher');
+      if (chordCycleBars(tl2) !== 7) fail(`Wiederholung nach ${chordCycleBars(tl2)} Takten statt 7`);
+      // Vorziehen nie länger als der vorige Akkord; ein einziger Akkord wechselt nie.
+      if (chordTimeline(1, 16, 1, null, [2]).push[0] !== 0) fail('Vorziehen bei einem Akkord');
+    }
+    if (!same(foldChordLens([2, 2, 2], 3), { chordBars: 2, chordLen: null }) || !same(foldChordLens([.5, 1], 3).chordLen, [.5, 1, 1])
+      || !same(foldChordLens(null, 3, 2), { chordBars: 2, chordLen: null })) fail('foldChordLens');
+    if (normChordPush([0, 0], 2) !== null || !same(normChordPush([2, 'x', 1], 3), [2, 0, 1])) fail('normChordPush');
+    // 2. Swing-Stufen (4.4).
+    if (swingLevelOf(0) !== 'straight' || swingLevelOf(.28) !== 'light' || swingLevelOf(.67) !== 'shuffle' || swingLevelOf(.45) !== null) fail('Swing-Stufen');
+    if (Math.abs(swingRatio(.28) - .57) > .001 || Math.abs(swingRatio(.67) - .6675) > .001) fail('Swing-Verhältnis');
+    if (swingOffered('3/4') || swingOffered('6/8') || !swingOffered('4/4')) fail('Swing bei 3/4/6/8 nicht ausgeblendet');
+    // 3. Bass-Spielweisen: deterministisch, im Takt, Stufen −1…7, Eins belegt; Beispiele des Beraters.
+    for (const p of DRUM_PATTERNS) {
+      for (const play of BASS_PLAYS) {
+        const a = bassVariant(p, play);
+        if (!same(a, bassVariant(p, play))) fail(`bassVariant ${p.name}/${play} nicht deterministisch`);
+        const steps = Object.keys(a).map(Number);
+        if (steps.some((st) => st < 0 || st >= METERS[p.meter].steps) || Object.values(a).some((d) => d < -1 || d > 7)) fail(`bassVariant ${p.name}/${play} außerhalb`);
+        if (!['off', 'offbeat', 'line'].includes(play) && a[0] !== 0) fail(`bassVariant ${p.name}/${play} ohne Eins`);
+      }
+    }
+    const bv = (name, play) => bassVariant(DRUM_PATTERNS[patternIndexByName(name)], play);
+    if (!same(bv('Pop Ballad', 'half'), { 0: 0, 8: 0 }) || !same(bv('Backbeat Open', 'quarter'), { 0: 0, 4: 0, 8: 4, 12: 0 })
+      || !same(bv('6/8 Ballad', 'half'), { 0: 0, 6: 4 }) || !same(bv('Swing Soul', 'line1'), { 0: 0, 4: 3, 8: 2, 11: 4, 14: 0 })
+      || !same(bv('Halftime Pop', 'quarter'), { 0: 0, 4: 0, 8: 0, 12: 4 })) fail('bassVariant: Beispiele des Beraters');
+    // 4. Stile × Energie: gleiche Taktart, Still ohne Drums, Werte im Bereich; Tonart/Tempo/Folge bleiben.
+    const base = baseState();
+    base.keyRoot = 7; base.modeId = 'minor'; base.progDegrees = [0, 5, 3, 4]; base.chordOctave = 1;
+    for (const style of STYLES) {
+      const sty = applyStyle(base, style.id);
+      if (sty.keyRoot !== 7 || sty.modeId !== 'minor' || !same(sty.progDegrees, [0, 5, 3, 4]) || sty.eighths !== base.eighths || sty.chordOctave !== 1) fail(`Stil ${style.id} ändert Tonart, Tempo, Folge oder Lage`);
+      if (styleDiff(sty).any) fail(`Stil ${style.id} weicht direkt nach dem Wählen von sich ab: ${JSON.stringify(styleDiff(sty))}`);
+      if (sty.energy !== style.energy || sty.room !== style.room) fail(`Stil ${style.id}: Energie/Raum`);
+      if (!swingOffered(style.meter) && sty.swing) fail(`Stil ${style.id}: Swing in ${style.meter}`);
+      for (const e of ENERGY_IDS) {
+        const r = resolveEnergy(style.id, e);
+        const p = DRUM_PATTERNS[r.patternIndex];
+        if (patternIndexByName(style.drums[1][0]) < 0 || (style.drums[ENERGY_IDS.indexOf(e)] && patternIndexByName(style.drums[ENERGY_IDS.indexOf(e)][0]) < 0)) fail(`Stil ${style.id}: Loop unbekannt`);
+        if (p.meter !== style.meter) fail(`Stil ${style.id}/${e}: Taktart ${p.meter}`);
+        if (e === 'still' && DRUM_TRACKS.some((tr) => Object.keys(r.beat[tr]).length)) fail(`Stil ${style.id}: Still mit Drums`);
+        if (!FILL_LENGTHS.includes(r.fills) || r.pump < 0 || r.pump > 1) fail(`Stil ${style.id}/${e}: Fill/Pump`);
+        if (r.chordHits && r.chordHits.some(([st, len]) => st >= METERS[p.meter].steps || len <= 0)) fail(`Stil ${style.id}/${e}: Anschläge`);
+        const en = applyEnergy(sty, e);
+        if (en.eighths !== sty.eighths || en.keyRoot !== 7 || !same(en.progDegrees, sty.progDegrees) || en.chordOctave !== 1 || en.melodyIndex !== sty.melodyIndex || en.chordSound !== sty.chordSound) fail(`Energie ${style.id}/${e} ändert mehr als Rhythmus/Dichte`);
+        if (styleDiff(en).any) fail(`Energie ${style.id}/${e}: danach „angepasst“`);
+      }
+    }
+    {
+      const pop = applyStyle(base, 'pop');
+      const edited = JSON.parse(JSON.stringify(pop));
+      edited.beat.kick[3] = 1;
+      if (!styleDiff(edited).rhythm || styleDiff(edited).bass) fail('styleDiff erkennt bearbeitetes Muster nicht');
+      edited.chordSound = 'organ';
+      if (!styleDiff(edited).sound) fail('styleDiff erkennt anderen Klang nicht');
+      if (thinBeat(beatFromPattern(DRUM_PATTERNS[patternIndexByName('Pop Stomp')]), DRUM_PATTERNS[patternIndexByName('Pop Stomp')], 'calm').beat.kick[4] !== undefined) fail('Ruhig: Kick nicht nur auf der Eins');
+    }
+    // 5. Raum, Hören auf, Energie-Ausgleich: Faktoren statt Überschreiben.
+    if (ROOM_IDS.some((r) => !(ROOMS[r].wet > 0 && ROOMS[r].length >= .2 && ROOMS[r].length <= 4 && ROOMS[r].pre >= 0 && ROOMS[r].pre <= 90))) fail('Raum-Werte');
+    if (!(ROOMS.dry.wet < ROOMS.rehearsal.wet && ROOMS.rehearsal.wet < ROOMS.hall.wet && ROOMS.hall.wet < ROOMS.church.wet)) fail('Raum: Hallanteil steigt nicht');
+    {
+      const s = baseState();
+      const mix = JSON.stringify(s.mix);
+      for (const f of HEAR_IDS) { s.hearFocus = f; BUSES.forEach((b) => busFactor(s, b)); }
+      if (JSON.stringify(s.mix) !== mix) fail('Hören auf verändert state.mix');
+      s.hearFocus = 'balanced'; s.energy = null;
+      if (BUSES.some((b) => busFactor(s, b) !== 1)) fail('ausgewogen ist nicht neutral');
+      s.hearFocus = 'rhythm';
+      if (!(busFactor(s, 'drums') > 1 && busFactor(s, 'chords') < 1)) fail('Hören auf Rhythmus');
+      s.hearFocus = 'harmony';
+      if (!(busFactor(s, 'drums') < 1 && busFactor(s, 'chords') > 1 && busFactor(s, 'keys') === 1)) fail('Hören auf Harmonie');
+      if (!(ENERGY_TRIM.full.all < ENERGY_TRIM.drive.all && ENERGY_TRIM.drive.all <= ENERGY_TRIM.calm.all)) fail('Voll ist lauter statt dichter');
+    }
+    // 6. Akkorde-Spur: Arpeggio und Anschläge.
+    if (chordCompAt('arp', null, 1, 16).length || chordCompAt('arp', null, 2, 16)[0]?.deg !== 2) fail('Arpeggio der Akkorde');
+    if (chordCompAt('rhythm', [[0, 2, 1], [6, 2, .7]], 6, 16)[0]?.vel !== .7 || chordCompAt('held', [[0, 2, 1]], 0, 16).length) fail('Anschläge der Akkorde');
+    if (sanitizeHits([[0, 2, 1], [0, 3, 1], [20, 1, 1], 'x'], 16)?.length !== 1 || sanitizeHits([], 16) !== null) fail('sanitizeHits');
+    // 7. Migration alter Stände (idempotent) und neue Felder.
+    const view = (raw) => { const s = sanitizeState(raw); return [s.view, s.learnArea]; };
+    if (!same(view({ view: 'choir', choirTask: 'terzen' }), ['learn', 'tasks'])) fail('alte Chor-Aufgabe → Lernen/Aufgaben');
+    if (!same(view({ view: 'choir' }), ['choir', null])) fail('alter Chor ohne Aufgabe → Chor');
+    if (!same(view({ view: 'workshop' }), ['learn', 'course']) || !same(view({ view: 'deconstruct' }), ['learn', 'dc'])) fail('Workshop/de:construct → Lernen');
+    if (!same(view({ layout: 2, view: 'choir', choirTask: 'terzen' }), ['choir', null])) fail('neuer Chor mit Aufgabe');
+    if (!same(view({ layout: 2, view: 'learn', learnArea: 'kino' }), ['learn', null]) || !same(view({ view: 'kino' }), [null, null])) fail('kaputte Ansicht');
+    {
+      const old = sanitizeState({ patternIndex: 0, chordBars: 2, fx: { reverbLength: 2.5 } });
+      if (old.styleId !== null || old.energy !== null || old.room !== null || old.chordPush !== null || old.chordPlay !== 'held' || old.fx.reverbLength !== 2.5) fail('alter Stand bekommt Stil/Raum/Vorziehen');
+      if (chordTimelineOf(old, 4, 16).lens[0] !== 32) fail('alter Stand: chordBars 2 nicht als Länge');
+      const fresh = defaultState();
+      if (fresh.styleId !== 'pop' || fresh.energy !== 'drive' || fresh.room !== 'rehearsal' || fresh.melodyOn !== false || !fresh.countIn) fail('neuer Stand nicht Pop/Treibend/Probe, Melodie aus');
+      const round = sanitizeState(JSON.parse(JSON.stringify(fresh)));
+      if (!same(round, fresh)) fail('neuer Stand übersteht sanitizeState nicht unverändert');
+      if (!same(sanitizeState(JSON.parse(JSON.stringify(round))), round)) fail('sanitizeState nicht idempotent');
+      if (!same(decodeState(encodeState(fresh)), fresh)) fail('GL1.-Code verliert Redesign-Felder');
+      const custom = { ...JSON.parse(JSON.stringify(fresh)), chordLen: [.5, 1, 2, 1], chordPush: [0, 2, 1, 2], chordHits: [[0, 2, 1]], chordPlay: 'rhythm', chordOctave: -1, bassHold: true, hearFocus: 'harmony', chordPad: 'moon' };
+      const back = sanitizeState(JSON.parse(JSON.stringify(custom)));
+      for (const k of ['chordLen', 'chordPush', 'chordHits', 'chordPlay', 'chordOctave', 'bassHold', 'hearFocus', 'chordPad']) if (!same(back[k], custom[k])) fail(`Feld ${k} geht verloren`);
+      const legacy = pinLegacySound(defaultState());
+      if (legacy.styleId || legacy.room || legacy.chordPush || legacy.pump || legacy.chordPlay !== 'held') fail('pinLegacySound lässt Stil/Raum/Vorziehen stehen');
+    }
+    return failed;
+  }
+
+  /** Oberflächen-Selbsttest des Redesigns (braucht das DOM; eine nicht eingehängte
+   *  Ansicht ohne Ton). Aufruf aus runMusicSelfTests in app.js. */
+  function redesignViewTest() {
+    const failed = [];
+    const fail = (msg) => failed.push(`Redesign-Ansicht: ${msg}`);
+    const v = document.createElement('chor-groove-lab');
+    const shown = (sel) => !!v.$(sel) && !v.$(sel).closest('[hidden]');
+    // Ansichten: Chor · Studio · Lernen (+ Bereiche), Dropdown mit Häkchen.
+    v._applyView('choir');
+    if (!shown('.chor-view') || shown('.tab-bar') || v.state.view !== 'choir') fail('Chor zeigt nicht die Chor-Ansicht');
+    if (v.$('.view-btn').getAttribute('aria-haspopup') !== 'menu' || v.$all('.view-opt[aria-checked="true"]').length !== 1) fail('Ansichts-Auswahl');
+    v._applyView('studio');
+    if (shown('.tab-bar') || !shown('.studio-view') || v.$all('.t-card').length !== 4 || shown('.chor-view')) fail('Studio zeigt die Spuren nicht');
+    // Spur-Blatt: Bedienfelder hängen um und kehren beim Schließen zurück (Workshop braucht sie in den Reitern).
+    const gridHome = () => v.$('[data-part="grid"]').closest('.tab-panel')?.dataset.tabPanel;
+    v._openTrack('drums');
+    if (!v.$('.track-body [data-part="loop"]') || !v.$('.track-body [data-part="grid"]') || v.$('.track-layer .layer-card').getAttribute('role') !== 'dialog') fail('Drums-Blatt: Muster fehlt');
+    v._showTrackTab('sound');
+    if (!v.$('.track-body [data-part="kit"]') || v.$('.track-body [data-part="grid"]')) fail('Drums-Blatt: Klang');
+    v._showTrackTab('mix');
+    if (!v.$('.track-body [data-mix="drums"]') || !v.$('.track-body [data-part="groove"]')) fail('Drums-Blatt: Mix (Lautstärke, Pumpen)');
+    v._closeLayer(v.$('.track-layer'), { focus: false });
+    if (gridHome() !== 'beat' || v.$('.track-body').children.length) fail('Bedienfelder kehren nicht in die Reiter zurück');
+    v._openTrack('chords');
+    if (!v.$('.track-body [data-part="chordPlay"]') || !v.$('.track-body [data-part="satb"]') || v.ui.studioTarget !== 'chords') fail('Akkorde-Blatt');
+    v._handleAction('cp-play', 'rhythm', null);
+    v._handleAction('cp-hit', '3', null);
+    if (v.state.chordPlay !== 'rhythm' || !v.state.chordHits.some(([st]) => st === 3)) fail('Anschläge der Akkorde');
+    v._closeLayer(v.$('.track-layer'), { focus: false });
+    v._handleAction('track-solo', 'bass', null);
+    if (v._busLevel('drums') !== 0 || !(v._busLevel('bass') > 0) || !(v._busLevel('keys') > 0)) fail('Solo');
+    v._handleAction('track-solo', 'bass', null);
+    v._handleAction('track-mute', 'drums', null);
+    if (!v.state.mute.drums || !v.$('.t-card[data-track="drums"]').classList.contains('is-muted')) fail('Stumm auf der Karte');
+    v.undo();
+    v._handleAction('add-track-pick', 'arp', null);
+    if (!v.state.arpOn || !v.$('.t-card[data-track="arp"]') || v.$('.track-layer').hidden) fail('+ Spur: 2. Akkorde');
+    v._closeAllLayers();
+    const keyBefore = v.state.keyRoot; const tempoBefore = v.state.eighths;
+    v.randomize();
+    if (v.state.keyRoot !== keyBefore || v.state.eighths !== tempoBefore) fail('Zufällig ändert Tonart oder Tempo');
+    v._handleAction('song-tempo', null, null);
+    if (!v.$('.panel-layer-body [data-part="tempo"]') || !v.$('.panel-layer-body [data-part="swingExact"]')) fail('Song-Zeile: Tempo-Blatt');
+    v._applyView('learn', 'course');
+    if (v.$('.panel-layer-body').children.length || !v.$('[data-part="tempo"]').closest('.tab-panel')) fail('Ansichtswechsel räumt die Blätter nicht auf');
+    v._applyView('studio');
+    v._applyView('learn', null);
+    if (!shown('.learn-view') || v.$all('.learn-tile').length !== 3) fail('Lernen: drei Kacheln');
+    v._applyView('learn', 'course');
+    if (!shown('.workshop-view') || !shown('.learn-back') || v._uiMode() !== 'workshop') fail('Lernen/Kurs');
+    v._applyView('deconstruct');
+    if (v.state.view !== 'learn' || v.state.learnArea !== 'dc' || !v._dcActive) fail('de:construct über Lernen');
+    v._applyView('choir');
+    if (v._dcActive) fail('de:construct beim Wechsel nach Chor nicht verlassen');
+    // Chor: Stil ‹ › lässt Tonart und Tempo, Energie/Raum als Radiogruppen.
+    v.state.keyRoot = 7; v._setBpm(90);
+    v._chorStyle(1);
+    if (v.state.keyRoot !== 7 || v.state.styleId === 'pop' || Math.abs(v.state.eighths - 180) > 0) fail('Stilwechsel ändert Tonart/Tempo');
+    if (v.$all('.chor-energy [role="radio"][aria-checked="true"]').length !== 1 || v.$('.chor-energy').getAttribute('role') !== 'radiogroup') fail('Energie nicht als Radiogruppe');
+    v._chorStyle(-1);
+    v._setEnergy('full');
+    if (v.state.energy !== 'full' || styleDiff(v.state).any) fail('Energie im Stillstand nicht sofort');
+    v.state.beat.kick[3] = 1; v._renderChor();
+    if (v.$('.chor-energy-badge').hidden || v.$('.chor-reset').hidden || v.$('.chor-note').hidden) fail('Chor zeigt „angepasst“ nicht (D5)');
+    v._handleAction('chor-reset', null, v.$('.chor-reset'));
+    if (styleDiff(v.state).any || !v.history.length) fail('Auf Vorlage zurücksetzen');
+    v.undo();
+    if (v.state.beat.kick[3] !== 1) fail('Zurücksetzen nicht rückgängig zu machen');
+    v.state.droneOn = true; v._renderChor();
+    if (v.$('.chor-extra').hidden) fail('weitere Spur (Liegeton) nicht genannt');
+    v.state.droneOn = false;
+    // Swing nur in 4/4; Hören auf ändert state.mix nicht.
+    const mix = JSON.stringify(v.state.mix);
+    v._handleAction('chor-hear', 'harmony', null);
+    if (v.state.hearFocus !== 'harmony' || JSON.stringify(v.state.mix) !== mix) fail('Hören auf');
+    v._replaceState(applyStyle(v.state, 'waltz'));
+    v._renderChor();
+    if (!v.$('.chor-swing').hidden) fail('Swing bei 3/4 sichtbar');
+    // Element-Schritte: Rhythmus bleibt in der Taktart, Melodie beginnt mit „aus“.
+    for (let i = 0; i < 4; i++) v._chorStep('rhythm', 1);
+    if (v._meter() !== '3/4') fail('Rhythmus ‹ › verlässt die Taktart');
+    v.state.melodyOn = false; v._chorStep('melody', 1);
+    if (!v.state.melodyOn || MELODIES[v.state.melodyIndex].meter !== '3/4') fail('Melodie ‹ › nach „aus“');
+    v._chorStep('melody', -1);
+    if (v.state.melodyOn) fail('Melodie ‹ › zurück auf „aus“');
+    // Tonart-Blatt: Dialog mit Fokusfalle, Escape schließt.
+    v._openKeyLayer();
+    const card = v.$('.key-layer .layer-card');
+    if (v.$('.key-layer').hidden || card.getAttribute('role') !== 'dialog' || card.getAttribute('aria-modal') !== 'true') fail('Tonart-Blatt kein Dialog');
+    v._handleKeydown({ key: 'Escape', preventDefault() {} });
+    if (!v.$('.key-layer').hidden) fail('Escape schließt das Tonart-Blatt nicht');
+    // Akkordfolgen-Editor (D6): Länge/Wechsel je Akkord, Einfügen hält die Parallel-Arrays, ↶ nimmt zurück.
+    v._replaceState(applyStyle(v.state, 'pop'));
+    v._openProgSheet();
+    if (v.$('.prog-layer').hidden || v.$all('.d6-chord').length !== v._progression().degrees.length) fail('D6 öffnet nicht');
+    const histBefore = v.history.length;
+    v._handleAction('d6-sel', '1', null);
+    v._handleAction('d6-len', '0.5', null);
+    v._handleAction('d6-add', null, null);
+    const n = v._progression().degrees.length;
+    if (n !== 5 || v.state.chordLen?.length !== 5 || v.state.chordLen[1] !== .5 || v.state.chordLen[2] !== .5 || v.state.chordPush?.length !== 5) fail(`D6: Parallel-Arrays ${JSON.stringify([v.state.chordLen, v.state.chordPush])}`);
+    if (v.history.length !== histBefore + 2) fail('D6: nicht je Änderung ein Undo-Schritt');
+    v._handleAction('d6-all-one', null, null);
+    if (v.state.chordPush !== null || v.$all('.chor-chord').some((c) => c.textContent.startsWith('←'))) fail('D6: alle auf der Eins');
+    v.undo(); v.undo(); v.undo();
+    if (v._progression().degrees.length !== 4 || v.state.chordLen !== null) fail('D6: ↶ stellt die Folge nicht wieder her');
+    v._renderProgSheet();
+    if (v._hasSixteenths() !== !v.$('.d6-push [data-value="1"]').hidden) fail('D6: „16tel früher“ passt nicht zum Raster des Rhythmus');
+    v._closeLayer(v.$('.prog-layer'));
+    // Spielflächen: Chor ohne Aufnahme, Studio mit „● Aufnehmen“; Tonleiter = 7 Stufen + Oktave.
+    v._applyView('choir');
+    v._openSurface();
+    if (v.$('.surface').hidden || !v.$('.surface').classList.contains('is-choir') || !v.$('.sf-rec').hidden || v.$all('.sf-piano .key.is-white').length !== 11) fail('Chor-Spielfläche');
+    v._handleAction('sf-tab', 'scale', null);
+    if (v.$all('.sf-scale .pad').length !== 8 || !v.$('.sf-scale .pad.is-root')) fail('Tonleiter-Fläche');
+    v._handleAction('sf-tab', 'pads', null);
+    if (v.$all('.sf-pads .sf-pad').length !== SAMPLER_PADS) fail('Pads der Spielfläche');
+    v._closeLayer(v.$('.surface'), { focus: false });
+    v._applyView('studio');
+    v.ui.studioTarget = 'drums';
+    v._openSurface();
+    if (v.$('.sf-rec').hidden || v.ui.sf.tab !== 'pads' || v.$('.sf-target').value !== 'drums') fail('Studio-Spielfläche: Drums → Pads');
+    v._closeLayer(v.$('.surface'), { focus: false });
+    if (bassDegreeOf(64, { keyRoot: 0, steps: MODES[0].steps, deg: 0 }) !== 2 || bassDegreeOf(67, { keyRoot: 0, steps: MODES[0].steps, deg: 0 }) !== 4) fail('bassDegreeOf');
+    // Lernen: Aufgabe über der Chor-Ansicht, gesetzte Werte markiert; Kurs → Studio mit Spur.
+    v._applyView('learn', null);
+    v._handleAction('learn-task', 'terzen', null);
+    if (v._uiMode() !== 'tasks' || !shown('.choir-view') || !shown('.chor-view') || !v.$('.chor-pair .is-task-set') || v.state.choirTask !== 'terzen') fail('Aufgabe läuft nicht über der Chor-Ansicht');
+    v._applyView('learn', 'course');
+    v._handleAction('ws-open-studio', null, null);
+    const lt = LESSON_TRACK[v.ui.ws?.lesson?.tab]?.[0];
+    if (v._uiMode() !== 'studio' || (lt && (v.ui.track !== lt || !v.$(`.t-card.is-hl[data-track="${lt}"]`)))) fail('Kurs → Studio');
+    v._closeAllLayers();
+    // Einzähler: ein Takt, nicht in Workshop/de:construct.
+    if (v._countInSteps() !== -v._barSteps()) fail('Einzähler fehlt');
+    v._applyView('workshop');
+    if (v._countInSteps() !== 0) fail('Einzähler im Workshop');
+    v._applyView('studio');
+    v.state.countIn = false;
+    if (v._countInSteps() !== 0) fail('Einzähler lässt sich nicht abschalten');
+    return failed;
+  }
+
   // Für die Musik-Selbsttests in app.js (runMusicSelfTests) und die Konsole:
   // Daten und reine Funktionen, ohne die Oberfläche zu öffnen.
   const TEST_EXPORT = {
@@ -11879,6 +14840,10 @@
     // de:construct
     VIEWS, DC_LEVELS, DC_ELEMENTS, DC_FOCUS, DC_TAB, DC_SONGS, DRUM_TRACKS, CELL_CYCLE, dcSongsOf, dcTempoFeel, dcFirstOpen, dcNextElement, dcBeat, dcBuild, dcCompare, dcSwitchStep, dcNewSong, sanitizeDeconstruct,
     progressionOfState, harmonyOfState, GrooveLabView, loadLevel,
+    // Redesign (Chor · Studio · Lernen)
+    redesignSelfTest, redesignViewTest, STYLES, ENERGY_IDS, ROOMS, ROOM_IDS, HEAR_FOCUS, HEAR_IDS, ENERGY_TRIM, SWING_LEVELS, swingLevelOf, swingValueOf, swingRatio,
+    chordTimeline, chordAtStep, chordCycleBars, foldChordLens, normChordPush, bassVariant, thinBeat, resolveEnergy, applyEnergy, applyStyle, styleDiff,
+    chordCompAt, sanitizeHits, busFactor, baseState, uiModeOf, viewOfRaw, LEARN_AREAS, CHORD_SOUNDS,
   };
 
   global.ChorGrooveLab = {
