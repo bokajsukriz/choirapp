@@ -12,17 +12,24 @@ Auftrag: `ARBEITSANWEISUNG-GROOVELAB-REDESIGN.md`. Basis: `main` @ `2ea07a7`
 | 3 | Chor-Ansicht (D1, D5), Anfangstöne, Einzähler, Hören auf | fertig |
 | 4 | Akkordfolgen-Editor (D6) | fertig (Mindestergebnis 1–4 erreicht) |
 | 5 | Studio mit Spuren (D2, D3, B2) | fertig (Reiter bleiben nur als Baufläche für Workshop/de:construct) |
-| 6 | Spielflächen (E1, E5, E2) mit vereinter Aufnahme | offen |
+| 6 | Spielflächen (E1, E5, E2) mit vereinter Aufnahme | fertig |
 | 7 | Meine Sounds + Aufnehmen (E3, E4) | offen |
 | 8 | Lernen (D4), Workshop-/de:construct-Umverdrahtung | offen |
 | 9 | Querschnitt, Schlussprüfung, README | offen |
 
 ## Nächster Schritt
 
-Phase 6: Spielflächen — `_openSurface()` (Stub; Chor-Piano-Knopf und Studio-FAB rufen
-ihn). Chor: Vollbild quer (E1/E5), Studio: Leiste von unten (E2) mit „● Aufnehmen“
-(dazu/ersetzen) → ersetzt Keys-Aufnahme und „Live einspielen“. Danach die
-Übergangs-Werkzeuge im Studio („Keys“, „Sampler“) entfernen.
+Phase 7: Meine Sounds (E3) + Aufnehmen (E4). Heute öffnet „Meine Sounds“ den alten
+Sampler (`_openSounds(view)` → `.panel-layer` mit `data-part="sampler"`).
+Danach Phase 8 (Lernen: Kurs/de:construct öffnen das Studio mit Hervorhebung).
+
+Phase 6 erledigt: `.surface` (is-choir: Vollbild/orientation.lock mit Rückfall
+„Zum Spielen quer halten“; is-studio: Leiste von unten), Piano 11 weiße Tasten ab c′
+(Lage ‹ ›), Tonleiter 7+1, Pads (Kit-Wahl, `_sfKit`), Akkordtöne-Punkte,
+`sfRec` (dazu/ersetzen, Länge = Loop, quantizeTapStep) für Drums (Pads → Raster bzw.
+Sample-Spur), Bass (`bassDegreeOf`), Akkorde (Anschläge), Melodie (über `this.rec`,
+direkt in melodyBars ref 'key'). Werkzeug „Keys“ im Studio entfällt (Arp = Spur
+„2. Akkorde“, Tasten/Aufnahme = Spielfläche).
 
 Phase 5 erledigt: `.studio-view` (Song-Zeile, Akkordfolge, Spurkarten), STUDIO_TRACKS,
 Spur-Blatt `.track-layer` (Muster · Klang · Mix) hängt Panels per `data-part` um
