@@ -21331,6 +21331,113 @@ async function runMusicSelfTests({ log = true } = {}) {
     } catch (err) {
       failed.push(`de:construct Ansicht: ${err?.message || err}`);
     }
+    // Überlastungsanzeige, Paket A: Wiedergabe-Statistik des Browsers (Spion-Kontext, kein echter AudioContext).
+    try {
+      const view = document.createElement('chor-groove-lab');
+      const reasons = [];
+      view._noteOverload = (reason) => reasons.push(reason);
+      if (view._playbackStats() !== null) failed.push('Überlastung: ohne Kontext keine Statistik erwartet');
+      view._pollPlaybackStats(); // ohne Kontext und ohne API: kein Fehler, kein Aussetzer
+      view.engine.ctx = { state: 'running', currentTime: 0 };
+      view._pollPlaybackStats();
+      if (reasons.length) failed.push('Überlastung: fehlende playbackStats lösen einen Aussetzer aus');
+      const stats = { underrunEvents: 0, underrunDuration: 0 };
+      view.engine.ctx = { state: 'running', currentTime: 0, playbackStats: stats };
+      view._pollPlaybackStats();
+      if (reasons.length) failed.push('Überlastung: Zähler 0 löst einen Aussetzer aus');
+      stats.underrunEvents = 2; stats.underrunDuration = .04;
+      view._pollPlaybackStats();
+      if (reasons.join() !== 'underrun') failed.push(`Überlastung: steigende underrunEvents melden ${reasons.join() || 'nichts'} statt underrun`);
+      if (view._ovl.underrunDuration !== .04) failed.push('Überlastung: underrunDuration nicht gemerkt');
+      view._pollPlaybackStats(); // unverändert: kein weiterer Aussetzer
+      if (reasons.length !== 1) failed.push('Überlastung: gleicher Zähler meldet erneut');
+      // Rückfall auf den Altnamen aus dem Spec-Entwurf.
+      view.engine.ctx = { state: 'running', currentTime: 0, playoutStats: { underrunEvents: 5 } };
+      view._pollPlaybackStats();
+      if (reasons.length !== 2) failed.push('Überlastung: Altname playoutStats wird nicht gelesen');
+      // Wirft der Zugriff, bleibt es still.
+      view.engine.ctx = { get playbackStats() { throw new Error('nein'); } };
+      view._pollPlaybackStats();
+    } catch (err) {
+      failed.push(`Überlastung (Statistik): ${err?.message || err}`);
+    }
+    // Überlastungsanzeige, Paket B: der Knopf ist immer da — neutral → Warnung → nach Pufferwechsel wieder neutral.
+    try {
+      const view = document.createElement('chor-groove-lab');
+      const btn = view.$('.ovl-btn'), pop = view.$('.ovl-pop');
+      if (!btn || btn.hidden || btn.hasAttribute('hidden')) failed.push('Überlastung: Knopf ist am Anfang nicht sichtbar');
+      if (btn.classList.contains('is-warn')) failed.push('Überlastung: Knopf startet nicht neutral');
+      const idleLabel = btn.getAttribute('aria-label');
+      view._toggleOverloadPop(true);
+      if (pop.hidden) failed.push('Überlastung: Panel öffnet im neutralen Zustand nicht');
+      const idleTitle = view.$('.ovl-title').textContent;
+      view._toggleOverloadPop(false);
+      if (!pop.hidden) failed.push('Überlastung: Panel schließt nicht');
+      view._ovl.visibleSince = 0;
+      for (let i = 0; i < 3; i++) { view._ovl.lastEvent = 0; view._noteOverload('gap'); }
+      if (!btn.classList.contains('is-warn') || view._ovl.warn !== true) failed.push('Überlastung: drei Aussetzer schalten nicht auf Warnung');
+      if (btn.getAttribute('aria-label') === idleLabel) failed.push('Überlastung: aria-label folgt dem Zustand nicht');
+      view._toggleOverloadPop(true);
+      if (view.$('.ovl-title').textContent === idleTitle) failed.push('Überlastung: Panel-Titel folgt dem Zustand nicht');
+      view._toggleOverloadPop(false);
+      view._saved.latency = 'interactive';
+      await view._setLatency('balanced');
+      if (btn.classList.contains('is-warn') || view._ovl.warn || btn.hidden || btn.getAttribute('aria-label') !== idleLabel) failed.push('Überlastung: nach Pufferwechsel nicht wieder neutral');
+      // Escape schließt das offene Panel, ohne die Ansicht zu schließen.
+      view._toggleOverloadPop(true);
+      view._handleKeydown({ key: 'Escape', preventDefault() {} });
+      if (!pop.hidden) failed.push('Überlastung: Escape schließt das Panel nicht');
+    } catch (err) {
+      failed.push(`Überlastung (Knopf): ${err?.message || err}`);
+    }
+    // Überlastungsanzeige, Paket C: Diagnose (Spion-Kontext mit renderCapacity), Zähler je Grund, Lasttest-Einstufung.
+    try {
+      for (const [pct, level] of [[0, 'ok'], [39, 'ok'], [40, 'mid'], [69, 'mid'], [70, 'high'], [250, 'high']]) {
+        if (T.loadLevel(pct) !== level) failed.push(`Lasttest: ${pct} % → ${T.loadLevel(pct)} statt ${level}`);
+      }
+      const view = document.createElement('chor-groove-lab');
+      view._ovl.visibleSince = 0;
+      for (const reason of ['gap', 'gap', 'ratio', 'underrun', 'load', 'unbekannt']) { view._ovl.lastEvent = 0; view._noteOverload(reason); }
+      if (JSON.stringify(view._ovl.counts) !== '{"gap":2,"ratio":1,"underrun":1,"load":1}') failed.push(`Überlastung: Zähler je Grund ${JSON.stringify(view._ovl.counts)}`);
+      // Ohne Kontext und ohne APIs: Zeilen vorhanden, kein Fehler, kein Platzhalter-Schlüssel.
+      const plain = view._diagLines();
+      if (plain.length < 5 || plain.some(([k, v]) => !k || !v)) failed.push('Überlastung: Diagnosezeilen unvollständig');
+      if (!view._diagText().includes('User-Agent: ')) failed.push('Überlastung: „Werte kopieren“ ohne User-Agent');
+      // renderCapacity: start({ updateInterval: 1 }) beim Öffnen, stop() beim Schließen, Werte in %.
+      const rc = { started: null, stopped: 0, on: {},
+        addEventListener(name, fn) { this.on[name] = fn; }, removeEventListener(name) { delete this.on[name]; },
+        start(options) { this.started = options; }, stop() { this.stopped++; } };
+      view.engine.ctx = { state: 'running', currentTime: 0, sampleRate: 48000, renderCapacity: rc };
+      view._toggleOverloadPop(true, { focus: false });
+      if (rc.started?.updateInterval !== 1) failed.push('Überlastung: renderCapacity.start({ updateInterval: 1 }) fehlt');
+      rc.on.update?.({ averageLoad: .234, peakLoad: .51, underrunRatio: 0 });
+      // (t() ist ohne open() nur ein Platzhalter — geprüft werden darum die Rohwerte, nicht der Wortlaut.)
+      const rcs = view._ovl.rcStats;
+      if (!rcs || Math.abs(rcs.avg - .234) > 1e-9 || Math.abs(rcs.peak - .51) > 1e-9 || rcs.ratio !== 0) failed.push(`Überlastung: renderCapacity-Werte ${JSON.stringify(rcs)}`);
+      // Paket D: Spitze ≥ 95 % oder underrunRatio > 0 zählt als Aussetzer, alles darunter nicht.
+      for (const [peak, ratio, want] of [[.5, 0, false], [.94, 0, false], [.95, 0, true], [1, 0, true], [.3, .01, true]]) {
+        if (view._rcOverload({ peak, ratio }) !== want) failed.push(`Überlastung: renderCapacity peak ${peak}/ratio ${ratio} → ${!want}`);
+      }
+      const reasons = [];
+      view._noteOverload = (reason) => reasons.push(reason);
+      view.engine.ctx.state = 'running';
+      if (document.visibilityState === 'visible') {
+        rc.on.update?.({ averageLoad: .9, peakLoad: .99, underrunRatio: 0 });
+        rc.on.update?.({ averageLoad: .2, peakLoad: .3, underrunRatio: 0 });
+        if (reasons.join() !== 'load') failed.push(`Überlastung: renderCapacity-Spitze meldet ${reasons.join() || 'nichts'} statt load`);
+      }
+      delete view._noteOverload;
+      view._renderDiag();
+      if (view.$('.ovl-diag').children.length < 10) failed.push('Überlastung: Diagnose im Panel nicht gezeichnet');
+      view._toggleOverloadPop(false, { focus: false });
+      if (rc.stopped !== 1 || view._ovl.timer) failed.push('Überlastung: renderCapacity.stop() / Sekundentakt beim Schließen fehlt');
+      // Eine API, die wirft, darf nichts kaputt machen.
+      view.engine.ctx = { state: 'running', sampleRate: 44100, get renderCapacity() { throw new Error('nein'); } };
+      view._toggleOverloadPop(true, { focus: false });
+      view._toggleOverloadPop(false, { focus: false });
+    } catch (err) {
+      failed.push(`Überlastung (Diagnose): ${err?.message || err}`);
+    }
     // Beat-Lupe und Rückfrage vor „Raster leeren“/„Original“ (echte, nicht eingehängte Ansicht).
     try {
       const z = document.createElement('chor-groove-lab');

@@ -2893,6 +2893,21 @@
       if (!AudioContextClass) throw new Error('Web Audio API nicht verfügbar');
       const ctx = new AudioContextClass({ latencyHint: this.latencyHint });
       this.ctx = ctx;
+      this._buildGraph(ctx);
+      this.labSamples = new LabSamples(ctx);
+      this.labSamples.load(); // im Hintergrund; bis dahin klingt die Synthese
+      this.bassSamples = new LabSamples(ctx);
+      this.bassSamples.load(BASS_SAMPLE_NOTES.map(String), 'bass');
+      this.lastMidi = {};
+      this.monoVoice = {};
+      await ctx.resume();
+    }
+
+    /** Der Audio-Graph (Pegel, Limiter, Chorus, Hall, Echo, Ebenen mit
+     *  Waveshaper) — für den Live-Kontext und für den Lasttest im
+     *  OfflineAudioContext derselbe Aufbau. Setzt `this.ctx === ctx` voraus
+     *  (die Hilfen _impulseResponse/_whiteNoise lesen `this.ctx`). */
+    _buildGraph(ctx) {
       const gain = (value, to) => { const g = ctx.createGain(); g.gain.value = value; if (to) g.connect(to); return g; };
 
       const master = gain(.8);
@@ -2966,13 +2981,6 @@
 
       this.buses = { master, drums, bass, duck, synthSum, chorusWet, convolver, delay, feedback, reverbIn, reverbReturn, echoIn };
       this.noiseBuffer = this._whiteNoise(.5);
-      this.labSamples = new LabSamples(ctx);
-      this.labSamples.load(); // im Hintergrund; bis dahin klingt die Synthese
-      this.bassSamples = new LabSamples(ctx);
-      this.bassSamples.load(BASS_SAMPLE_NOTES.map(String), 'bass');
-      this.lastMidi = {};
-      this.monoVoice = {};
-      await ctx.resume();
     }
 
     async stop() {
@@ -3801,6 +3809,11 @@
   const OVERLOAD_EVENTS = 3;          // ... in diesem Fenster zeigen das Ausrufezeichen
   const OVERLOAD_GAP_MS = 150;        // Scheduler-Lücke (erwartet 25 ms) = Hauptthread hängt
   const OVERLOAD_RATIO = .9;          // Audiozeit pro Wanduhrzeit darunter = Audiothread kommt nicht hinterher
+  const RC_PEAK_LOAD = .95;           // renderCapacity: Spitzenlast ab hier (oder underrunRatio > 0) = Aussetzer
+  const LOADTEST_SECONDS = 4;         // Lasttest: so lange Musik im OfflineAudioContext rendern
+  const LOADTEST_WARN = 40, LOADTEST_HIGH = 70; // % Echtzeit: ab hier gelb bzw. rot
+  /** Einordnung des Lasttests (Renderdauer in % der Musikdauer). */
+  const loadLevel = (pct) => (pct >= LOADTEST_HIGH ? 'high' : pct >= LOADTEST_WARN ? 'mid' : 'ok');
 
   class GrooveLabView extends HTMLElement {
     constructor() {
@@ -3825,7 +3838,11 @@
 
       // Überlastungsanzeige: Zeitpunkte erkannter Aussetzer, letzter Scheduler-
       // Tick, letzter Vergleich Audiozeit/Wanduhr, Zähler der Browser-Statistik.
-      this._ovl = { events: [], lastEvent: 0, lastTick: 0, ratioWall: 0, ratioAudio: 0, underruns: 0, visibleSince: performance.now() };
+      this._ovl = { events: [], lastEvent: 0, lastTick: 0, ratioWall: 0, ratioAudio: 0, underruns: 0, underrunDuration: 0, warn: false, visibleSince: performance.now(),
+        // Diagnose: wie oft welches Anzeichen angeschlagen hat, Rechenlast-Quelle (renderCapacity),
+        // Lasttest-Ergebnis, Ausgabegerät, Sekundentakt der Anzeige.
+        counts: { gap: 0, ratio: 0, underrun: 0, load: 0 }, rc: null, rcCtx: null, rcHandler: null, rcStats: null,
+        test: null, testing: false, device: '', timer: 0 };
       document.addEventListener('visibilitychange', () => { this._ovl.visibleSince = performance.now(); this._ovl.lastTick = 0; this._ovl.ratioWall = 0; });
 
       this.playing = false;
@@ -3902,6 +3919,7 @@
     }
 
     async close() {
+      this._toggleOverloadPop(false, { focus: false });
       this._smpRecAbort();
       this._closeConfirm();
       this._setBeatZoom(false);
@@ -5578,7 +5596,8 @@
       this.globalStep = 0;
       this.scheduledSteps.length = 0;
       this.nextStepTime = this.engine.ctx.currentTime + .06;
-      this._ovl.lastTick = 0; this._ovl.ratioWall = 0; this._ovl.underruns = this._playoutUnderruns();
+      this._ovl.lastTick = 0; this._ovl.ratioWall = 0; this._ovl.underruns = this._playbackStats()?.underrunEvents || 0;
+      this._syncRenderCapacity();
       this._renderTransport();
       this._setStatus(t('lab.statusRunning'));
       this._scheduleAhead();
@@ -5593,6 +5612,7 @@
       this.visualFrame = 0;
       this.scheduledSteps.length = 0;
       this.shown = null;
+      this._syncRenderCapacity();
       // Liegeton und gehaltene Tasten laufen unabhängig vom Transport weiter.
       if (this.engine.ready) this.engine.releaseLayers(['melody', 'arp', 'chords']);
       this.$all('.step-cell.is-now, .step-cell.is-fill').forEach((cell) => cell.classList.remove('is-now', 'is-fill'));
@@ -5673,11 +5693,24 @@
        (1) der Scheduler-Takt (25 ms) reißt ab — der Hauptthread hängt;
        (2) die Audiozeit läuft langsamer als die Wanduhr — der Audiothread
            kommt nicht hinterher;
-       (3) der Browser meldet selbst Unterläufe (playoutStats, nur Chromium).
+       (3) der Browser meldet selbst Unterläufe (AudioContext.playbackStats, Chrome
+           ab 146; früher im Spec-Entwurf playoutStats genannt — bleibt als Rückfall).
        Drei Aussetzer innerhalb von 10 s zeigen das rote Ausrufezeichen am Titel. */
 
-    _playoutUnderruns() {
-      try { return this.engine.ctx?.playoutStats?.underrunEvents || 0; } catch { return 0; }
+    /** Die Wiedergabe-Statistik des Browsers (live, ~1×/s aktualisiert) oder
+     *  null, wenn es sie nicht gibt (Firefox, Safari, ältere Chromium). */
+    _playbackStats() {
+      try { const ctx = this.engine.ctx; return ctx?.playbackStats ?? ctx?.playoutStats ?? null; } catch { return null; }
+    }
+
+    /** Steigt der Unterlauf-Zähler der Statistik, ist das ein Aussetzer. */
+    _pollPlaybackStats() {
+      const o = this._ovl, stats = this._playbackStats();
+      let underruns = 0, duration = 0;
+      try { underruns = Number(stats?.underrunEvents) || 0; duration = Number(stats?.underrunDuration) || 0; } catch { /* Statistik nicht lesbar */ }
+      if (underruns > o.underruns) this._noteOverload('underrun');
+      o.underruns = underruns;
+      o.underrunDuration = duration;
     }
 
     _watchOverload(ctx) {
@@ -5690,13 +5723,12 @@
         if (ratio < OVERLOAD_RATIO) this._noteOverload('ratio');
         o.ratioWall = now; o.ratioAudio = ctx.currentTime;
       } else if (!o.ratioWall) { o.ratioWall = now; o.ratioAudio = ctx.currentTime; }
-      const underruns = this._playoutUnderruns();
-      if (underruns > o.underruns) this._noteOverload('underrun');
-      o.underruns = underruns;
+      this._pollPlaybackStats();
     }
 
-    _noteOverload() {
+    _noteOverload(reason) {
       const o = this._ovl, now = performance.now();
+      if (reason in o.counts) o.counts[reason]++; // gezählt wird jedes Anschlagen, auch das entprellte
       if (now - o.lastEvent < 300) return; // ein Aussetzer löst oft mehrere Anzeichen zugleich aus
       o.lastEvent = now;
       o.events = o.events.filter((time) => now - time < OVERLOAD_WINDOW_MS);
@@ -5704,22 +5736,300 @@
       if (o.events.length >= OVERLOAD_EVENTS) this._renderOverload();
     }
 
+    /** Warnung (roter Knopf mit „!“) oder neutral (gedämpfter Knopf „Audio & Leistung“). */
+    _overloadWarn() { return !!this._ovl.warn; }
+
     _renderOverload() {
       this._ovl.cleared = false;
-      const btn = this.$('.ovl-btn');
-      if (btn) btn.hidden = false;
-      this._renderSettings();
+      this._ovl.warn = true;
+      this._renderOverloadBtn();
+      this._renderOverloadPop();
     }
 
-    /** Einstellungen im Menü: Puffergröße, gemessene Verzögerung, ggf. der Überlastungs-Hinweis. */
-    _renderSettings() {
+    /** Der Knopf am Titel ist immer da; nur Aussehen und Beschriftung wechseln. */
+    _renderOverloadBtn() {
+      const btn = this.$('.ovl-btn');
+      if (!btn) return;
+      const warn = this._overloadWarn();
+      const label = t(warn ? 'lab.ovl.aria' : 'lab.ovl.ariaIdle');
+      btn.classList.toggle('is-warn', warn);
+      btn.setAttribute('aria-label', label);
+      btn.title = label;
+    }
+
+    _renderOverloadPop() {
+      const pop = this.$('.ovl-pop');
+      if (!pop) return;
       const current = this._saved.latency;
-      this.$all('.menu-settings [data-action="latency"]').forEach((chip) => chip.setAttribute('aria-pressed', String(chip.dataset.value === current)));
+      const warn = this._overloadWarn();
+      this.$('.ovl-pop').setAttribute('aria-label', t(warn ? 'lab.ovl.title' : 'lab.ovl.titleIdle'));
+      this.$('.ovl-title').textContent = t(warn ? 'lab.ovl.title' : 'lab.ovl.titleIdle');
+      this.$('.ovl-text').textContent = t(warn ? 'lab.ovl.text' : 'lab.ovl.textIdle');
+      this._rememberLatency();
+      this.$all('.ovl-pop [data-action="latency"]').forEach((chip) => {
+        chip.setAttribute('aria-pressed', String(chip.dataset.value === current));
+        const info = this._ovl.bufInfo?.[chip.dataset.value];
+        chip.querySelector('.lat-info').textContent = info ? tf('lab.ovl.chipInfo', info) : '';
+      });
       const ctx = this.engine.ctx;
       const ms = ctx ? Math.round(((ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000) : 0;
       this.$('.ovl-measured').textContent = ms > 0 ? tf('lab.ovl.measured', { ms }) : '';
       this.$('.ovl-max').hidden = current !== 'playback';
-      this.$('.ovl-warn').hidden = this.$('.ovl-btn').hidden;
+      this._renderDiag();
+    }
+
+    _toggleOverloadPop(open = this.$('.ovl-pop').hidden, { focus = true } = {}) {
+      this.$('.ovl-pop').hidden = !open;
+      this.$('.ovl-btn').setAttribute('aria-expanded', String(open));
+      global.clearInterval(this._ovl.timer);
+      this._ovl.timer = 0;
+      if (open) {
+        this._renderOverloadPop();
+        // Diagnose: einmal pro Sekunde auffrischen, solange das Panel offen ist.
+        this._ovl.timer = global.setInterval(() => this._renderDiag(), 1000);
+        this._readOutputDevice();
+        this._probeBuffers();
+        if (focus) this.$('.ovl-pop [aria-pressed="true"]')?.focus();
+      } else if (focus) this.$('.ovl-btn').focus();
+      this._syncRenderCapacity();
+    }
+
+    /* ---- Diagnose ---- */
+
+    /** Puffergröße eines Kontexts: baseLatency (s) × Abtastrate = Samples je Callback. */
+    _bufferInfo(ctx) {
+      try {
+        const frames = Math.round(ctx.baseLatency * ctx.sampleRate);
+        return frames > 0 ? { frames, ms: Math.round(ctx.baseLatency * 1000) } : null;
+      } catch { return null; }
+    }
+
+    /** Wert des laufenden Kontexts für den gewählten Puffer merken. */
+    _rememberLatency() {
+      const info = this.engine.ctx && this._bufferInfo(this.engine.ctx);
+      if (info) (this._ovl.bufInfo ||= {})[this._saved.latency] = info;
+    }
+
+    /** Die anderen Puffer einmal je Sitzung kurz ausprobieren (Wegwerf-Kontext, sofort wieder zu),
+     *  damit die Chips ihre Größe nennen können. Nicht während der Wiedergabe: ein zusätzlicher
+     *  Kontext könnte dort knacken lassen. */
+    async _probeBuffers() {
+      const o = this._ovl, Ctx = global.AudioContext || global.webkitAudioContext;
+      if (!Ctx || this.playing || o.probing || o.probed) return;
+      o.probing = true;
+      try {
+        for (const hint of LATENCY_HINTS) {
+          if (o.bufInfo?.[hint]) continue;
+          let probe = null;
+          try { probe = new Ctx({ latencyHint: hint }); const info = this._bufferInfo(probe); if (info) (o.bufInfo ||= {})[hint] = info; } catch { /* nicht möglich */ }
+          try { await probe?.close(); } catch { /* schon zu */ }
+        }
+        o.probed = true;
+      } finally { o.probing = false; this._renderOverloadPop(); }
+    }
+
+    /** Rechenlast des Audio-Threads laut Browser (AudioRenderCapacity, per
+     *  Feature-Detection): läuft nur, solange der Transport spielt oder das
+     *  Panel offen ist; sonst stop(). Folgt einem neu gebauten Kontext. */
+    _syncRenderCapacity() {
+      const o = this._ovl, ctx = this.engine.ctx;
+      const want = !!ctx && (this.playing || !this.$('.ovl-pop').hidden);
+      if (o.rc && (!want || o.rcCtx !== ctx)) {
+        try { o.rc.removeEventListener('update', o.rcHandler); o.rc.stop(); } catch { /* Kontext schon zu */ }
+        o.rc = null; o.rcCtx = null; o.rcStats = null;
+      }
+      if (!want || o.rc) return;
+      try {
+        const rc = ctx.renderCapacity;
+        if (!rc || typeof rc.start !== 'function') return;
+        o.rcHandler = (event) => this._onRenderCapacity(event);
+        rc.addEventListener('update', o.rcHandler);
+        o.rc = rc; o.rcCtx = ctx;
+        rc.start({ updateInterval: 1 });
+      } catch { o.rc = null; o.rcCtx = null; }
+    }
+
+    /** `update` der Renderkapazität (1×/s): Werte merken — die Anzeige holt sie sich selbst —
+     *  und eine Spitze oder ein Unterlauf als viertes Anzeichen („load“) melden. */
+    _onRenderCapacity(event) {
+      const num = (value) => (Number.isFinite(value) ? value : 0);
+      const stats = this._ovl.rcStats = { avg: num(event?.averageLoad), peak: num(event?.peakLoad), ratio: num(event?.underrunRatio) };
+      if (this._rcOverload(stats) && document.visibilityState === 'visible' && this.engine.ctx?.state === 'running') this._noteOverload('load');
+    }
+
+    /** Spitzenlast ab 95 % oder irgendein Unterlauf in der letzten Sekunde: der Audiothread hat Töne verpasst oder fast. */
+    _rcOverload({ peak, ratio }) { return peak >= RC_PEAK_LOAD || ratio > 0; }
+
+    /** Ausgabegerät beim Namen nennen — nur wenn der Browser die Namen ohne
+     *  Berechtigungsabfrage herausgibt (Labels sind sonst leer); sonst weglassen. */
+    async _readOutputDevice() {
+      const o = this._ovl;
+      try {
+        const list = await navigator.mediaDevices?.enumerateDevices?.();
+        const sink = this.engine.ctx?.sinkId;
+        const id = (typeof sink === 'string' ? sink : sink?.deviceId) || 'default';
+        o.device = (list || []).find((d) => d.kind === 'audiooutput' && d.label && d.deviceId === id)?.label || '';
+      } catch { o.device = ''; }
+    }
+
+    /** Alle Diagnosewerte als [Beschriftung, Text] — für die Anzeige und fürs Kopieren. */
+    _diagLines() {
+      const o = this._ovl, ctx = this.engine.ctx, stats = this._playbackStats();
+      const pct = (x) => Math.round(x * 100);
+      const read = (fn) => { try { return fn(); } catch { return undefined; } };
+      const canTest = !!(global.OfflineAudioContext || global.webkitOfflineAudioContext);
+      const testText = o.test && !o.test.failed ? tf('lab.ovl.loadTest', { pct: o.test.pct }) : '';
+      let load;
+      if (o.rc && o.rcStats) load = tf('lab.ovl.loadRc', { avg: pct(o.rcStats.avg), peak: pct(o.rcStats.peak), ratio: pct(o.rcStats.ratio) });
+      else if (o.rc) load = t('lab.ovl.loadWait');
+      else if (testText) load = testText;
+      else load = t(canTest ? 'lab.ovl.loadNone' : 'lab.ovl.loadNA');
+      const lines = [[t('lab.ovl.load'), load]];
+      if (o.rc && testText) lines.push([t('lab.ovl.testLabel'), testText]);
+
+      const events = read(() => stats?.underrunEvents);
+      lines.push([t('lab.ovl.underruns'), stats && Number.isFinite(events)
+        ? tf('lab.ovl.underrunsVal', { n: events, sec: (Number(read(() => stats.underrunDuration)) || 0).toFixed(2) })
+        : t('lab.ovl.notReported')]);
+
+      // Latenz in ms. Die Statistik nennt Sekunden; Werte über 10 gelten als schon in ms.
+      const ms = (v) => Math.round(v > 10 ? v : v * 1000);
+      const lat = [];
+      const base = read(() => ctx?.baseLatency), out = read(() => ctx?.outputLatency);
+      if (base > 0) lat.push(tf('lab.ovl.latBase', { ms: ms(base) }));
+      if (out > 0) lat.push(tf('lab.ovl.latOut', { ms: ms(out) }));
+      const avg = read(() => stats?.averageLatency), max = read(() => stats?.maximumLatency);
+      if (avg > 0) lat.push(tf('lab.ovl.latAvg', { ms: ms(avg) }));
+      if (max > 0) lat.push(tf('lab.ovl.latMax', { ms: ms(max) }));
+      lines.push([t('lab.ovl.latency'), lat.length ? lat.join(' · ') : '–']);
+
+      const ctxParts = [tf('lab.ovl.ctxBuffer', { name: t(`lab.ovl.${this._saved.latency}`) })];
+      if (ctx) ctxParts.push(`${ctx.sampleRate} Hz`, String(ctx.state));
+      if (o.device) ctxParts.push(o.device);
+      lines.push([t('lab.ovl.context'), ctxParts.join(' · ')]);
+
+      lines.push([t('lab.ovl.counts'), tf('lab.ovl.countsVal', { gap: o.counts.gap, ratio: o.counts.ratio, underrun: o.counts.underrun, load: o.counts.load })]);
+      return lines;
+    }
+
+    _renderDiag() {
+      const pop = this.$('.ovl-pop'), o = this._ovl;
+      if (!pop || pop.hidden) return;
+      const dl = this.$('.ovl-diag');
+      dl.replaceChildren(...this._diagLines().flatMap(([label, value]) => {
+        const dt = document.createElement('dt'), dd = document.createElement('dd');
+        dt.textContent = label; dd.textContent = value;
+        return [dt, dd];
+      }));
+      const canTest = !!(global.OfflineAudioContext || global.webkitOfflineAudioContext);
+      const measure = this.$('[data-action="ovl-measure"]');
+      measure.hidden = !canTest;
+      measure.disabled = o.testing;
+      measure.textContent = t(o.testing ? 'lab.ovl.measuring' : 'lab.ovl.measure');
+      const res = this.$('.ovl-test');
+      let text = '', level = '';
+      if (o.test?.failed) text = t('lab.ovl.testFail');
+      else if (o.test) {
+        level = loadLevel(o.test.pct);
+        text = tf('lab.ovl.testResult', { pct: o.test.pct });
+        // Wenig Last, aber kleinster Puffer: Knacken kommt dann vom Puffer, nicht von der CPU.
+        if (level !== 'ok') text += ` ${t(`lab.ovl.test_${level}`)}`;
+        else if (this._saved.latency === 'interactive') text += ` ${tf('lab.ovl.test_okSmall', { name: t('lab.ovl.balanced') })}`;
+      }
+      if (res.textContent !== text) res.textContent = text; // Screenreader: nur bei Änderung
+      res.className = `ovl-test${level ? ` is-${level}` : ''}`;
+    }
+
+    /** Lasttest: die aktuelle Groove-Einstellung 4 s lang im OfflineAudioContext
+     *  rendern und die Wanduhrzeit messen — Renderdauer ÷ Musikdauer = Anteil
+     *  der Echtzeit, den dieses Gerät dafür braucht (überall verfügbar, auch iPhone). */
+    async _measureLoad() {
+      const o = this._ovl;
+      if (o.testing) return;
+      o.testing = true;
+      this._renderDiag();
+      try {
+        await this._ensureAudio(); // Abtastrate und Samples des Live-Kontexts
+        o.test = { pct: Math.round(await this._renderLoadTest()) };
+      } catch {
+        o.test = { failed: true };
+      } finally {
+        o.testing = false;
+        this._renderDiag();
+      }
+    }
+
+    /** Baut mit demselben Graph-Aufbau wie live (GrooveEngine._buildGraph) eine
+     *  zweite Engine auf einem OfflineAudioContext, plant über die echten
+     *  Spielfunktionen (_playStep: alle Spuren, Bass, Akkorde, Melodie, Arp) die
+     *  ersten 4 s ein und gibt die Renderdauer in % der Musikdauer zurück. */
+    async _renderLoadTest() {
+      const OAC = global.OfflineAudioContext || global.webkitOfflineAudioContext;
+      const live = this.engine;
+      const sampleRate = live.ctx.sampleRate;
+      const off = new OAC(2, Math.ceil(sampleRate * LOADTEST_SECONDS), sampleRate);
+      const eng = new GrooveEngine();
+      eng.ctx = off;
+      eng.maxVoices = Infinity; // alles ist vorab eingeplant: das Live-Limit (32) würde hier früh Töne abschneiden
+      eng._buildGraph(off);
+      // Bereits dekodierte Samples des Live-Kontexts mitbenutzen (Puffer sind kontextunabhängig).
+      eng.labSamples = live.labSamples; eng.bassSamples = live.bassSamples; eng.inst = { ...live.inst };
+
+      const prev = this.engine;
+      this._offline = true;
+      this.engine = eng;
+      try {
+        this._dcHeard(() => {
+          const s = this.state;
+          eng.setMaster(s.mix.master);
+          for (const bus of BUSES) eng.setBusLevel(bus, s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) ? 0 : s.mix[bus]);
+          for (const layer of SOUND_LAYERS) eng.setLayerSound(layer, this._heardSound());
+          eng.setLayerSound('chords', this._chordSound());
+          eng.setLayerSound('drone', DRONE_SOUND);
+          // Hall-Impuls sofort in der gewünschten Länge (live kommt er entprellt per Timer).
+          const length = clamp(s.fx.reverbLength, .2, 4);
+          eng._reverbLength = length;
+          eng.buses.convolver.buffer = eng._impulseResponse(length);
+          eng.setFx(s.fx, this._stepSeconds());
+          if (s.droneOn) this._droneMidis(s.keyRoot).forEach((midi, i) => eng.playTone(DRONE_SOUND, midi, 0, i === 0 ? .12 : .16, undefined, { layer: 'drone', glide: 0 }));
+          // Start: am Anfang des Akkords, der gerade spielt (im Stand: bei 0) — damit Akkorde von Anfang an klingen.
+          let g0 = this.playing ? this.globalStep : 0;
+          for (let back = 0; back < 256 && g0 > 0 && !this._harmonyAt(g0).chordStart; back++) g0--;
+          const stepSec = this._stepSeconds();
+          for (let k = 0; k * stepSec < LOADTEST_SECONDS; k++) this._playStep(g0 + k, .01 + k * stepSec, this._harmonyAt(g0 + k));
+        });
+      } finally {
+        this.engine = prev;
+        this._offline = false;
+      }
+      const t0 = performance.now();
+      await off.startRendering();
+      return (performance.now() - t0) / (LOADTEST_SECONDS * 1000) * 100;
+    }
+
+    /** Alle Diagnosewerte als Text — fürs Einfügen in Fehlerberichte. */
+    _diagText() {
+      const o = this._ovl;
+      const rows = this._diagLines();
+      if (o.test) rows.push([t('lab.ovl.testLabel'), o.test.failed ? t('lab.ovl.testFail') : tf('lab.ovl.testResult', { pct: o.test.pct })]);
+      rows.push(['User-Agent', navigator.userAgent], [t('lab.ovl.when'), new Date().toISOString()]);
+      return `Groove Lab – ${t('lab.ovl.titleIdle')}\n${rows.map(([label, value]) => `${label}: ${value}`).join('\n')}\n`;
+    }
+
+    async _copyDiag() {
+      const text = this._diagText();
+      let ok = false;
+      try { await navigator.clipboard.writeText(text); ok = true; } catch {
+        try { // Rückfall ohne Clipboard-API
+          const area = document.createElement('textarea');
+          area.value = text; area.style.position = 'fixed'; area.style.opacity = '0';
+          this.shadowRoot.append(area);
+          area.select();
+          ok = document.execCommand('copy');
+          area.remove();
+        } catch { ok = false; }
+      }
+      this.$('.ovl-note').textContent = t(ok ? 'lab.ovl.copied' : 'lab.ovl.copyFail');
     }
 
     /** Puffer wechseln: die Latenz lässt sich nach dem Anlegen des Kontexts nicht
@@ -5731,8 +6041,8 @@
       this._saved.latency = hint;
       this._persist();
       this.engine.latencyHint = hint;
-      this._ovl.events = []; this._ovl.cleared = true;
-      this.$('.ovl-btn').hidden = true;
+      this._ovl.events = []; this._ovl.cleared = true; this._ovl.warn = false;
+      this._renderOverloadBtn();
       if (this.engine.ready) {
         this.stop();
         this._releaseAllKeys();
@@ -5743,7 +6053,8 @@
         if (wasPlaying) await this.start();
       }
       this._setStatus(tf('lab.ovl.applied', { name: t(`lab.ovl.${hint}`) }));
-      this._renderSettings();
+      this._syncRenderCapacity();
+      this._renderOverloadPop();
     }
 
     /* ---- Lookahead-Scheduler ---- */
@@ -5992,7 +6303,7 @@
     /** Taste kurz aufleuchten lassen, wenn der Arp sie spielt (zur geplanten Zeit). */
     _flashKey(midi, time) {
       const el = this._keyElFor(midi);
-      if (!el || !this.engine.ready) return;
+      if (!el || !this.engine.ready || this._offline) return;
       const delay = Math.max(0, (time - this.engine.ctx.currentTime) * 1000);
       global.setTimeout(() => {
         el.classList.add('is-arp');
@@ -8623,21 +8934,14 @@
       this._handleAction(def.action, String(next.i), null);
     }
 
-    /* ---- Menü (Speichern & Öffnen · Modus · Einstellungen) ---- */
+    /* ---- Menü (Speichern & Öffnen · Modus · Audio & Leistung) ---- */
 
-    /** `section: 'settings'` springt gleich zu den Einstellungen (Überlastungs-„!“). */
-    _openSheet({ section = null } = {}) {
+    _openSheet() {
       this.$('.sheet').hidden = false;
       this.$('.menu-btn').setAttribute('aria-expanded', 'true');
       this._renderSheet();
-      if (section === 'settings') {
-        const sec = this.$('.menu-settings');
-        sec.scrollIntoView({ block: 'start' });
-        sec.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true });
-      } else {
-        this.$('.sheet-card').scrollTop = 0;
-        this.$('.sheet .menu-head [data-action="close-sheet"]').focus();
-      }
+      this.$('.sheet-card').scrollTop = 0;
+      this.$('.sheet .menu-head [data-action="close-sheet"]').focus();
     }
 
     _closeSheet({ focus = true } = {}) {
@@ -8705,7 +9009,6 @@
       }));
       this.$('.code-out').value = encodeState(this.state);
       this.$('.storage-hint').textContent = t(this._storage ? 'lab.autoSaveHint' : 'lab.noStorageHint');
-      this._renderSettings();
     }
 
     _flash(text) {
@@ -9027,6 +9330,7 @@
 
     /** Aus dem Scheduler: Spurwerte dieses Schritts setzen (zur Audio-Zeit). */
     _playAutomation(g, time) {
+      if (this._offline) return; // Lasttest: Automation darf weder den Klang noch die Regler verstellen
       const auto = this.state.automation;
       if (!auto || !auto.on || this.autoRec.phase === 'recording' || this.autoRec.phase === 'armed') return;
       const idx = mod(g - auto.offset, auto.steps);
@@ -9502,7 +9806,11 @@
         case 'tab': this._setTab(target.dataset.tab); break;
         case 'lock': s.locks[target.dataset.lock] = !s.locks[target.dataset.lock]; this._renderLock(target.dataset.lock); break;
         case 'open-sheet': this._openSheet(); break;
-        case 'overload': this._openSheet({ section: 'settings' }); break;
+        case 'overload': this._toggleOverloadPop(); break;
+        case 'overload-close': this._toggleOverloadPop(false); break;
+        case 'ovl-measure': this._measureLoad(); break;
+        case 'ovl-copy': this._copyDiag(); break;
+        case 'menu-audio': this._closeSheet({ focus: false }); this._toggleOverloadPop(true); break;
         case 'file-save': this._saveFile(); break;
         case 'file-open': this.$('.file-in').click(); break;
         case 'latency': this._setLatency(value); break;
@@ -9906,6 +10214,7 @@
         if (!this.$('.confirm').hidden) this._closeConfirm();
         else if (this.ui.picker) this._closePicker();
         else if (!this.$('.dc-sheet').hidden) this._dcSheetClose();
+        else if (!this.$('.ovl-pop').hidden) this._toggleOverloadPop(false);
         else if (this.ui.dc.menu) { this.ui.dc.menu = false; this.ui.dc.revealAsk = false; this._renderDeconstruct(); this.$('.dc-more')?.focus(); }
         else if (!this.$('.sheet').hidden) this._closeSheet();
         else if (this.ui.beatZoom) this._setBeatZoom(false);
@@ -10001,6 +10310,7 @@
     --text: #241b3d;
     --muted: #8c81a6;
     --bad: #e0445a;
+    --warn: #a86a00;
     position: fixed; inset: 0; z-index: 2147483000;
     background:
       radial-gradient(120% 90% at 12% -10%, rgba(var(--accent-rgb), .14), transparent 55%),
@@ -10037,9 +10347,31 @@
   .now-chord { font-weight: 800; font-size: .9rem; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .status-line { font-size: .64rem; color: var(--muted); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ovl-btn {
-    width: 28px; height: 28px; flex: 0 0 auto; border-radius: 50%; background: var(--bad); color: #fff;
-    font-weight: 900; font-size: .95rem; line-height: 1; box-shadow: 0 0 0 3px rgba(224, 68, 90, .25);
+    width: 26px; height: 26px; flex: 0 0 auto; border-radius: 50%; background: transparent; color: var(--muted);
+    border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 900; font-size: .95rem; line-height: 1; padding: 0;
   }
+  .ovl-btn .ovl-ico { width: 16px; height: 16px; }
+  .ovl-btn.is-warn .ovl-ico, .ovl-btn:not(.is-warn) .ovl-bang { display: none; }
+  .ovl-btn.is-warn { background: var(--bad); border-color: var(--bad); color: #fff; box-shadow: 0 0 0 3px rgba(224, 68, 90, .25); }
+  .ovl-pop {
+    position: absolute; top: calc(100% + 6px); right: max(12px, env(safe-area-inset-right)); z-index: 20; width: min(92vw, 340px);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px;
+    box-shadow: 0 10px 30px rgba(36, 27, 61, .22); display: flex; flex-direction: column; gap: 8px; font-size: .82rem; line-height: 1.4;
+  }
+  .ovl-pop { max-height: calc(100vh - 90px); overflow-y: auto; }
+  .ovl-pop p { margin: 0; }
+  .ovl-pop .chip small { display: block; font-size: .62rem; font-weight: 600; color: var(--muted); }
+  .ovl-diag { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: .74rem; }
+  .ovl-diag dt { color: var(--muted); }
+  .ovl-diag dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .ovl-pop .ovl-test { font-weight: 700; }
+  .ovl-pop .ovl-test.is-mid { color: var(--warn); }
+  .ovl-pop .ovl-test.is-high { color: var(--bad); }
+  .ovl-pop .ovl-note { color: var(--muted); }
+  .ovl-pop .ovl-effect, .ovl-pop .ovl-measured { color: var(--muted); }
+  .ovl-pop .ovl-max { color: var(--bad); font-weight: 700; }
+  .ovl-pop .chip-row { margin: 0; }
   .icon-btn {
     width: 40px; height: 40px; flex: 0 0 auto; display: grid; place-items: center;
     border: 1px solid var(--line); border-radius: 13px; background: var(--surface-2); color: var(--muted);
@@ -10900,12 +11232,6 @@
   .mode-item span { font-size: .7rem; color: var(--muted); line-height: 1.35; }
   .mode-item[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
   .mode-item[aria-pressed="true"] strong { color: var(--accent); }
-  .menu-settings .sub-label { margin-top: 0; }
-  .menu-note { margin: 8px 0 0; font-size: .72rem; line-height: 1.4; color: var(--muted); }
-  .menu-note.ovl-max { color: var(--bad); font-weight: 700; }
-  .ovl-warn { margin-bottom: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(224, 68, 90, .08); border: 1px solid rgba(224, 68, 90, .3); font-size: .78rem; line-height: 1.4; }
-  .ovl-warn strong { color: var(--bad); }
-  .ovl-warn p { margin: 4px 0 0; }
   .menu-actions { display: grid; gap: 4px; }
   .menu-item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 6px; border-radius: 10px; font-size: .84rem; font-weight: 700; text-align: left; }
   .menu-item svg { width: 20px; height: 20px; color: var(--muted); }
@@ -10929,8 +11255,8 @@
 </style>
 
 <!-- Schlanke Transportleiste oben: Start/Stopp, Taktpunkte mit Akkord und
-     Statuszeile, Rückgängig und das Menü (Speichern/Öffnen, Modus,
-     Einstellungen). Das Tempo steht im Beat-Reiter (bzw. in der Chor-Ansicht
+     Statuszeile, „Audio & Leistung“ (Puffer, Diagnose), Rückgängig und das
+     Menü (Speichern/Öffnen, Modus). Das Tempo steht im Beat-Reiter (bzw. in der Chor-Ansicht
      beim Drumloop). In de:construct kommen Prüfen und A/B dazu. -->
 <header class="transport-bar">
   <button class="transport-play" type="button" data-action="toggle-transport" aria-label="${t('lab.startAria')}">${UI_ICON.play}</button>
@@ -10938,7 +11264,27 @@
     <div class="now-line"><div class="beat-dots" aria-hidden="true"></div><strong class="now-chord"></strong></div>
     <p class="status-line" role="status">${t('lab.statusReady')}</p>
   </div>
-  <button class="ovl-btn" type="button" data-action="overload" hidden aria-label="${t('lab.ovl.aria')}" title="${t('lab.ovl.aria')}">!</button>
+  <button class="ovl-btn" type="button" data-action="overload" aria-expanded="false" aria-label="${t('lab.ovl.ariaIdle')}" title="${t('lab.ovl.ariaIdle')}"><svg class="ovl-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-5"/></svg><span class="ovl-bang" aria-hidden="true">!</span></button>
+  <div class="ovl-pop" role="dialog" aria-label="${t('lab.ovl.titleIdle')}" hidden>
+    <strong class="ovl-title">${t('lab.ovl.titleIdle')}</strong>
+    <p class="ovl-text">${t('lab.ovl.textIdle')}</p>
+    <span class="sub-label">${t('lab.ovl.buffer')}</span>
+    <div class="chip-row">
+      ${LATENCY_HINTS.map((hint) => `<button class="chip" type="button" data-action="latency" data-value="${hint}" aria-pressed="false"><span>${t(`lab.ovl.${hint}`)}</span><small class="lat-info"></small></button>`).join('')}
+    </div>
+    <p class="ovl-effect">${t('lab.ovl.effect')}</p>
+    <p class="ovl-measured"></p>
+    <p class="ovl-max" hidden>${t('lab.ovl.max')}</p>
+    <span class="sub-label">${t('lab.ovl.diag')}</span>
+    <dl class="ovl-diag"></dl>
+    <div class="chip-row">
+      <button class="chip" type="button" data-action="ovl-measure">${t('lab.ovl.measure')}</button>
+      <button class="chip" type="button" data-action="ovl-copy">${t('lab.ovl.copy')}</button>
+    </div>
+    <p class="ovl-test" role="status"></p>
+    <p class="ovl-note" role="status"></p>
+    <button class="chip" type="button" data-action="overload-close">${t('lab.ovl.close')}</button>
+  </div>
   <button class="dc-check-btn" type="button" data-action="dc-check-active"></button>
   <button class="dc-quick" type="button" data-action="dc-quick" aria-pressed="true" aria-label="${t('lab.dc.quickAria')}" title="${t('lab.dc.quickAria')}" hidden><b class="dc-quick-letter">A</b><span class="dc-quick-text"></span></button>
   <button class="icon-btn" type="button" data-action="undo" aria-label="${t('lab.undoAria')}" title="${t('lab.undoAria')}" disabled>${UI_ICON.undo}</button>
@@ -11451,18 +11797,8 @@
         ${VIEWS.map((v) => `<button class="mode-item" type="button" data-action="view" data-value="${v}" aria-pressed="false"><strong>${t(VIEW_LABEL[v])}</strong><span>${t(`lab.menu.modeDesc.${v}`)}</span></button>`).join('')}
       </div>
     </section>
-    <section class="menu-sec menu-settings" aria-labelledby="gl-menu-settings">
-      <h3 class="menu-sec-title" id="gl-menu-settings">${t('lab.menu.settings')}</h3>
-      <div class="ovl-warn" hidden><strong>${t('lab.ovl.title')}</strong><p>${t('lab.ovl.text')}</p></div>
-      <span class="sub-label" id="gl-menu-buffer">${t('lab.menu.buffer')}</span>
-      <div class="chip-row" role="group" aria-labelledby="gl-menu-buffer">
-        ${LATENCY_HINTS.map((hint) => `<button class="chip" type="button" data-action="latency" data-value="${hint}" aria-pressed="false">${t(`lab.ovl.${hint}`)}</button>`).join('')}
-      </div>
-      <p class="menu-note">${t('lab.ovl.effect')}</p>
-      <p class="menu-note ovl-measured"></p>
-      <p class="menu-note ovl-max" hidden>${t('lab.ovl.max')}</p>
-    </section>
     <section class="menu-sec menu-actions">
+      <button class="menu-item" type="button" data-action="menu-audio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-5"/></svg><span>${t('lab.ovl.titleIdle')}</span></button>
       <button class="menu-item" type="button" data-action="randomize">${UI_ICON.dice}<span>${t('lab.randomAria')}</span></button>
       <button class="menu-item" type="button" data-action="close">${UI_ICON.close}<span>${t('lab.closeAria')}</span></button>
     </section>
@@ -11542,7 +11878,7 @@
     pickChallengePattern, detectiveVariant, rebuildScore, soundMatch, soundMatchTarget, SOUND_MATCH_START, CHALLENGE_TRACKS,
     // de:construct
     VIEWS, DC_LEVELS, DC_ELEMENTS, DC_FOCUS, DC_TAB, DC_SONGS, DRUM_TRACKS, CELL_CYCLE, dcSongsOf, dcTempoFeel, dcFirstOpen, dcNextElement, dcBeat, dcBuild, dcCompare, dcSwitchStep, dcNewSong, sanitizeDeconstruct,
-    progressionOfState, harmonyOfState, GrooveLabView,
+    progressionOfState, harmonyOfState, GrooveLabView, loadLevel,
   };
 
   global.ChorGrooveLab = {
