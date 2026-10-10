@@ -40,11 +40,12 @@ Schritt 0a: Öffne das Artifact (Artifact-Werkzeug, action "read", danach die ge
   (Beleg). Ist es NICHT erreichbar: trotzdem weiterarbeiten — diese Anweisung ist
   vollständig (Abschnitte 3–5 beschreiben jedes Element). Vermerke es im Bericht.
 Schritt 0b: Repo-Stand. Variante A (schlanke Transportleiste oben, Tempo im Beat-Reiter,
-  Menü mit Speichern & Öffnen/Modus/Einstellungen, Datei sichern/öffnen) ist auf Branch
-  `claude/groovelab-redesign-sx7q7k` umgesetzt (PR bokajsukriz/choirapp#182).
+  Menü mit Speichern & Öffnen/Modus, Datei sichern/öffnen, Knopf „Audio & Leistung“ in
+  der Leiste) ist auf Branch `claude/groovelab-redesign-sx7q7k` umgesetzt
+  (PR bokajsukriz/choirapp#182, enthält bereits den Stand von main inkl. Lastanzeige).
     - Auf main gemergt: von main aus arbeiten.
-    - Nicht gemergt: von diesem Branch aus arbeiten (sein Menü, `_saveFile/_openFile`,
-      `_renderSettings` werden weiterverwendet).
+    - Nicht gemergt: von diesem Branch aus arbeiten (sein Menü, `_saveFile/_openFile`
+      und das Panel „Audio & Leistung“ werden weiterverwendet).
   Vermerke die Basis (Branch + Hash) im Bericht.
 Schritt 0c: Bestandsaufnahme (Sonnet-Agent, nur lesend), Tabelle im Bericht: jedes
   heutige Bedienelement des Groove Lab (Reiter Beat, Harmonie, Melodie, Sampler, Klang,
@@ -97,15 +98,18 @@ Fokus, Kontrast ≥ 4,5:1, prefers-reduced-motion.
 
 3.1 Kopfleiste (alle Ansichten, einzeilig)
   ▶/⏸ (44) · Taktpunkte + aktueller Akkord · [Ansicht ▾] (Dropdown: Chor, Studio,
-  Lernen) · ↶ Rückgängig · ☰ Menü. In de:construct zusätzlich „Prüfen“ und A/B wie heute.
-  Überlastungs-„!“ wie heute (öffnet Menü bei Einstellungen). Statuszeile darf entfallen,
-  wenn der Platz fehlt; Statusmeldungen dann als kurzer Toast (role="status").
+  Lernen) · „Audio & Leistung“ (immer sichtbar, rot mit „!“ bei Überlastung; Panel mit
+  Puffer, Diagnose, Lasttest — unverändert übernehmen) · ↶ Rückgängig · ☰ Menü. In
+  de:construct zusätzlich „Prüfen“ und A/B wie heute. Wird es eng (320 px): Statuszeile
+  und Akkordname zuerst weglassen, nie Play, Ansicht, Menü; Statusmeldungen dann als
+  kurzer Toast (role="status").
 
 3.2 Menü ☰ (aus Variante A übernehmen, erweitern)
   Speichern & Öffnen (Plätze, Datei sichern/öffnen, Code) · „Meine Sounds“ (3.8) ·
-  „Zufällig“ (nur Studio, siehe 5) · Einstellungen: Audiopuffer, Gesamtlautstärke,
-  Bluetooth-Hinweis (Text: Bluetooth-Kopfhörer/-Lautsprecher verzögern um >150 ms, für
-  Mitsingen Kabel oder Gerätelautsprecher nutzen) · Schließen.
+  „Zufällig“ (nur Studio, siehe 5) · „Audio & Leistung“ (öffnet das Panel) ·
+  Gesamtlautstärke · Schließen. Den Bluetooth-Hinweis (Bluetooth-Kopfhörer/-Lautsprecher
+  verzögern um >150 ms, für Mitsingen Kabel oder Gerätelautsprecher nutzen) ins Panel
+  „Audio & Leistung“ aufnehmen.
   Der „Modus“-Abschnitt aus Variante A entfällt (Ansicht steht jetzt im Dropdown).
 
 3.3 Chor (D1)
@@ -244,12 +248,12 @@ Sampler:   Bibliothek/Aufnahme → Meine Sounds; Kits/Pads → Spielfläche Pads
 Klang:     Presets, Makro-Knöpfe, Bewegung aufnehmen → Klang-Reiter der Spur; Oszillator,
            Hüllkurve, Filter, LFO, Charakter, Vibrato, Glide, Mono → dort „Alle Regler“.
            Hall/Chorus/Echo → Raum (global) + Mix der Spur (Echo, Chorus, Hallanteil).
-Mixer:     Lautstärke/Stumm je Spur → Spurkarte; Gesamt → Menü/Einstellungen.
+Mixer:     Lautstärke/Stumm je Spur → Spurkarte; Gesamt → Menü.
 Keys:      Klaviatur/Tonleiter-Pads, Oktave → Spielfläche; Aufnahme → „● Aufnehmen“;
            Arpeggiator (Muster, Richtung, Tempo, Rhythmus, Bezug, Oktaven, Latch, Auto)
            → 2. Akkorde-Spur mit Spielweise Arpeggio (= heutige arp-Ebene).
 Transport: Würfeln + Schlösser → Menü „Zufällig“ (nur Studio) + Schloss je Spur; in Chor
-           ersetzt Stil ‹ › den Würfel. Tap → Tempo-Karte. Undo, Überlastung, Menü wie A.
+           ersetzt Stil ‹ › den Würfel. Tap → Tempo-Karte. Undo, „Audio & Leistung“, Menü wie A.
 Ansichten: Chor (Aufgaben) → Lernen/Aufgaben. Workshop/Kurs → Lernen/Kurs (Fokus-
            Hervorhebung _wsFocusEls auf die neuen Orte umverdrahten, Abschnitt 6).
            de:construct → Lernen/de:construct, baut im Studio (DC_TAB → Spur-Blätter:
@@ -351,7 +355,7 @@ docs/archiv/ verschieben.
 ------------------------------------------------------------------
 - Keine neuen Abhängigkeiten, kein Bundler, kein Framework, keine Build-Pipeline.
 - Keine Funktion still streichen (Abschnitt 6, Regel).
-- Audio-Kern (GrooveEngine, Scheduler-Timing, Überlastungserkennung, Sampler-Aufnahme/
+- Audio-Kern (GrooveEngine, Scheduler-Timing, Überlastungserkennung/Diagnose/Lasttest, Sampler-Aufnahme/
   Latenz) nur so weit ändern, wie Phase 1 es braucht; solche Änderungen in eigenen
   Commits, im Bericht markiert.
 - Nichts außerhalb des Groove Lab ändern, außer wo es nötig ist (Einstieg in app.js,
@@ -368,7 +372,7 @@ docs/archiv/ verschieben.
   Spuren). „2. Akkorde-Spur“ = heutige arp-Ebene. Liegeton = droneOn. Aufnahme =
   Phrase-Sample-Lane.
 - Pump: ein globaler Wert, im Mix der Drums-Spur.
-- Gesamtlautstärke (mix.master): Menü/Einstellungen.
+- Gesamtlautstärke (mix.master): Menü.
 - Tonleiter-Fläche: 7 Stufen + Oktave der aktuellen Tonart, Grundton markiert.
 - Bei Zweifel die sicherere, rückgängig zu machende Variante umsetzen und als D-<Nr>
   eintragen. Nie warten, nie fragen.
