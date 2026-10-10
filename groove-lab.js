@@ -9205,6 +9205,23 @@
       }
       nodes.push(names);
 
+      // Sound aufnehmen (E4): „Danach verwenden als …“ — Pad (Standard), im Groove, nur speichern.
+      if (smp.draftNew) {
+        const use = this._mk('section', 'panel smp-panel snd-after');
+        use.append(this._panelHead(t('lab.snd.after')));
+        const row = this._mk('div', 'chip-row');
+        row.setAttribute('role', 'radiogroup');
+        row.setAttribute('aria-label', t('lab.snd.after'));
+        const current = this.ui.smpUse || 'pad';
+        const groove = d.kind === 'loop' ? t('lab.snd.afterRec') : d.kind === 'tone' ? t('lab.snd.afterBass') : tf('lab.snd.afterLane', { track: this._roleLabel(d) });
+        for (const [id, label] of [['pad', tf('lab.snd.afterPad', { n: smp.sel + 1 })], ['beat', groove], ['save', t('lab.snd.afterSave')]]) {
+          const b = this._radioChip('snd-after', id, label, current === id);
+          row.append(b);
+        }
+        use.append(row);
+        nodes.push(use);
+      }
+
       const foot = this._mk('div', 'smp-foot');
       for (const [action, key, cls] of [['smp-to-beat', 'lab.sampler.toBeat', 'chip'], ['smp-cancel', 'lab.sampler.cancel', 'chip'], ['smp-delete', 'lab.sampler.delete', 'chip is-danger']]) {
         const b = this._mk('button', cls, t(key));
@@ -9289,10 +9306,17 @@
           this._setStatus(tf('lab.sampler.saved', { n: smp.sel + 1, name: meta.name }));
         }
       }
+      const wasNew = smp.draftNew;
+      const use = this.ui.smpUse || 'pad';
+      this.ui.smpUse = null;
       smp.draft = null; smp.draftBuffer = null; smp.draftPeaks = null;
-      this._samplerGo('pads');
+      this._samplerGo(smp.returnTo || 'pads');
+      smp.returnTo = null;
       if (pending) await pending;
-      this._renderTracks(); this._renderLive(); this._renderSampler();
+      // E4: danach verwenden als — im Groove (Sample-Spur) oder nur speichern (Pad wieder frei).
+      if (save && d && wasNew && use === 'beat') this._padToBeat(d.id);
+      if (save && d && wasNew && use === 'save' && this._ownKit().pads[smp.sel] === d.id) { this._ownKit().pads[smp.sel] = null; this._samplerGo('library'); }
+      this._renderTracks(); this._renderLive(); this._renderSampler(); this._renderStudio();
     }
 
     _editorKind(kind) {
@@ -9327,32 +9351,95 @@
 
     /* -- Bibliothek -- */
 
+    /** Meine Sounds (E3): eigene Aufnahmen dieses Geräts mit Filter Alle · Schläge · Töne ·
+     *  Phrasen, je Sound Anhören, Name, Art/Länge, Mini-Wellenform, „verwendet als …“ und ⋯
+     *  (Editor: umbenennen, löschen, Tonhöhe, Schnitt). Werks-Klänge eingeklappt darunter. */
     _renderSamplerLibrary(root) {
       const smp = this.sampler;
-      const nodes = [this._smpHead(t('lab.sampler.libTitle'))];
-      const section = (titleKey, metas, emptyKey) => {
-        const panel = this._mk('section', 'panel smp-panel');
-        panel.append(this._panelHead(t(titleKey)));
-        if (!metas.length) panel.append(this._mk('p', 'smp-hint', t(emptyKey)));
-        const list = this._mk('div', 'smp-lib');
-        for (const meta of metas) {
-          const row = this._mk('div', 'smp-lib-row');
-          const listen = this._mk('button', 'chip', '▶');
-          listen.type = 'button'; listen.dataset.action = 'smp-lib-listen'; listen.dataset.value = meta.id;
-          listen.setAttribute('aria-label', `${t('lab.sampler.listen')}: ${meta.name}`);
-          const use = this._mk('button', 'smp-lib-use');
-          use.type = 'button'; use.dataset.action = 'smp-lib-use'; use.dataset.value = meta.id;
-          use.append(this._mk('strong', '', meta.name), this._mk('span', '', `${this._kindLabel(meta.kind)} · ${this._roleLabel(meta)}`));
-          row.append(listen, use);
-          list.append(row);
-        }
-        panel.append(list);
-        return panel;
-      };
-      nodes.push(this._mk('p', 'smp-hint', tf('lab.sampler.libHint', { n: smp.sel + 1 })));
-      nodes.push(section('lab.sampler.libFactory', FACTORY_SAMPLES, ''));
-      nodes.push(section('lab.sampler.libOwn', [...smp.meta.values()].sort((a, b) => b.createdAt - a.createdAt), 'lab.sampler.libEmpty'));
+      const filter = this.ui.smpFilter || 'all';
+      const own = [...smp.meta.values()].sort((a, b) => b.createdAt - a.createdAt);
+      const nodes = [this._smpHead(t('lab.menu.sounds'))];
+      const top = this._mk('div', 'snd-top');
+      top.append(this._mk('span', 'snd-count', tf('lab.snd.count', { n: own.length, max: SAMPLER_MAX_SAMPLES })));
+      const kits = this._mk('button', 'chip', t('lab.snd.kits'));
+      kits.type = 'button'; kits.dataset.action = 'smp-back';
+      top.append(kits);
+      nodes.push(top);
+      const rec = this._mk('button', 'snd-new');
+      rec.type = 'button'; rec.dataset.action = 'smp-record'; rec.dataset.first = '';
+      rec.append(this._mk('i'), document.createTextNode(t('lab.snd.new')));
+      rec.disabled = own.length >= SAMPLER_MAX_SAMPLES;
+      nodes.push(rec);
+      const tabs = this._mk('div', 'seg snd-filter');
+      tabs.setAttribute('role', 'radiogroup');
+      tabs.setAttribute('aria-label', t('lab.snd.filter'));
+      for (const [id, key] of [['all', 'lab.snd.all'], ['hit', 'lab.snd.hits'], ['tone', 'lab.snd.tones'], ['loop', 'lab.snd.phrases']]) {
+        const b = this._mk('button', '', t(key));
+        b.type = 'button'; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(filter === id));
+        b.dataset.action = 'snd-filter'; b.dataset.value = id;
+        tabs.append(b);
+      }
+      nodes.push(tabs);
+      const list = this._mk('section', 'snd-list');
+      const shown = own.filter((m) => filter === 'all' || m.kind === filter);
+      if (!shown.length) list.append(this._mk('p', 'smp-hint', t(own.length ? 'lab.snd.noneOfKind' : 'lab.sampler.libEmpty')));
+      for (const meta of shown) list.append(this._soundRow(meta));
+      nodes.push(list);
+      const how = this._mk('div', 'snd-how');
+      how.append(this._mk('strong', '', t('lab.snd.howTitle')), this._mk('p', '', t('lab.snd.how')));
+      nodes.push(how);
+      // Werks-Klänge: wie bisher auf das gewählte Pad legen.
+      const fac = this._mk('details', 'snd-factory');
+      fac.append(this._mk('summary', '', t('lab.sampler.libFactory')));
+      fac.append(this._mk('p', 'smp-hint', tf('lab.sampler.libHint', { n: smp.sel + 1 })));
+      const flist = this._mk('div', 'smp-lib');
+      for (const meta of FACTORY_SAMPLES) {
+        const row = this._mk('div', 'smp-lib-row');
+        const listen = this._mk('button', 'chip', '▶');
+        listen.type = 'button'; listen.dataset.action = 'smp-lib-listen'; listen.dataset.value = meta.id;
+        listen.setAttribute('aria-label', `${t('lab.sampler.listen')}: ${meta.name}`);
+        const use = this._mk('button', 'smp-lib-use');
+        use.type = 'button'; use.dataset.action = 'smp-lib-use'; use.dataset.value = meta.id;
+        use.append(this._mk('strong', '', meta.name), this._mk('span', '', `${this._kindLabel(meta.kind)} · ${this._roleLabel(meta)}`));
+        row.append(listen, use);
+        flist.append(row);
+      }
+      fac.append(flist);
+      nodes.push(fac);
       root.replaceChildren(...nodes);
+    }
+    /** Zeile eines Sounds in Meine Sounds. */
+    _soundRow(meta) {
+      const s = this.state;
+      const row = this._mk('div', 'snd-row');
+      const listen = this._mk('button', 'snd-play');
+      listen.type = 'button'; listen.dataset.action = 'smp-lib-listen'; listen.dataset.value = meta.id;
+      listen.setAttribute('aria-label', `${t('lab.sampler.listen')}: ${meta.name}`);
+      listen.innerHTML = UI_ICON.play;
+      const mid = this._mk('div', 'snd-mid');
+      const line = this._mk('div', 'snd-line');
+      const len = Math.max(0, (meta.trim?.[1] ?? 0) - (meta.trim?.[0] ?? 0));
+      const kind = meta.kind === 'tone' && meta.detectedMidi !== null ? `${this._kindLabel('tone')} · ${noteLabel(meta.detectedMidi, 0, 'major', labLang)} · ${this._secLabel(len)}`
+        : meta.kind === 'loop' ? `${t('lab.snd.phrase')} · ${tf('lab.sampler.roleLoop', { n: meta.loopBars })} · ♩ ${meta.bpmAtRec}` : `${this._kindLabel(meta.kind)} · ${this._secLabel(len)}`;
+      line.append(this._mk('strong', '', meta.name), this._mk('span', '', kind));
+      const wave = this._mk('div', 'snd-wave');
+      wave.setAttribute('aria-hidden', 'true');
+      const buffer = this._bufferNow(meta.id);
+      const peaks = buffer ? this._peaks14(meta.id, buffer) : null;
+      if (peaks) wave.append(...peaks.map((p) => { const i = this._mk('i'); i.style.height = `${Math.max(2, Math.round(p * 18))}px`; return i; }));
+      else this._loadBuffer(meta.id).then((b) => { if (b && wave.isConnected && !wave.childElementCount) { this._renderSampler(); } }).catch(() => {});
+      // verwendet als …: Pads in Kits, Spuren im Raster.
+      const uses = [];
+      s.sampler.kits.forEach((k) => k.pads.forEach((id, i) => { if (id === meta.id) uses.push(tf('lab.snd.usePad', { n: i + 1, kit: k.name })); }));
+      if (s.sampleLanes.some((l) => l.padId === meta.id)) uses.push(meta.kind === 'loop' ? t('lab.snd.useRec') : meta.kind === 'tone' ? t('lab.snd.useBass') : tf('lab.snd.useLane', { track: this._roleLabel(meta) }));
+      const use = this._mk('span', `snd-use${uses.length ? '' : ' is-free'}`, uses.length ? `${t('lab.snd.usedAs')} ${uses.join(' · ')}` : t('lab.snd.unused'));
+      if (meta.kind === 'loop') use.append(document.createTextNode(` · ${tf('lab.studio.loopTempo', { bpm: meta.bpmAtRec })}`));
+      mid.append(line, wave, use);
+      const more = this._mk('button', 'snd-more', '⋯');
+      more.type = 'button'; more.dataset.action = 'snd-more'; more.dataset.value = meta.id;
+      more.setAttribute('aria-label', tf('lab.snd.moreAria', { name: meta.name }));
+      row.append(listen, mid, more);
+      return row;
     }
 
     /* -- Im Beat -- */
@@ -11837,6 +11924,9 @@
           break;
         }
         case 'smp-lib-listen': this._auditionPad(value); break;
+        case 'snd-filter': this.ui.smpFilter = value; this._renderSampler(); this.$(`.snd-filter [data-value="${value}"]`)?.focus(); break;
+        case 'snd-more': this.sampler.returnTo = 'library'; this._openEditor(value); break;
+        case 'snd-after': this.ui.smpUse = value; this.$all('.snd-after [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === value))); break;
         case 'smp-lib-use': this._assignPad(this.sampler.sel, value); this._primeSamples(); this._samplerGo('pads'); this._renderLive(); break;
         case 'lane-cell': this._toggleLaneCell(Number(target.dataset.lane), Number(target.dataset.step)); break;
         case 'lane-toggle': { const lane = s.sampleLanes[Number(value)]; if (lane) { lane.on = !lane.on; this._renderTracks(); } break; }
@@ -13398,6 +13488,35 @@
   }
   @media (prefers-reduced-motion: reduce) { .sf-rec-btn.is-rec i { animation: none; } }
 
+
+  /* ---- Meine Sounds (E3) und Aufnehmen (E4) ---- */
+  .snd-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; }
+  .snd-count { font-size: .74rem; color: var(--muted); font-weight: 700; }
+  .snd-top .chip { min-height: 40px; }
+  .snd-new { width: 100%; min-height: 52px; border-radius: 16px; background: var(--text); color: #fff; font-weight: 800; font-size: .86rem; display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; }
+  .snd-new i { width: 14px; height: 14px; border-radius: 50%; background: var(--bad); }
+  .snd-filter { margin-bottom: 8px; }
+  .snd-list { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 2px 10px; display: grid; }
+  .snd-row { display: flex; align-items: center; gap: 10px; min-height: 74px; }
+  .snd-row + .snd-row { border-top: 1px solid var(--line); }
+  .snd-play { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line); display: grid; place-items: center; color: var(--text); }
+  .snd-play svg { width: 18px; height: 18px; }
+  .snd-mid { flex: 1; min-width: 0; display: grid; gap: 3px; }
+  .snd-line { display: flex; gap: 2px 8px; align-items: baseline; min-width: 0; flex-wrap: wrap; }
+  .panel-layer:has([data-part="sampler"]) .panel-layer-title { visibility: hidden; }
+  .snd-line strong { font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .snd-line span { font-size: .68rem; color: var(--muted); white-space: nowrap; }
+  .snd-wave { display: flex; align-items: center; gap: 2px; height: 20px; }
+  .snd-wave i { width: 4px; border-radius: 1px; background: var(--accent); }
+  .snd-use { font-size: .68rem; font-weight: 700; color: #2f5fb8; }
+  .snd-use.is-free { color: var(--muted); font-weight: 600; }
+  .snd-more { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 12px; font-size: 1.2rem; color: var(--muted); }
+  .snd-how { margin-top: 10px; background: var(--surface-2); border-radius: 14px; padding: 10px 12px; font-size: .74rem; line-height: 1.45; }
+  .snd-how p { margin: 4px 0 0; }
+  .snd-factory { margin-top: 10px; }
+  .snd-factory > summary { cursor: pointer; font-size: .78rem; font-weight: 700; color: var(--muted); min-height: 44px; display: flex; align-items: center; }
+  .snd-after .chip { min-height: 40px; }
+
   /* ---- Akkordfolgen-Editor (D6) ---- */
   .d6-tpl { display: flex; align-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 4px; }
   .d6-tpl .chor-text { text-align: center; }
@@ -13602,7 +13721,7 @@
     <div class="track-cards"></div>
     <button class="add-track" type="button" data-action="add-track" aria-haspopup="dialog">${t('lab.studio.addTrack')}</button>
     <div class="studio-tools"><span class="sub-label">${t('lab.studio.more')}</span>
-      <button class="chip" type="button" data-action="panel-layer" data-value="sampler">${t('lab.tabSampler')}</button>
+      <button class="chip" type="button" data-action="my-sounds">${t('lab.menu.sounds')}</button>
     </div>
     <div class="studio-fab-space" aria-hidden="true"></div>
     <button class="kbd-fab" type="button" data-action="surface-open">${UI_ICON.piano}<span class="kbd-fab-text"></span></button>

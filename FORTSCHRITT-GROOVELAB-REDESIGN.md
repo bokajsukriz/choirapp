@@ -13,15 +13,22 @@ Auftrag: `ARBEITSANWEISUNG-GROOVELAB-REDESIGN.md`. Basis: `main` @ `2ea07a7`
 | 4 | Akkordfolgen-Editor (D6) | fertig (Mindestergebnis 1–4 erreicht) |
 | 5 | Studio mit Spuren (D2, D3, B2) | fertig (Reiter bleiben nur als Baufläche für Workshop/de:construct) |
 | 6 | Spielflächen (E1, E5, E2) mit vereinter Aufnahme | fertig |
-| 7 | Meine Sounds + Aufnehmen (E3, E4) | offen |
+| 7 | Meine Sounds + Aufnehmen (E3, E4) | fertig |
 | 8 | Lernen (D4), Workshop-/de:construct-Umverdrahtung | offen |
 | 9 | Querschnitt, Schlussprüfung, README | offen |
 
 ## Nächster Schritt
 
-Phase 7: Meine Sounds (E3) + Aufnehmen (E4). Heute öffnet „Meine Sounds“ den alten
-Sampler (`_openSounds(view)` → `.panel-layer` mit `data-part="sampler"`).
-Danach Phase 8 (Lernen: Kurs/de:construct öffnen das Studio mit Hervorhebung).
+Phase 8: Lernen — Aufgaben laufen über der Chor-Ansicht (gleiche Begleitung,
+Aufgabenkarte darüber), Kurs/de:construct öffnen das Studio mit Hervorhebung.
+Heute: Lernen-Übersicht fertig (Phase 2), Aufgaben/Kurs/dc zeigen die alten Ansichten
+mit „‹ Lernen“.
+
+Phase 7 erledigt: `_renderSamplerLibrary` = Meine Sounds (E3: Filter, Zeilen mit
+Anhören/Art/Länge/Wellenform/„verwendet als“/⋯ → Editor, Werks-Klänge eingeklappt,
+„So landen Sounds im Groove“), E4: vorhandene Aufnahme-Ansicht + „Danach verwenden
+als“ (Pad · im Groove · nur speichern) im Editor neuer Aufnahmen. Einstieg: Menü und
+Studio-Werkzeug „Meine Sounds“, Pad „Eigenen Sound aufnehmen“ der Spielfläche.
 
 Phase 6 erledigt: `.surface` (is-choir: Vollbild/orientation.lock mit Rückfall
 „Zum Spielen quer halten“; is-studio: Leiste von unten), Piano 11 weiße Tasten ab c′
