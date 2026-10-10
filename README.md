@@ -273,15 +273,61 @@ Danach `http://localhost:8000` im Browser öffnen.
 
 ## Groove Lab: Aufbau der Oberfläche
 
-Oben steht nur eine schlanke Transportleiste: Start/Stopp, Taktpunkte mit
-aktuellem Akkord und Statuszeile, „Audio & Leistung“, Rückgängig und das Menü (☰). In
-de:construct kommen dort „Prüfen“ und der A/B-Umschalter dazu. Das Tempo
-(Anzeige, Regler, Tap) steht im Beat-Reiter, in der Chor-Ansicht beim Drumloop.
-Das Menü (`.sheet`, Schublade von rechts) enthält **Speichern & Öffnen** (vier
-Speicherplätze, Als Datei sichern/Datei öffnen — eine `.groove`-Datei mit dem
-`GL1.`-Code —, Als Code teilen), **Modus** (Chor, Studio, Kurs, de:construct)
-sowie „Audio & Leistung“ (öffnet dasselbe Panel wie der Knopf in der Leiste),
-„Zufälliger Groove“ und „Schließen“.
+Drei Ansichten zeigen **denselben Stand** in verschiedenen Detailstufen; ein
+Ansichtswechsel ändert nie, was klingt. Gewählt wird oben im Dropdown der Leiste
+(`state.view`: `choir` · `studio` · `learn`, in Lernen dazu `state.learnArea`:
+`tasks` · `course` · `dc`). Alte Stände (ohne `layout: 2`) bildet `viewOfRaw` ab:
+früheres `choir` mit Aufgabe → Lernen/Aufgaben, ohne Aufgabe → Chor; `workshop` →
+Lernen/Kurs; `deconstruct` → Lernen/de:construct.
+
+**Kopfleiste** (einzeilig, alle Ansichten): ▶/⏸ · Taktpunkte + aktueller Akkord ·
+Ansicht ▾ · „Audio & Leistung“ · ↶ · ☰. In de:construct kommen „Prüfen“ und A/B dazu.
+Unter 400 px fällt die Statuszeile weg (wichtige Meldungen als Toast), unter 360 px
+der Akkordname — nie Play, Ansicht, Menü. **Menü** (Schublade): Speichern & Öffnen
+(vier Plätze, `.groove`-Datei mit dem `GL1.`-Code, Code teilen), Wiedergabe
+(Gesamtlautstärke, Einzählen vor dem Start — Standard an, 1 Takt, nicht in Kurs und
+de:construct), Meine Sounds, Zufällig (nur Studio; beachtet die Schlösser, ändert nie
+Tonart, Tempo, Taktart oder Swing), Audio & Leistung, Schließen.
+
+**Chor** (Standard über Tools): Tonart ± (Halbtöne; Antippen öffnet Grundton/Modus)
+und „Anfangstöne geben“ (Tonika-Dreiklang, dann B → T → A → S des ersten Akkords am
+Klavier, Begleitung pausiert), Tempo ± mit Tap und Swing gerade · leicht · Shuffle
+(nur 4/4), Stil ‹ › mit Energie (Still · Ruhig · Treibend · Voll) und Raum (Trocken ·
+Probe · Saal · Kirche), dann Akkorde · Rhythmus · Bass · Klang · Melodie zum
+Durchklicken (Melodie standardmäßig aus) und „Hören auf“ (Rhythmus · ausgewogen ·
+Harmonie). Was Chor nicht abbilden kann, steht als „Eigene Einstellung (Studio)“ bzw.
+„angepasst“ daneben, weitere Spuren mit Stumm-Schalter, „Auf Vorlage zurücksetzen“.
+
+**Studio**: Song-Zeile Tonart · Takt · Tempo · Raum, darunter die Akkordfolge, dann
+Spurkarten (Drums, Bass, Akkorde, Melodie; „+ Spur“: Liegeton, Aufnahme, 2. Akkorde-
+Spur = Arp-Ebene) mit Stumm/Solo, Mini-Muster und Lautstärke. Antippen öffnet das
+Blatt **Muster · Klang · Mix** (`STUDIO_TRACKS`); es hängt die vorhandenen Bedien-
+felder (`data-part`) um und legt sie beim Schließen in die Reiter zurück
+(`_placePart/_restoreParts`) — so bauen Kurs und de:construct weiter mit denselben
+Panels (Fokus `_wsFocusEls`, `is-dc`-Klassen), ohne dass die Studio-Oberfläche dafür
+Reiter braucht. Die markierte Spur ist Ziel der Spielfläche.
+
+**Akkordfolge** (Blatt, gilt für alle Spuren): Vorlage ‹ ›, je Akkord Stufe, Länge
+½ · 1 · 2 Takte (`chordLen`, sonst `chordBars`), Wechsel auf der Eins · Achtel · 16tel
+früher (`chordPush`, 16tel nur mit Sechzehntel-Raster; auch über die Loop-Grenze,
+der allererste Takt nie), Septakkorde (für die Folge), Bass (Umkehrung), geliehen.
+`chordTimeline`/`chordAtStep` rechnen das; die Melodie nimmt die Harmonie ohne
+Vorziehen, der Bass zieht mit vor (außer „Bass bleibt auf der Eins“).
+
+**Spielflächen**: Chor — Vollbild quer (`orientation.lock`, sonst Hinweis „Zum Spielen
+quer halten“) mit Piano (11 weiße Tasten ab c′, Akkordtöne als Punkte), Tonleiter und
+Samples, nur zum Mitspielen. Studio — Leiste von unten, „● Aufnehmen“ dazu · ersetzen
+(Länge = Loop, Anschläge rasten auf die Sechzehntel, `quantizeTapStep` minus Ausgabe-
+Latenz) in Drums, Bass, Akkorde (Anschläge) oder Melodie. **Lernen**: Kacheln
+Aufgaben (laufen über der Chor-Ansicht, gesetzte Werte markiert), Kurs („Im Studio
+weiterbauen“) und de:construct.
+
+Stile, Energie, Raum, „Hören auf“ sind reine Daten/Funktionen (`STYLES`,
+`resolveEnergy`, `applyStyle`, `ROOMS`, `HEAR_FOCUS`, `busFactor`); ein Stil lässt
+Tonart und Tempo stehen, Energie wechselt beim Spielen an der nächsten Grenze von zwei
+Takten, „Voll“ ist dichter, nicht lauter (`ENERGY_TRIM`). Selbsttests:
+`redesignSelfTest()` (rein) und `redesignViewTest()` (Oberfläche), beide in
+`runMusicSelfTests`.
 
 ## Groove Lab: Audio & Leistung (Überlastungsanzeige, Puffer, Diagnose)
 
@@ -326,8 +372,10 @@ Dateien hochzählen) und fehlen sie, übernimmt die Synthese (Ersatzklang, die
 Oberfläche sagt es). Chor-Aufgaben, Workshop und de:construct sind auf den
 früheren Klang gepinnt (`pinLegacySound`).
 
-**Sampler** (Reiter „Sampler“, nicht in Workshop und de:construct): eigene
-Aufnahmen als Pads.
+**Sampler** („Meine Sounds“ im Menü und im Studio, Pad „Eigenen Sound aufnehmen“ der
+Spielfläche; nicht in Workshop und de:construct): eigene Aufnahmen als Pads. Die
+Bibliothek filtert Schläge · Töne · Phrasen und zeigt, wo ein Sound verwendet wird;
+nach einer neuen Aufnahme „Danach verwenden als“ Pad · im Groove · nur speichern.
 
 - *Datenhaltung:* Audio unverändert als Blob (Format des Geräts, wie die
   REC-Aufnahmen) im IndexedDB-Store `files` unter `labSample:<id>`, Metadaten
@@ -354,8 +402,9 @@ Aufnahmen als Pads.
 - *Ins Raster:* „Ins Raster legen“ erzeugt eine Sample-Spur unter der Zielspur
   (Schritte werden kopiert, die Zielspur schweigt, mit „Originalklang leise
   darunter“ spielt sie mit 35 %); „Live einspielen“ rastet Anschläge auf die
-  nächste Sechzehntel ein (`quantizeTapStep`, minus Ausgabe-Latenz). Alles ist
-  über „Rückgängig“ zurücknehmbar.
+  nächste Sechzehntel ein (`quantizeTapStep`, minus Ausgabe-Latenz) — im Studio
+  übernimmt das die Spielfläche („● Aufnehmen“). Alles ist über „Rückgängig“
+  zurücknehmbar.
 - *Teilen/Löschen:* Samples reisen **nicht** in einem `GL1.`-Code und nicht im
   Backup. Fehlt ein Sample auf dem Gerät, bleibt die Spur stumm und zeigt
   „Sample fehlt auf diesem Gerät“. „Alle Daten löschen“ (`DB.wipe`) leert beide

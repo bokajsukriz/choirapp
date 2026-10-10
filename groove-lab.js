@@ -16,10 +16,16 @@
    - GrooveEngine:  reine Klangerzeugung (AudioContext, Bus-Struktur, Voices).
                     Kennt weder Muster noch UI-Zustand.
    - Knob:          eigenständiger Dreh-Regler (Pointer-Events, Tastatur).
-   - GrooveLabView: die UI (Shadow-DOM-Web-Component) — schlanke
-                    Transportleiste oben (▶, Taktpunkte, ↶, Menü), darunter
-                    die Reiter; Menü mit Speichern & Öffnen, Modus und
-                    Einstellungen. Zustand, Scheduler, Rendering, Speichern.
+   - Stile & Co.:   STYLES (acht Stile mit Energie-Leiter), ROOMS, HEAR_FOCUS,
+                    Akkord-Zeitleiste (Länge/Vorziehen je Akkord) — reine
+                    Funktionen, Selbsttest redesignSelfTest.
+   - GrooveLabView: die UI (Shadow-DOM-Web-Component) — Kopfleiste (▶,
+                    Taktpunkte, Ansicht ▾ Chor · Studio · Lernen, Audio &
+                    Leistung, ↶, Menü). Chor: einfache Karten; Studio: Song-
+                    Zeile + Spurkarten, Blätter Muster · Klang · Mix hängen die
+                    Panels der (für Kurs/de:construct weiter vorhandenen)
+                    Reiter um; Spielflächen; Lernen. Zustand, Scheduler,
+                    Rendering, Speichern.
    ========================================================================== */
 (function (global) {
   'use strict';
