@@ -271,9 +271,21 @@ python3 -m http.server
 
 Danach `http://localhost:8000` im Browser öffnen.
 
+## Groove Lab: Aufbau der Oberfläche
+
+Oben steht nur eine schlanke Transportleiste: Start/Stopp, Taktpunkte mit
+aktuellem Akkord und Statuszeile, „Audio & Leistung“, Rückgängig und das Menü (☰). In
+de:construct kommen dort „Prüfen“ und der A/B-Umschalter dazu. Das Tempo
+(Anzeige, Regler, Tap) steht im Beat-Reiter, in der Chor-Ansicht beim Drumloop.
+Das Menü (`.sheet`, Schublade von rechts) enthält **Speichern & Öffnen** (vier
+Speicherplätze, Als Datei sichern/Datei öffnen — eine `.groove`-Datei mit dem
+`GL1.`-Code —, Als Code teilen), **Modus** (Chor, Studio, Kurs, de:construct)
+sowie „Audio & Leistung“ (öffnet dasselbe Panel wie der Knopf in der Leiste),
+„Zufälliger Groove“ und „Schließen“.
+
 ## Groove Lab: Audio & Leistung (Überlastungsanzeige, Puffer, Diagnose)
 
-Am Titel sitzt immer ein Knopf „Audio & Leistung“ (neutral, Tachosymbol). Läuft
+In der Transportleiste sitzt immer ein Knopf „Audio & Leistung“ (neutral, Tachosymbol). Läuft
 das Gerät dem Groove Lab hinterher, wird er nach drei Aussetzern in 10 s rot mit
 „!“. Erkannt wird über vier Anzeichen, die `_noteOverload(grund)` einzeln zählt:
 `gap` (Scheduler-Takt reißt ab, Hauptthread hängt), `ratio` (Audiozeit läuft
