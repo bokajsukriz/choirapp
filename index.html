@@ -2163,6 +2163,19 @@ input[type="checkbox"] {
 .loop-item .go strong { display: block; font-weight: 620; }
 .loop-item .go span { color: var(--muted); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 .loop-item[data-active="true"] .go { border-color: var(--accent); }
+/* Läuft ein gespeicherter Loop, ist er in der Liste farbig hervorgehoben —
+   die Start/Ende-Leiste oben bleibt dann dem spontanen Loop vorbehalten. */
+.loop-item[data-active="true"] .go {
+  background: rgba(var(--accent-rgb), .16);
+  border-width: 2px;
+  padding: 9px 11px;
+}
+.loop-item[data-active="true"] .go strong { color: var(--accent-foreground); }
+.loop-item .loop-stop {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
 
 /* Choirgym-Dialog (früher „Übe-Programm") */
 
