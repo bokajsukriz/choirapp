@@ -5205,7 +5205,8 @@
       return Array.from({ length: n }, (_, st) => on.has(st));
     }
 
-    _renderStudio() {
+    /** Song-Zeile (Tonart · Takt · Tempo · Raum) und die Folge — auch einzeln, nach Tempo, Swing, Raum. */
+    _renderSongRow() {
       const host = this.$('.studio-view');
       if (!host || host.hidden) return;
       const s = this.state;
@@ -5220,10 +5221,24 @@
       const prog = this._progression();
       const tl = this._chordTimeline(prog);
       this.$('.song-prog-list').textContent = prog.degrees.map((_, i) => `${i && tl.push[i] ? '←' : ''}${this._nameAt(prog, i)}`).join(' · ');
+      // Blätter der Song-Zeile: Raum- und Swing-Auswahl zeigen den Stand, auch wenn er von woanders kommt.
+      this.$all('[data-part="roomSel"] .chor-room [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === s.room)));
+      this.$all('[data-part="swingExact"] .chor-swing [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === swingLevelOf(s.swing))));
+    }
+
+    _renderStudio() {
+      const host = this.$('.studio-view');
+      if (!host || host.hidden) return;
+      this._renderSongRow();
+      const s = this.state;
       const target = this._studioTarget();
       const cards = this.$('.track-cards');
       const ids = this._studioTracks();
       const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+      // Fokus in einer Karte (M/S, Öffnen, Lautstärke) überlebt das Neuzeichnen.
+      const active = this.shadowRoot.activeElement;
+      const refocus = active && cards.contains(active) && active.closest('.t-card')
+        ? `.t-card[data-track="${active.closest('.t-card').dataset.track}"] ${active.dataset.mix ? 'input[data-mix]' : `[data-action="${active.dataset.action}"]`}` : null;
       cards.innerHTML = ids.map((id) => {
         const def = this._trackDef(id);
         const muted = this._trackMuted(id);
@@ -5239,6 +5254,7 @@
           <div class="t-cells" style="grid-template-columns:repeat(${this._barSteps()},minmax(0,1fr))" aria-hidden="true">${cells}</div>${vol}</div>`;
       }).join('');
       cards.querySelectorAll('input[data-mix]').forEach((el) => this._paintLevel?.(el));
+      if (refocus) cards.querySelector(refocus)?.focus();
       this.$('.kbd-fab-text').textContent = tf('lab.studio.kbdFab', { name: this._trackName(target) });
       if (!this.$('.track-layer').hidden) this._renderTrackHead();
     }
@@ -6597,6 +6613,12 @@
       return !!ws && ws.reached >= ws.lesson.checks.length;
     }
 
+    /** Studio: Spurkarten und Song-Zeile höchstens einmal pro Frame neu zeichnen. */
+    _studioSchedule() {
+      if (this._studioFrame || this._uiMode() !== 'studio') return;
+      this._studioFrame = global.requestAnimationFrame(() => { this._studioFrame = 0; this._renderStudio(); });
+    }
+
     /** Höchstens einmal pro Frame prüfen und Markierungen nachziehen. */
     _wsSchedule() {
       if (this._wsFrame || this._uiMode() !== 'workshop') return;
@@ -7306,6 +7328,7 @@
       this._dcHeard(() => this.engine.setFx(this.state.fx, this._stepSeconds()));
       this._dcAutosave();
       this._renderTransport();
+      this._renderSongRow();
     }
 
     /* ---- Überlastung erkennen und anzeigen ----
@@ -8137,7 +8160,12 @@
       const [layer] = this._layers.splice(i, 1);
       layer.el.hidden = true;
       layer.onClose?.();
-      if (focus && layer.back?.isConnected) layer.back.focus();
+      if (!focus || !layer.back) return;
+      // Der Auslöser kann inzwischen neu gezeichnet sein (Spurkarten): dann den gleichen Knopf suchen.
+      const { action, value } = layer.back.dataset || {};
+      const back = layer.back.isConnected ? layer.back
+        : action && this.$all(`[data-action="${action}"]${value !== undefined ? `[data-value="${value}"]` : ''}`).find((b) => b.getClientRects().length);
+      back?.focus();
     }
     _closeAllLayers() { while (this._layers?.length) this._closeLayer(undefined, { focus: false }); }
 
@@ -10271,7 +10299,7 @@
       const fxKnob = (host, key, label, min, max, format, log) => {
         const k = new Knob({
           label, min, max, value: fx[key], format, log,
-          onInput: (v) => { fx[key] = v; this.engine.setFx(fx, this._stepSeconds()); },
+          onInput: (v) => { fx[key] = v; this.engine.setFx(fx, this._stepSeconds()); if (key === 'reverbLength') this._renderSongRow(); },
         });
         host.append(k.el);
       };
@@ -11571,6 +11599,10 @@
       for (const type of ['click', 'input', 'change', 'pointerup', 'keyup']) {
         this.shadowRoot.addEventListener(type, () => { this._wsSchedule(); this._dcAutosave(); });
       }
+      // Studio: Spurkarten und Song-Zeile zeigen viele Einstellungen der Blätter (Loop, Kit, Fill,
+      // Bass-Klang, Melodie, Preset, Schalter …) — nach jeder Eingabe einmal pro Frame nachziehen,
+      // statt jeden Handler einzeln. Nicht bei 'input', sonst würde ein gezogener Kartenregler ersetzt.
+      for (const type of ['click', 'change', 'pointerup', 'keyup']) this.shadowRoot.addEventListener(type, () => this._studioSchedule());
       for (const type of ['pointerup', 'pointercancel']) this.shadowRoot.addEventListener(type, () => clearTimeout(this._padHold));
       this._wireMelGrid();
     }
@@ -11583,6 +11615,7 @@
       this._renderHarmony();
       this._renderNow();
       this._renderKeys(); // Tonart-Tasten folgen der Tonart
+      this._renderStudio(); // Song-Zeile (Tonart, Folge) und Spurkarten (Liegeton)
     }
 
     /** Alle An/Aus-Schalter (Checkbox mit role="switch") laufen hier durch. */
@@ -11648,11 +11681,11 @@
         case 'key-root': this._pushHistory(); s.keyRoot = Number(value); this._onHarmonyChange(); this._retuneDrone(); this._renderHarmony(); this._openKeyLayerRefresh('roots'); break;
         case 'key-mode': this._pushHistory(); s.modeId = value; this._onHarmonyChange(); this._renderHarmony(); this._openKeyLayerRefresh('modes'); break;
         case 'chor-bpm': this._setBpm(s.bpm + Number(value)); this._onTempoChange(); this._renderChor(); break;
-        case 'chor-swing': this._pushHistory(); s.swing = swingValueOf(value); this._renderBeat(); this._renderChor(); break;
+        case 'chor-swing': this._pushHistory(); s.swing = swingValueOf(value); this._renderSwingPart(); this._renderChor(); this._renderSongRow(); break;
         case 'chor-style-bpm': { const st = styleOf(s.styleId); if (st) { this._pushHistory(); this._setBpm(st.bpm); this._onTempoChange(); this._renderChor(); } break; }
         case 'chor-style': this._chorStyle(Number(value)); break;
         case 'chor-energy': this._setEnergy(value); this._renderChor(); break;
-        case 'chor-room': this._pushHistory(); setRoom(s, value); this._syncEngine(); this._renderFx(); this._renderChor(); break;
+        case 'chor-room': this._pushHistory(); setRoom(s, value); this._syncEngine(); this._renderFx(); this._renderChor(); this._renderSongRow(); break;
         case 'chor-hear': this._pushHistory(); s.hearFocus = HEAR_IDS.includes(value) ? value : 'balanced'; this._syncEngine(); this._renderChor(); break;
         case 'chor-prog': this._chorProg(Number(value)); break;
         case 'chor-el': this._chorStep(target.dataset.el, Number(value)); break;
@@ -11898,7 +11931,7 @@
           break;
         case 'ws-go': this._wsChGo(); break;
         case 'ws-listen': this._wsChListen(value); break;
-        case 'track-toggle': s.trackOn[value] = !s.trackOn[value]; this._renderTracks(); break;
+        case 'track-toggle': s.trackOn[value] = !s.trackOn[value]; this._renderTracks(); this._renderStudio(); break;
         case 'reset-beat': {
           const reset = () => { this._pushHistory(); s.beat = beatFromPattern(this._pattern()); s.beatEdited = false; this._renderBeat(); };
           if (s.beatEdited) this._confirm({ text: t('lab.resetBeatConfirm'), ok: t('lab.resetBeat'), onOk: reset });
@@ -13450,7 +13483,8 @@
   .track-tabs > button[hidden] { display: none; }
   .track-body { display: grid; gap: 10px; }
   .track-body > .panel, .panel-layer-body > .panel { margin: 0; }
-  .track-layer .layer-card, .panel-layer .layer-card { min-height: 70%; }
+  /* Blätter so hoch wie ihr Inhalt (höchstens 92 %, dann scrollt die Karte); die Reiterleiste wächst nicht mit (.seg hat flex: 1). */
+  .track-tabs { flex: none; }
   /* Ein Raster, zwei Blätter: Drums ohne Bass-Zeile, Bass nur mit ihr. */
   .track-layer[data-track="drums"] .track-row[data-track="bass"], .track-layer[data-track="drums"] .track-row[data-group="bass"] { display: none; }
   .track-layer[data-track="bass"] .track-row:not([data-track="bass"]):not([data-group="bass"]) { display: none; }
