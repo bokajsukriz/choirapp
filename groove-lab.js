@@ -427,7 +427,7 @@
       detune: 4, width: .5, pitchDrop: 35 },
     { name: 'Dub Chamber', icon: 'door', cat: 'lead', wave: 'square', attack: .02, decay: .32, sustain: .55, release: .44, cutoff: 1400, resonance: 8, filterEnvAmount: 700, reverbWet: .26, echoWet: .34,
       detune: 12, subLevel: .2, lfoSync: 8, lfoDepth: 700 },
-    { name: 'Warm Sub', icon: 'flame', cat: 'lead', wave: 'sine', attack: .03, decay: .2, sustain: .7, release: .5, cutoff: 900, resonance: 3, filterEnvAmount: 200, reverbWet: .15, echoWet: .05,
+    { name: 'Warm Sub', icon: 'flame', cat: 'bass', wave: 'sine', attack: .03, decay: .2, sustain: .7, release: .5, cutoff: 900, resonance: 3, filterEnvAmount: 200, reverbWet: .15, echoWet: .05,
       subLevel: .5, pitchDrop: 80, mono: true, glide: .05 },
     { name: 'Square Bell', icon: 'bell', cat: 'keys', wave: 'square', attack: .005, decay: .4, sustain: .25, release: 1.8, cutoff: 4200, resonance: 5, filterEnvAmount: 2000, reverbWet: .45, echoWet: .2,
       detune: 5, pitchDrop: 25 },
@@ -441,9 +441,9 @@
       pitchDrop: 90, width: .5, vibratoRate: 5, vibratoDepth: 9, vibratoDelay: .2 },
     { name: 'Vintage Organ', icon: 'key', cat: 'keys', wave: 'triangle', attack: .01, decay: .05, sustain: .9, release: .2, cutoff: 4600, resonance: 3, filterEnvAmount: 100, reverbWet: .3, echoWet: .1,
       detune: 7, width: .3, vibratoRate: 5.8, vibratoDepth: 4 },
-    { name: 'Growl Bass', icon: 'target', cat: 'lead', wave: 'sawtooth', attack: .01, decay: .18, sustain: .6, release: .28, cutoff: 900, resonance: 9, filterEnvAmount: 500, reverbWet: .1, echoWet: .08,
+    { name: 'Growl Bass', icon: 'target', cat: 'bass', wave: 'sawtooth', attack: .01, decay: .18, sustain: .6, release: .28, cutoff: 900, resonance: 9, filterEnvAmount: 500, reverbWet: .1, echoWet: .08,
       detune: 6, subLevel: .45, pitchDrop: 220, drive: .5, mono: true, glide: .06 },
-    { name: 'Wobble', icon: 'wave', cat: 'lead', wave: 'sawtooth', attack: .01, decay: .2, sustain: .8, release: .2, cutoff: 600, resonance: 10, filterEnvAmount: 300, reverbWet: .1, echoWet: .1,
+    { name: 'Wobble', icon: 'wave', cat: 'bass', wave: 'sawtooth', attack: .01, decay: .2, sustain: .8, release: .2, cutoff: 600, resonance: 10, filterEnvAmount: 300, reverbWet: .1, echoWet: .1,
       lfoSync: 2, lfoDepth: 2000, drive: .35, subLevel: .3, mono: true, glide: .04 },
     { name: 'Hollow Band', icon: 'bulb', cat: 'keys', wave: 'square', attack: .01, decay: .25, sustain: .5, release: .5, cutoff: 1500, resonance: 5, filterEnvAmount: 800, filterType: 'bandpass', reverbWet: .3, echoWet: .18,
       detune: 6, width: .5 },
@@ -455,6 +455,14 @@
     { name: 'Chor Ooh', icon: 'mic', cat: 'pad', sample: 'choir', attack: .12, decay: .3, sustain: 1, release: .6, cutoff: 8000, resonance: 0, reverbWet: .35, echoWet: .05 },
     { name: 'Streicher', icon: 'harp', cat: 'pad', sample: 'strings', attack: .25, decay: .3, sustain: 1, release: .7, cutoff: 7000, resonance: 0, reverbWet: .3, echoWet: 0 },
     { name: 'Brass Stab', icon: 'trumpet', cat: 'lead', sample: 'brass', attack: .005, decay: .2, sustain: 1, release: .15, cutoff: 9000, resonance: 0, reverbWet: .15, echoWet: .08 },
+    // Bass-Klänge der Bass-Spur als Presets (bassId → GrooveEngine.playBass: schlanke, trockene
+    // Bass-Stimme bzw. Finger-Bass-Samples). Die Synth-Werte sind die Annäherung, mit der der
+    // Klang-Editor weitermacht, sobald man daran dreht (dann fällt bassId weg).
+    { name: 'Finger Bass', icon: 'bassStrings', cat: 'bass', bassId: 'finger', wave: 'triangle', attack: .005, decay: .3, sustain: .8, release: .12, cutoff: 1200, resonance: 1, filterEnvAmount: 300, reverbWet: .05, echoWet: 0, mono: true },
+    { name: 'Round Finger', icon: 'bassClef', cat: 'bass', bassId: 'round', wave: 'triangle', attack: .005, decay: .26, sustain: .7, release: .1, cutoff: 900, resonance: 1, filterEnvAmount: 300, reverbWet: .05, echoWet: 0, mono: true },
+    { name: 'Sub Sine', icon: 'sineLow', cat: 'bass', bassId: 'sub', wave: 'sine', attack: .005, decay: .32, sustain: .8, release: .1, cutoff: 2000, resonance: 0, filterEnvAmount: 0, reverbWet: 0, echoWet: 0, mono: true },
+    { name: 'Square Pluck', icon: 'squareLow', cat: 'bass', bassId: 'pluck', wave: 'square', attack: .004, decay: .14, sustain: 0, release: .08, cutoff: 480, resonance: 8, filterEnvAmount: 0, reverbWet: 0, echoWet: 0, mono: true },
+    { name: 'Saw Growl', icon: 'sawLow', cat: 'bass', bassId: 'growl', wave: 'sawtooth', attack: .004, decay: .22, sustain: .6, release: .1, cutoff: 520, resonance: 7, filterEnvAmount: 1400, reverbWet: 0, echoWet: 0, mono: true },
   ];
 
   /** Sample-Instrumente der Klang-Presets. */
@@ -897,9 +905,9 @@
   const MELODY_CATS = ['calm', 'dance', 'funky'];
   // Eigene Melodien bekommen eine eigene Filter-Kategorie (nur sichtbar, wenn es welche gibt).
   const OWN_CAT = 'own';
-  const PRESET_CATS = ['pad', 'keys', 'lead'];
+  const PRESET_CATS = ['pad', 'keys', 'lead', 'bass'];
   const CAT_KEY = { calm: 'lab.catCalm', dance: 'lab.catDance', funky: 'lab.catFunky', breaks: 'lab.catBreaks',
-                    pad: 'lab.presetPad', keys: 'lab.presetKeys', lead: 'lab.presetLead', own: 'lab.catOwn',
+                    pad: 'lab.presetPad', keys: 'lab.presetKeys', lead: 'lab.presetLead', bass: 'lab.presetBass', own: 'lab.catOwn',
                     pop: 'lab.catPop', classic: 'lab.catClassic', jazz: 'lab.catJazz', modal: 'lab.catModal' };
 
   // Mischpult-Kanäle. Melodie, Arp und Tasten teilen sich EINEN Synth-Klang
@@ -973,6 +981,8 @@
     'Chor Ooh', 'Streicher', 'Moon Pad', 'Breath Glass',
     // lead
     'Brass Stab', 'Analog Lead', 'Bright Saw',
+    // bass
+    'Finger Bass', 'Round Finger', 'Sub Sine', 'Square Pluck', 'Saw Growl',
   ];
   /** Indizes einer Namensliste (unbekannte Namen fallen weg; der Selbsttest meldet sie). */
   const orderIndexes = (order, byName) => order.map(byName).filter((i) => i >= 0);
@@ -2257,13 +2267,39 @@
    *  bassVariant), die Akkorde (gehalten, im Rhythmus oder als Arpeggio) oder eine eigene,
    *  eingespielte Melodie. Oktave = Transposition für alle drei. Die Typen sind nur Vorgaben. */
   const INST_PLAYS = ['root', 'chords', 'own'];
-  const ROOT_RHYTHMS = ['whole', 'half', 'quarter', 'eighths', 'offbeat', 'octaves', 'line'];
-  const CHORD_RHYTHMS = ['held', 'half', 'quarter', 'eighths', 'offbeat', 'arp'];
+  /** Generator: Töne (Grundton/Akkord) × Rhythmus × Arpeggio. Die ersten Rhythmen kommen aus der
+   *  Linie des Loops (bassVariant), die übrigen sind feste Figuren (genHits): Sechzehntel,
+   *  Tresillo (3+3+2), punktierte Achtel (alle 3/16, „3+3+3+3+4“) und Achteltriolen. */
+  const GEN_FIGURES = ['sixteenths', 'tresillo', 'dotted', 'triplets'];
+  const ROOT_RHYTHMS = ['whole', 'half', 'quarter', 'eighths', 'sixteenths', 'offbeat', 'tresillo', 'dotted', 'triplets', 'octaves', 'line', 'line1'];
+  const CHORD_RHYTHMS = ['held', 'half', 'quarter', 'eighths', 'sixteenths', 'offbeat', 'tresillo', 'dotted', 'triplets'];
+  const ARP_DIRS = ['up', 'down', 'updown'];
+  /** Arpeggio einer Instrumentenspur: aus, Richtung, Umfang in Oktaven. */
+  const sanitizeArp = (raw) => ({
+    on: raw?.on === true,
+    dir: ARP_DIRS.includes(raw?.dir) ? raw.dir : 'up',
+    range: raw?.range === 2 ? 2 : 1,
+  });
+  /** Rhythmus-Figur je Takt als [Position, Länge] in Schritten (Positionen dürfen gebrochen
+   *  sein: Triolen). null = keine feste Figur (Linie des Loops). */
+  function genHits(id, barSteps, meter) {
+    let at;
+    if (id === 'sixteenths') at = Array.from({ length: barSteps }, (_, i) => i);
+    else if (id === 'tresillo') at = Array.from({ length: barSteps }, (_, i) => i).filter((i) => [0, 3, 6].includes(i % 8));
+    else if (id === 'dotted') at = Array.from({ length: Math.ceil((barSteps - 1) / 3) }, (_, i) => i * 3);
+    else if (id === 'triplets') {
+      const beats = METERS[meter]?.beats || [0, 4, 8, 12];
+      at = beats.flatMap((b, i) => { const len = (beats[i + 1] ?? barSteps) - b; return [b, b + len / 3, b + 2 * len / 3]; });
+    } else return null;
+    return at.map((pos, i) => [pos, (at[i + 1] ?? barSteps) - pos]);
+  }
+  /** Rhythmen, die in einer Taktart angeboten werden (Offbeat nur 4/4, Triolen nicht in 6/8). */
+  const rhythmOffered = (id, meter) => (id !== 'offbeat' || meter === '4/4') && (id !== 'triplets' || meter !== '6/8');
   const INST_TYPES = {
-    bass: { play: 'root', rootRhythm: 'eighths', chordRhythm: 'held', octave: -1, preset: 'Warm Sub', bassId: 'finger', color: SATB_COLOR.B },
+    bass: { play: 'root', rootRhythm: 'eighths', chordRhythm: 'held', octave: -1, preset: 'Finger Bass', bassId: 'finger', color: SATB_COLOR.B },
     chords: { play: 'chords', rootRhythm: 'whole', chordRhythm: 'held', octave: 0, preset: 'Klavier', bassId: null, color: '#2f6fd6' },
     pad: { play: 'chords', rootRhythm: 'whole', chordRhythm: 'held', octave: 0, preset: 'Moon Pad', bassId: null, color: '#5b6fd6' },
-    melody: { play: 'own', rootRhythm: 'quarter', chordRhythm: 'arp', octave: 0, preset: 'Analog Lead', bassId: null, color: '#0f7c6e' },
+    melody: { play: 'own', rootRhythm: 'quarter', chordRhythm: 'eighths', arp: { on: true, dir: 'updown', range: 1 }, octave: 0, preset: 'Analog Lead', bassId: null, color: '#0f7c6e' },
   };
   const INST_TYPE_IDS = Object.keys(INST_TYPES);
   /** Höchstens so viele zusätzliche Instrumentenspuren (jede ist eine eigene Ebene der Engine). */
@@ -2947,6 +2983,8 @@
     // `sample` nur aus der Liste, sonst entfernen (geteilte Codes dürfen keinen Ordner erfinden).
     if (SAMPLE_INSTRUMENTS.includes(raw.sample)) sound.sample = raw.sample; else delete sound.sample;
     sound.custom = raw.custom === true;
+    // Bass-Preset (bassId) nur unverändert; bearbeitet spielt der Synth.
+    if (sound.custom || raw.bassId !== sound.bassId) delete sound.bassId;
     return sound;
   }
 
@@ -2956,10 +2994,13 @@
     const d = INST_TYPES[type] || INST_TYPES.melody;
     const r = raw && typeof raw === 'object' ? raw : {};
     const notes = meter && r.notesMeter === meter ? sanitizeMelodyBars(r.notes, meter, true) : null;
+    // Früher war „Arpeggio“ ein Rhythmus der Akkorde (Achtel, auf und ab über eine Oktave).
+    const oldArp = r.chordRhythm === 'arp';
     return {
       play: INST_PLAYS.includes(r.play) ? r.play : d.play,
       rootRhythm: ROOT_RHYTHMS.includes(r.rootRhythm) ? r.rootRhythm : d.rootRhythm,
-      chordRhythm: CHORD_RHYTHMS.includes(r.chordRhythm) ? r.chordRhythm : d.chordRhythm,
+      chordRhythm: oldArp ? 'eighths' : CHORD_RHYTHMS.includes(r.chordRhythm) ? r.chordRhythm : d.chordRhythm,
+      arp: oldArp ? { on: true, dir: 'updown', range: 1 } : sanitizeArp(r.arp ?? d.arp),
       octave: Number.isInteger(r.octave) ? clamp(r.octave, -3, 3) : d.octave,
       notes, notesMeter: notes ? meter : null,
     };
@@ -3087,6 +3128,12 @@
     harp: '<path d="M6 21V8c0-3 3-5 6-5 3 0 6 2 6 5v13" fill="none"/><path d="M9 8v10M12 8v10M15 8v10"/>',
     trumpet: '<path d="M3 12h10M13 8l7-3v14l-7-3Z" fill="none"/><path d="M5 12v4h3v-4" fill="none"/>',
     sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2" fill="none"/><circle cx="10" cy="12" r="2" fill="none"/><circle cx="18" cy="18" r="2" fill="none"/>',
+    // --- Bass-Presets ---
+    bassClef: '<path d="M5 10a5 5 0 1 1 6 4.9C9 16 6.5 18 5 20" fill="none"/><circle cx="17" cy="8" r="1" fill="currentColor" stroke="none"/><circle cx="17" cy="13" r="1" fill="currentColor" stroke="none"/>',
+    bassStrings: '<path d="M7 3v18M10.5 3v18M14 3v18M17.5 3v18" fill="none"/><path d="M5 8h15" fill="none"/>',
+    sineLow: '<path d="M2 12c2.5-7 5-7 7.5 0s5 7 7.5 0 4-5 5-3" fill="none"/>',
+    squareLow: '<path d="M2 16h4V8h6v8h6V8h4" fill="none"/>',
+    sawLow: '<path d="M2 18l7-12v12l7-12v12l6-10" fill="none"/>',
   };
 
   const pictogramIcon = (name) => svg(PICTOGRAM[name] || '');
@@ -5238,8 +5285,10 @@
       const s = this.state;
       this._pushHistory();
       const barSteps = this._barSteps();
-      const bars = clamp(chordCycleBars(this._chordTimeline()), 1, MEL_MAX_BARS);
       const notes = this._recIntoNotes(target);
+      // Drums, Bass-Raster und Akkord-Anschläge sind ein Takt lang (das Muster wiederholt sich),
+      // dann reicht ein Takt Aufnahme; Töne (Melodie, eigene Töne) laufen über die ganze Akkordfolge.
+      const bars = notes || target === 'melody' ? clamp(chordCycleBars(this._chordTimeline()), 1, MEL_MAX_BARS) : 1;
       if (rec.mode === 'replace' && !notes) {
         if (target === 'drums') { for (const tr of DRUM_TRACKS) s.beat[tr] = {}; s.sampleLanes.forEach((l) => { if (this._sampleMeta(l.padId)?.kind === 'hit') l.steps = {}; }); s.beatEdited = true; }
         if (target === 'bass') { s.beat.bass = {}; s.bassPlay = null; }
@@ -5468,8 +5517,9 @@
     _instSub(id) {
       const inst = this._instOf(id);
       const cfg = inst.cfg;
-      const how = inst.play === 'root' ? t(`lab.bassPlay.${cfg.rootRhythm}`) : inst.play === 'chords' ? t(`lab.inst.rhythm.${cfg.chordRhythm}`)
+      let how = inst.play === 'root' ? t(`lab.bassPlay.${cfg.rootRhythm}`) : inst.play === 'chords' ? t(`lab.inst.rhythm.${cfg.chordRhythm}`)
         : cfg.notes && cfg.notesMeter === this._meter() ? t('lab.inst.ownNotes') : t('lab.inst.noNotes');
+      if (inst.play !== 'own' && cfg.arp?.on) how = `${how} · ${t('lab.inst.arp')}`;
       return [t(`lab.inst.play.${inst.play}`), how, this._instSoundName(id)].join(' · ');
     }
     /** Name des Klangs einer Instrumentenspur (Sample-Bass, Preset oder „Eigener Klang“). */
@@ -5508,11 +5558,10 @@
       const keys = (obj) => Object.keys(obj || {}).map(Number);
       if (s.instruments.some((tr) => tr.id === id) || (PRIMARY_INST.includes(id) && s.trackPlay[id] !== 'native')) {
         const { cfg, play } = this._instOf(id);
-        if (play === 'root') keys(this._rhythmLine(cfg.rootRhythm)).forEach((st) => on.add(st));
-        else if (play === 'chords') {
-          if (cfg.chordRhythm === 'held') on.add(0);
-          else if (cfg.chordRhythm === 'arp') for (let st = 0; st < n; st += CHORD_ARP.every) on.add(st);
-          else keys(this._rhythmLine(cfg.chordRhythm)).forEach((st) => on.add(st));
+        if (play === 'root' || play === 'chords') {
+          const rid = play === 'root' ? cfg.rootRhythm : cfg.chordRhythm;
+          if (rid === 'held' && !cfg.arp?.on) on.add(0);
+          else this._rhythmHits(rid === 'held' ? 'eighths' : rid).forEach(([pos]) => on.add(Math.floor(pos)));
         } else if (cfg.notes && cfg.notesMeter === this._meter()) (cfg.notes[0] || []).forEach(([at]) => on.add(Math.floor(at)));
       } else if (id === 'pad') on.add(0);
       else if (id === 'drums') DRUM_TRACKS.forEach((tr) => { if (s.trackOn[tr]) keys(s.beat[tr]).forEach((st) => on.add(st)); });
@@ -5699,27 +5748,42 @@
     /** Bisherige Bedienfelder einer Grundspur, die zur gewählten Spielweise gehören. */
     _nativeParts(id) {
       const s = this.state;
-      if (s.trackPlay[id] && s.trackPlay[id] !== 'native') return [];
+      if (s.trackPlay[id] && s.trackPlay[id] !== 'native') return id === 'chords' && s.trackPlay.chords === 'chords' ? ['chordPlay', 'satb'] : [];
       if (id === 'bass') return s.bassPlay ? ['bassPlay', 'grid'] : ['grid'];
       if (id === 'chords') return ['chordPlay', 'satb'];
       if (id === 'melody') return ['melody'];
       return [];
     }
-    /** „Spielt“: Grundton · Akkorde · Eigene Melodie, darunter Rhythmus bzw. Einspielen, Oktave. */
+    /** Generator „Spielt“: Töne (Grundton · Akkorde · Eigene Melodie), dann Rhythmus, dann
+     *  Arpeggio (Richtung, Umfang); bei eigener Melodie Einspielen. Dazu die Oktave. */
     _instPlayBlock(id) {
       const s = this.state;
       const inst = this._instOf(id);
       const cfg = inst.cfg;
-      const native = PRIMARY_INST.includes(id) && s.trackPlay[id] === 'native';
+      const primary = PRIMARY_INST.includes(id) && !s.instruments.some((tr) => tr.id === id);
+      const native = primary && s.trackPlay[id] === 'native';
+      const meter = this._meter();
       const box = document.createElement('section');
       box.className = 'panel inst-play';
       const radio = (action, value, label, on) => `<button class="chip" type="button" role="radio" data-action="${action}" data-value="${value}" aria-checked="${on}">${label}</button>`;
-      const hasNotes = !!(cfg.notes && cfg.notesMeter === this._meter());
+      const seg = (action, items, cur, labelId) => `<div class="seg" role="radiogroup" aria-labelledby="${labelId}">${items.map(([v, label]) => `<button type="button" role="radio" data-action="${action}" data-value="${v}" aria-checked="${String(v) === String(cur)}">${label}</button>`).join('')}</div>`;
+      const hasNotes = !!(cfg.notes && cfg.notesMeter === meter);
       let opts = '';
-      if (!native && inst.play === 'root') {
-        opts = `<span class="sub-label" id="inst-rh">${t('lab.inst.rhythm')}</span><div class="chip-row" role="radiogroup" aria-labelledby="inst-rh">${ROOT_RHYTHMS.map((r) => radio('inst-rhythm', r, t(`lab.bassPlay.${r}`), cfg.rootRhythm === r)).join('')}</div>`;
-      } else if (!native && inst.play === 'chords') {
-        opts = `<span class="sub-label" id="inst-rh">${t('lab.inst.rhythm')}</span><div class="chip-row" role="radiogroup" aria-labelledby="inst-rh">${CHORD_RHYTHMS.map((r) => radio('inst-rhythm', r, t(`lab.inst.rhythm.${r}`), cfg.chordRhythm === r)).join('')}</div>`;
+      if (inst.play === 'root' || inst.play === 'chords') {
+        const root = inst.play === 'root';
+        // „Stil“ = wie die Akkorde/das Pad nach Stil und Energie spielen (bisheriger Zustand).
+        const list = root ? ROOT_RHYTHMS : [...(primary && (id === 'chords' || id === 'pad') ? ['style'] : []), ...CHORD_RHYTHMS];
+        const cur = root ? (primary && id === 'bass' && native ? s.bassPlay : cfg.rootRhythm) : native ? 'style' : cfg.chordRhythm;
+        const label = (r) => t(r === 'style' ? 'lab.inst.rhythm.style' : root ? `lab.bassPlay.${r}` : `lab.inst.rhythm.${r}`);
+        const arp = !native && cfg.arp?.on;
+        opts = `<span class="sub-label" id="inst-rh">${t('lab.inst.rhythm')}</span>
+          <div class="chip-row" role="radiogroup" aria-labelledby="inst-rh">${list.filter((r) => r === 'style' || rhythmOffered(r, meter)).map((r) => radio('inst-rhythm', r, label(r), cur === r)).join('')}</div>
+          <div class="inst-arp">
+            <label class="switch"><input type="checkbox" role="switch" data-action="inst-arp"${arp ? ' checked' : ''}><span class="switch-track" aria-hidden="true"></span><span>${t('lab.inst.arp')}</span></label>
+            ${arp ? `<span class="sub-label" id="inst-arp-dir">${t('lab.inst.arpDir')}</span>${seg('inst-arp-dir', ARP_DIRS.map((d) => [d, t(`lab.inst.arpDir.${d}`)]), cfg.arp.dir, 'inst-arp-dir')}
+              <span class="sub-label" id="inst-arp-range">${t('lab.inst.arpRange')}</span>${seg('inst-arp-range', [[1, t('lab.inst.arpRange1')], [2, t('lab.inst.arpRange2')]], cfg.arp.range, 'inst-arp-range')}` : ''}
+            <p class="foot-note">${t(root ? 'lab.inst.arpHintRoot' : 'lab.inst.arpHint')}</p>
+          </div>`;
       } else if (!native) {
         opts = `<p class="foot-note">${t(hasNotes ? 'lab.inst.ownHas' : 'lab.inst.ownEmpty')}</p>`;
       }
@@ -5730,16 +5794,23 @@
         <p class="foot-note">${t(`lab.inst.hint.${inst.play}`)}</p>${opts}${rec}${oct}`;
       return box;
     }
+    /** Grundspur auf den Generator umstellen (falls sie noch nach ihrem bisherigen Zustand
+     *  spielt); übernimmt dabei den Rhythmus, den sie gerade spielt. */
+    _instToGenerator(id) {
+      const s = this.state;
+      if (!PRIMARY_INST.includes(id) || s.instruments.some((tr) => tr.id === id) || s.trackPlay[id] !== 'native') return;
+      const inst = this._instOf(id);
+      if (inst.play === 'root') { if (id === 'bass' && ROOT_RHYTHMS.includes(s.bassPlay)) inst.cfg.rootRhythm = s.bassPlay; s.trackPlay[id] = 'root'; }
+      else if (inst.play === 'chords') s.trackPlay[id] = 'chords';
+    }
     /** Klang-Schnellwahl über dem Synth-Editor: Bass-Klänge (Samples/Presets), Akkord-Klänge, Pads. */
     _instSoundBlock(id) {
       const s = this.state;
       const extra = s.instruments.find((tr) => tr.id === id);
       const radio = (action, value, label, on) => `<button class="chip" type="button" role="radio" data-action="${action}" data-value="${value}" aria-checked="${on}">${label}</button>`;
       let chips = '';
-      if (id === 'bass' || extra?.type === 'bass') {
-        const cur = extra ? extra.bassId : s.bassSynth ? null : s.bassSoundId;
-        chips = BASS_SOUNDS.map((b) => radio('inst-bass', b.id, b.name, cur === b.id)).join('');
-      } else if (id === 'chords') {
+      if (id === 'bass' || extra?.type === 'bass') return null; // Bass-Klänge sind Presets im Klang-Wähler (Filter „Bässe“)
+      if (id === 'chords') {
         chips = CHORD_SOUND_IDS.map((c) => radio('cs-sound', c, t(`lab.chordSound.${c}`), !s.chordSynth && s.chordSound === c)).join('');
       } else if (id === 'pad') {
         chips = Object.keys(CHORD_PADS).map((c) => radio('inst-pad', c, t(`lab.studio.pad${c === 'airy' ? 'Airy' : 'Moon'}`), !s.padSynth && s.chordPad === c)).join('');
@@ -5773,6 +5844,7 @@
     _setInstPlay(id, play) {
       const s = this.state;
       if (!INST_PLAYS.includes(play)) return;
+      if (this._instOf(id)?.play === play) return; // schon gewählt: Generator-Einstellungen bleiben
       this._pushHistory();
       const extra = s.instruments.find((tr) => tr.id === id);
       if (extra) extra.play = play;
@@ -5887,7 +5959,7 @@
       check('.cp-voicing', s.chordVoicing);
       check('.cp-oct', s.chordOctave || 0);
       const n = this._barSteps();
-      const hits = new Map((s.chordHits || []).map((h) => [h[0], h]));
+      const hits = new Map(this._chordGridHits().map((h) => [h[0], h]));
       const box = this.$('.cp-hits');
       box.style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr))`;
       box.replaceChildren(...Array.from({ length: n }, (_, st) => {
@@ -5900,13 +5972,23 @@
         b.setAttribute('aria-label', tf('lab.studio.hitAria', { n: st + 1 }));
         return b;
       }));
-      this.$('.cp-hits-box').hidden = s.chordPlay !== 'rhythm';
+      // „Eigenes Raster“: die Anschläge (vorbelegt vom Stil) sind immer sichtbar; im Generator gilt dessen Rhythmus.
+      this.$('.cp-hits-box').hidden = s.trackPlay.chords !== 'native';
       const cs = this.$('.cs-chips');
       if (cs) {
         cs.replaceChildren(...CHORD_SOUND_IDS.map((id) => this._radioChip('cs-sound', id, t(`lab.chordSound.${id}`), s.chordSound === id)));
         this.$('.cs-pad-chips').replaceChildren(...[['', 'lab.studio.padNone'], ['airy', 'lab.studio.padAiry'], ['moon', 'lab.studio.padMoon']]
           .map(([id, key]) => this._radioChip('cs-pad', id, t(key), (s.chordPad || '') === id)));
       }
+    }
+    /** Anschläge des Rasters, wie die Akkorde gerade spielen: eigene/Stil-Anschläge, gehalten =
+     *  ein Anschlag auf der 1, Arpeggio = alle zwei Schritte. [Schritt, Länge, Faktor]. */
+    _chordGridHits() {
+      const s = this.state;
+      const n = this._barSteps();
+      if (s.chordPlay === 'rhythm' && s.chordHits) return s.chordHits;
+      if (s.chordPlay === 'arp') return Array.from({ length: Math.ceil(n / CHORD_ARP.every) }, (_, i) => [i * CHORD_ARP.every, CHORD_ARP.every, i ? .75 : 1]);
+      return [[0, n, 1]];
     }
     _renderBassPart() {
       const s = this.state;
@@ -7613,6 +7695,14 @@
       if (!s.melodyBars) return { ...base, ref: base.ref ?? 'chord' };
       return { name: s.melodyName || base.name, meter: s.melodyMeter, cat: s.melodyOwnId ? OWN_CAT : base.cat, bars: s.melodyBars, ref: s.melodyRef };
     }
+    /** Eigene Töne in der Melodie, die nirgends gesichert sind (eingespielt oder bearbeitet,
+     *  nicht in der Bibliothek bzw. dort anders) — die gingen beim Wechsel verloren. */
+    _melodyUnsaved() {
+      const s = this.state;
+      if (!s.melodyBars || this._melodyKeep) return false;
+      const own = s.melodyOwnId && this._saved.melodies.find((m) => m.id === s.melodyOwnId);
+      return !own || JSON.stringify(own.bars) !== JSON.stringify(s.melodyBars);
+    }
     _clearMelodyEdit() {
       const s = this.state;
       s.melodyBars = null; s.melodyMeter = null; s.melodyName = null; s.melodyOwnId = null; s.melodyRef = 'chord';
@@ -8698,28 +8788,30 @@
       const cfg = inst.cfg;
       const oct = 12 * cfg.octave;
       const left = Math.max(1, h.end - g);
-      if (inst.play === 'root') {
-        const line = this._rhythmLine(cfg.rootRhythm);
-        if (line[step] === undefined) return;
-        const root = (this._bassRoots()[h.index] ?? 36 + mod(h.keyRoot + degreeSemis(h.steps, h.deg), 12)) + 12 + oct;
-        const midi = bassNoteMidi(root, h.steps, h.deg, h.bass || 0, line[step]);
-        this._instTone(inst, midi, time, .24, Math.min(left, bassNoteSteps(line, step, barSteps)) * stepSec * .92);
-      } else if (inst.play === 'chords') {
-        const rhythm = cfg.chordRhythm;
-        if (rhythm === 'held') { if (h.chordStart) this._instChord(inst, h, time, left * stepSec, oct); return; }
-        if (rhythm === 'arp') {
-          if (step % CHORD_ARP.every) return;
-          const k = Math.floor((g - h.start) / CHORD_ARP.every);
-          const root = 48 + mod(h.keyRoot + degreeSemis(h.steps, h.deg), 12) + oct;
-          const deg = CHORD_ARP.degs[k % CHORD_ARP.degs.length];
-          this._instTone(inst, root + degreeSemis(h.steps, h.deg + deg) - degreeSemis(h.steps, h.deg), time, .16, Math.min(left, CHORD_ARP.every * 1.8) * stepSec);
+      if (inst.play === 'root' || inst.play === 'chords') {
+        const rid = inst.play === 'root' ? cfg.rootRhythm : cfg.chordRhythm;
+        const arp = cfg.arp?.on;
+        // Gehaltene Akkorde ohne Arpeggio: ein Anschlag je Akkordwechsel, klingt bis zum nächsten.
+        if (inst.play === 'chords' && rid === 'held' && !arp) { if (h.chordStart) this._instChord(inst, h, time, left * stepSec, oct); return; }
+        // Arpeggio braucht Anschläge: „gehalten“ läuft dann in Achteln.
+        const hits = this._rhythmHits(arp && rid === 'held' ? 'eighths' : rid);
+        const here = hits.filter(([pos]) => Math.floor(pos) === step);
+        if (inst.play === 'chords' && !arp) {
+          // Jeder Akkordwechsel schlägt an, auch zwischen den Rhythmus-Schlägen.
+          if (!here.length && h.chordStart) here.push([step, (hits.find(([pos]) => pos > step)?.[0] ?? barSteps) - step]);
+          for (const [pos, len] of here) this._instChord(inst, h, time + (pos - step) * stepSec, Math.min(left, len) * stepSec * .92, oct);
           return;
         }
-        const line = this._rhythmLine(rhythm);
-        // Jeder Akkordwechsel schlägt an, auch zwischen den Rhythmus-Schlägen.
-        if (line[step] === undefined && !h.chordStart) return;
-        const next = Object.keys(line).map(Number).find((st) => st > step) ?? barSteps;
-        this._instChord(inst, h, time, Math.min(left, next - step) * stepSec * .92, oct);
+        const bassRoot = (this._bassRoots()[h.index] ?? 36 + mod(h.keyRoot + degreeSemis(h.steps, h.deg), 12)) + 12 + oct;
+        for (const [pos, len, deg = 0] of here) {
+          const at = time + (pos - step) * stepSec;
+          const dur = Math.min(left, len) * stepSec * .92;
+          if (!arp) { this._instTone(inst, bassNoteMidi(bassRoot, h.steps, h.deg, h.bass || 0, deg), at, .24, dur); continue; }
+          // Arpeggio: je Anschlag der nächste Ton der Folge, ab jedem Akkordwechsel von vorn.
+          const tones = this._arpTones(inst.play, h, bassRoot, oct, cfg.arp);
+          const k = this._hitsSince(hits, barSteps, h.start, g + (pos - step));
+          this._instTone(inst, tones[k % tones.length], at, inst.play === 'root' ? .24 : .16, dur);
+        }
       } else {
         const notes = cfg.notes;
         if (!notes || cfg.notesMeter !== this._meter()) return;
@@ -8737,6 +8829,44 @@
       if (!voicing) return;
       const level = inst.type === 'pad' ? .09 : .11;
       for (const voice of SATB) this._instTone(inst, Math.max(24, voicing[voice] + shift), time, level, duration * .97);
+    }
+    /** Anschläge eines Rhythmus je Takt: [Position, Länge, Stufe] — feste Figur (genHits) oder
+     *  die Linie des Loops (bassVariant, mit den Stufen der Linie). Gecacht je Loop/Taktart. */
+    _rhythmHits(id) {
+      const barSteps = this._barSteps();
+      const key = `${this.state.patternIndex}|${this._meter()}|${id}`;
+      this._hitsCache = this._hitsCache || new Map();
+      if (!this._hitsCache.has(key)) {
+        let hits = genHits(id, barSteps, this._meter());
+        if (!hits) {
+          const line = this._rhythmLine(id === 'held' ? 'whole' : id);
+          const at = Object.keys(line).map(Number).sort((a, b) => a - b);
+          hits = at.map((st) => [st, bassNoteSteps(line, st, barSteps), line[st]]);
+        }
+        this._hitsCache.set(key, hits);
+      }
+      return this._hitsCache.get(key);
+    }
+    /** Anzahl der Anschläge von `from` (Schritt) bis vor `pos` (Schritt, auch gebrochen). */
+    _hitsSince(hits, barSteps, from, pos) {
+      let n = 0;
+      for (let bar = Math.floor(from / barSteps); bar * barSteps <= pos; bar++) {
+        for (const [p] of hits) { const abs = bar * barSteps + p; if (abs >= from && abs < pos - 1e-6) n++; }
+      }
+      return n;
+    }
+    /** Töne eines Arpeggios: Akkordtöne (Grundton, Terz, Quinte, ggf. Septime) bzw. beim
+     *  Grundton Grundton–Quinte–Oktave; Umfang 1–2 Oktaven, Richtung auf/ab/auf und ab. */
+    _arpTones(play, h, bassRoot, oct, arp) {
+      const rel = (d) => degreeSemis(h.steps, h.deg + d) - degreeSemis(h.steps, h.deg);
+      const base = play === 'root' ? bassRoot : 48 + mod(h.keyRoot + degreeSemis(h.steps, h.deg), 12) + oct;
+      const degs = play === 'root' ? [0, 4] : h.sevenths ? [0, 2, 4, 6] : [0, 2, 4];
+      let tones = degs.map((d) => base + rel(d));
+      if (arp.range === 2) tones = [...tones, ...tones.map((m) => m + 12)];
+      tones.push(tones[0] + 12 * arp.range);
+      if (arp.dir === 'down') return tones.reverse();
+      if (arp.dir === 'updown') return [...tones, ...tones.slice(1, -1).reverse()];
+      return tones;
     }
     /** Schritte eines Rhythmus (wie die Bass-Spielweisen des Loops): {Schritt: Stufe}. */
     _rhythmLine(id) {
@@ -10562,7 +10692,7 @@
       this.ui.melBar = Math.min(this.ui.melBar, bars.length - 1);
       this.$('.mel-view').hidden = editing;
       this.$('.mel-editor').hidden = !editing;
-      this._paintMelRoll(this.$('.mel-mini'), bars.map((_, i) => i), false);
+      this._paintMelRoll(this.$('.mel-view .mel-mini'), bars.map((_, i) => i), false);
       if (!editing) return;
       // Takt-Reiter, dazu + (Takt anhängen) und − (gewählten Takt entfernen)
       const tabs = bars.map((_, i) => {
@@ -10680,7 +10810,7 @@
     _showMelodyStep(g) {
       const bars = this._melody().bars.length;
       const steps = this._barSteps();
-      for (const host of [this.$('.mel-mini'), this.ui.melEdit ? this.$('.mel-grid') : null]) {
+      for (const host of [this.$('.mel-view .mel-mini'), this.ui.melEdit ? this.$('.mel-grid') : null]) {
         const ph = host?.querySelector('.mel-playhead');
         if (!ph) continue;
         const shown = (host.dataset.bars || '').split(',').map(Number);
@@ -11210,9 +11340,14 @@
 
     /** Energie wählen: im Stillstand sofort, beim Spielen an der nächsten Grenze von
      *  zwei Takten (_commitEnergy im Scheduler). Ein Undo-Schritt. */
-    _setEnergy(energy) {
+    _setEnergy(energy, { confirmed = false } = {}) {
       if (!ENERGY_IDS.includes(energy) || !this.state.styleId) return;
       const custom = styleDiff(this.state).rhythm || styleDiff(this.state).bass;
+      // Eigene Anschläge/Linien (z. B. im Studio-Raster gesetzt) nicht still überschreiben.
+      if (custom && !confirmed && energy !== this.state.energy) {
+        this._confirm({ text: t('lab.chor.energyConfirm'), ok: t('lab.chor.energyConfirmOk'), onOk: () => { this._setEnergy(energy, { confirmed: true }); this._renderChor(); } });
+        return;
+      }
       this._pushHistory();
       if (custom) this._setStatus(t('lab.chor.resetHint'));
       if (!this.playing) { this._applyEnergyNow(energy); return; }
@@ -11465,7 +11600,7 @@
         };
       }
       return {
-        title: 'lab.pickSound', action: 'pick-preset', catAction: 'preset-cat', cats: PRESET_CATS, cat: this.ui.presetCat,
+        title: 'lab.pickSound', action: 'pick-preset', catAction: 'preset-cat', cats: PRESET_CATS, cat: this._presetCat(),
         current: this._editSound().custom ? -1 : this._editSound().presetIndex,
         items: curated(SYNTH_PRESETS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
           inMeter: true, sub: t(presetDescKey(p)), short: t(presetDescKey(p)) })), PRESET_ORDER, presetIndexByName),
@@ -11623,7 +11758,12 @@
     /** ‹ › im Panel: nächster/voriger Eintrag (in der aktuellen Taktart). */
     _stepPicker(which, dir) {
       const def = this._pickerDef(which);
-      const list = def.items.filter((it) => it.inMeter && (!it.more || it.i === (which === 'sound' ? this._editSound().presetIndex : def.current)));
+      let list = def.items.filter((it) => it.inMeter && (!it.more || it.i === (which === 'sound' ? this._editSound().presetIndex : def.current)));
+      // Klang: ‹ › bleibt im gewählten Filter (Bass-Spur: bei den Bässen), solange der aktuelle Klang dazugehört.
+      if (which === 'sound' && def.cat !== 'all') {
+        const inCat = list.filter((it) => it.cat === def.cat);
+        if (inCat.some((it) => it.i === this._editSound().presetIndex)) list = inCat;
+      }
       const current = which === 'sound' ? this._editSound().presetIndex
         : which === 'melody' && def.current === -1 ? this.state.melodyIndex
           : def.current === -1 ? def.fallback : def.current;
@@ -12563,13 +12703,46 @@
         // Gemeinsame Oberfläche der Instrumentenspuren (Spur = ui.track).
         case 'inst-play': if (this.ui.track) this._setInstPlay(this.ui.track, value); break;
         case 'inst-rhythm': {
+          const id = this.ui.track;
+          const inst = id && this._instOf(id);
+          if (!inst) break;
+          this._pushHistory();
+          const primary = PRIMARY_INST.includes(id) && !s.instruments.some((tr) => tr.id === id);
+          if (inst.play === 'chords') {
+            if (value === 'style') { if (primary) s.trackPlay[id] = 'native'; }
+            else if (CHORD_RHYTHMS.includes(value)) { inst.cfg.chordRhythm = value; this._instToGenerator(id); }
+            if (id === 'chords') s.chordsOn = true;
+          } else if (inst.play === 'root' && ROOT_RHYTHMS.includes(value)) {
+            // Bass ohne Arpeggio und mit einer Spielweise der Loop-Linie: bleibt beim bisherigen
+            // Zustand (Raster darunter bearbeitbar); feste Figuren laufen über den Generator.
+            if (primary && id === 'bass' && BASS_PLAYS.includes(value) && !inst.cfg.arp.on) {
+              s.trackPlay.bass = 'native'; s.bassPlay = value; s.beat.bass = bassVariant(this._pattern(), value); s.trackOn.bass = true;
+            } else { this._instToGenerator(id); inst.cfg.rootRhythm = value; if (id === 'bass') s.trackOn.bass = true; }
+          }
+          this._syncEngine(); this._renderStudio(); this._showTrackTab('pattern');
+          this.$(`.inst-play [data-action="inst-rhythm"][data-value="${value}"]`)?.focus();
+          break;
+        }
+        case 'inst-arp': {
+          const id = this.ui.track;
+          const inst = id && this._instOf(id);
+          if (!inst) break;
+          this._pushHistory();
+          const on = target?.type === 'checkbox' ? target.checked : !inst.cfg.arp.on;
+          if (on) this._instToGenerator(id);
+          inst.cfg.arp.on = on;
+          this._syncEngine(); this._renderStudio(); this._showTrackTab('pattern');
+          this.$('.inst-play [data-action="inst-arp"]')?.focus();
+          break;
+        }
+        case 'inst-arp-dir': case 'inst-arp-range': {
           const inst = this.ui.track && this._instOf(this.ui.track);
           if (!inst) break;
           this._pushHistory();
-          if (inst.play === 'root' && ROOT_RHYTHMS.includes(value)) inst.cfg.rootRhythm = value;
-          if (inst.play === 'chords' && CHORD_RHYTHMS.includes(value)) inst.cfg.chordRhythm = value;
+          if (action === 'inst-arp-dir' && ARP_DIRS.includes(value)) inst.cfg.arp.dir = value;
+          if (action === 'inst-arp-range') inst.cfg.arp.range = Number(value) === 2 ? 2 : 1;
           this._renderStudio(); this._showTrackTab('pattern');
-          this.$(`.inst-play [data-action="inst-rhythm"][data-value="${value}"]`)?.focus();
+          this.$(`.inst-play [data-action="${action}"][data-value="${value}"]`)?.focus();
           break;
         }
         case 'inst-oct': {
@@ -12653,12 +12826,14 @@
         case 'cp-hit': {
           this._pushHistory();
           const st = Number(value);
-          const hits = (s.chordHits || []).filter((h) => h[0] !== st);
-          if (hits.length === (s.chordHits || []).length) hits.push([st, 2, .85]);
+          // Ausgangspunkt ist, was gerade klingt (auch gehalten oder Arpeggio des Stils).
+          const base = this._chordGridHits().map((h) => [...h]);
+          const hits = base.filter((h) => h[0] !== st);
+          if (hits.length === base.length) hits.push([st, 2, .85]);
           // Länge je Anschlag: bis zum nächsten Anschlag (höchstens bis Taktende).
           hits.sort((x, y) => x[0] - y[0]).forEach((h, i) => { h[1] = (hits[i + 1]?.[0] ?? this._barSteps()) - h[0]; });
           s.chordHits = hits.length ? hits : null;
-          if (!s.chordHits) s.chordPlay = 'held';
+          s.chordPlay = s.chordHits ? 'rhythm' : 'held';
           this._renderChordPart(); this._renderStudio();
           this.$(`.cp-hit[data-value="${value}"]`)?.focus();
           break;
@@ -13039,6 +13214,12 @@
         // Melodie
         case 'melody-cat': this.ui.melodyCat = value === this.ui.melodyCat ? 'all' : value; this._renderMelody(); break;
         case 'pick-melody': {
+          if (this._melodyUnsaved() && value !== `own:${s.melodyOwnId}`) {
+            this._confirm({ text: t('lab.melLoseText'), ok: t('lab.melLoseOk'), onOk: () => { this._melodyKeep = true; this._handleAction('pick-melody', value, target); } });
+            break;
+          }
+          this._melodyKeep = false;
+          this._pushHistory();
           this._clearMelodyEdit();
           const own = String(value).startsWith('own:') && this._saved.melodies.find((m) => `own:${m.id}` === value);
           if (own) {
@@ -13114,7 +13295,7 @@
           this._renderMixer();
           this._renderStudio();
           break;
-        case 'preset-cat': this.ui.presetCat = value === this.ui.presetCat ? 'all' : value; this._renderSound(); break;
+        case 'preset-cat': (this.ui.presetCats ||= {})[this._soundFor()] = value === this._presetCat() ? 'all' : value; this._renderSound(); break;
         case 'pick-preset':
           this._setEditSound(soundFromPreset(Number(value)));
           this._applySound();
@@ -13205,6 +13386,16 @@
       const id = this.ui.soundFor;
       return id && (PRIMARY_INST.includes(id) || this.state.instruments.some((tr) => tr.id === id)) ? id : 'melody';
     }
+    /** Bass-Spur (Grundspur oder Zusatzspur vom Typ Bass)? */
+    _isBassSound() {
+      const id = this._soundFor();
+      return id === 'bass' || this.state.instruments.some((tr) => tr.id === id && tr.type === 'bass');
+    }
+    /** Filter des Klang-Wählers je Spur: Bass-Spuren beginnen bei „Bässe“, umstellbar. */
+    _presetCat() {
+      const cat = this.ui.presetCats?.[this._soundFor()];
+      return cat ?? (this._isBassSound() ? 'bass' : 'all');
+    }
     _editSound() {
       const s = this.state;
       const id = this._soundFor();
@@ -13214,7 +13405,7 @@
       const own = id === 'bass' ? s.bassSynth : id === 'chords' ? s.chordSynth : s.padSynth;
       if (own) return own;
       if (this._soundDraft?.id !== id) {
-        const base = id === 'bass' ? soundFromPreset(presetIndexByName(INST_TYPES.bass.preset)) : id === 'chords' ? this._chordBaseSound() : this._padSound()[0];
+        const base = id === 'bass' ? soundFromPreset(presetIndexByName(this._bassSound().name)) : id === 'chords' ? this._chordBaseSound() : this._padSound()[0];
         this._soundDraft = { id, sound: JSON.parse(JSON.stringify(base)) };
       }
       return this._soundDraft.sound;
@@ -13224,6 +13415,7 @@
       const s = this.state;
       const id = this._soundFor();
       const extra = s.instruments.find((tr) => tr.id === id);
+      delete sound.bassId; // bearbeitet: ab jetzt spielt der Synth
       if (extra) { extra.bassId = null; return; }
       if (id === 'bass' && !s.bassSynth) s.bassSynth = sound;
       if (id === 'chords' && !s.chordSynth) s.chordSynth = sound;
@@ -13235,8 +13427,11 @@
       const id = this._soundFor();
       const extra = s.instruments.find((tr) => tr.id === id);
       this._soundDraft = null;
+      // Bass-Presets (bassId) spielen über die Bass-Stimme: Grundspur → bassSoundId, Zusatzspur → bassId.
+      const bassId = !sound.custom && sound.bassId ? sound.bassId : null;
       if (id === 'melody') s.sound = sound;
-      else if (extra) { extra.sound = sound; extra.bassId = null; }
+      else if (extra) { extra.sound = sound; extra.bassId = bassId; }
+      else if (id === 'bass' && bassId) { s.bassSoundId = bassId; s.bassSynth = null; }
       else if (id === 'bass') s.bassSynth = sound;
       else if (id === 'chords') s.chordSynth = sound;
       else s.padSynth = sound;
@@ -14488,6 +14683,11 @@
   .cp-hit.alt { background: #e7d6c8; }
   .cp-hit.on { background: #2f6fd6; }
   [data-part="chordPlay"] { display: grid; gap: 6px; }
+  /* Rhythmus/Spielweise wählt im Blatt der Generator („Spielt“) — die alten Wahlen bleiben verborgen. */
+  .track-body [data-part="chordPlay"] .cp-play, .track-body #cp-play-label,
+  .track-body [data-part="bassPlay"] .bass-play-chips, .track-body #bass-play-label { display: none; }
+  .inst-arp { display: grid; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .inst-arp .sub-label { margin: 4px 0 0; }
   [data-part="chordPlay"] .seg { flex: none; }
   .rec-lanes { display: grid; gap: 6px; margin: 8px 0; }
   .rec-lane { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .78rem; font-weight: 700; }
