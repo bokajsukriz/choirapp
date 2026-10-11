@@ -762,6 +762,41 @@ button.card-row:focus-visible {
 /* Songliste (ab M1 gefüllt) */
 .list { list-style: none; margin: 0; padding: 0; }
 
+/* Songliste nach Anfangsbuchstaben (siehe renderSongs): der Buchstabe klebt
+   beim Scrollen oben, die Songs einer Gruppe teilen sich eine Karte. Der
+   Buchstabe sitzt auf einer milchigen Pille statt einem deckenden Streifen,
+   damit die Deko-Kreise im Hintergrund nicht hart abgeschnitten werden. */
+.song-az-group { margin-bottom: 14px; }
+.song-az-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 8px 0 6px;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--accent);
+}
+.song-az-head span {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.song-az-group .list {
+  border: 1px solid var(--pill-line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: rgba(var(--accent-rgb),.045);
+}
+.song-az-group .list-item { border: 0; border-radius: 0; margin: 0; background: transparent; }
+.song-az-group .list > li + li .list-item { border-top: 1px solid var(--pill-line); }
+/* Die Karte schneidet mit overflow:hidden ab — den Fokusrahmen nach innen legen. */
+.song-az-group .list-item:focus-visible { outline-offset: -3px; }
+
 /* Zeilen außerhalb des Bildschirms überspringt der Browser beim Berechnen und
    Zeichnen. Bei einer großen Bibliothek ist das der Unterschied zwischen einem
    spürbaren Hänger und einem sofortigen Reiterwechsel — sichtbar ändert sich
