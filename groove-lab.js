@@ -4939,7 +4939,7 @@
         const b = this._mk('button', `sf-pad${meta ? '' : ' is-free'}${meta && !isFactoryId(id) ? ' is-own' : ''}`);
         b.type = 'button';
         if (!meta) {
-          b.dataset.action = 'sf-record-own';
+          b.dataset.action = 'sf-record-own'; b.dataset.value = String(i);
           b.append(this._mk('strong', '', choir || i === SAMPLER_PADS - 1 ? t('lab.sf.recordOwn') : '+'));
           b.setAttribute('aria-label', t('lab.sf.recordOwn'));
           return b;
@@ -5072,8 +5072,15 @@
     /** Fortschritt der Aufnahme (aus _drawSteps): armed → recording → fertig nach einem Loop. */
     _sfRecTick(g) {
       const rec = this.sfRec;
-      if (rec.phase === 'idle' || rec.target === 'melody') return;
-      if (rec.phase === 'armed' && g >= rec.startStep) { rec.phase = 'recording'; this._renderSfRec(); }
+      if (rec.phase === 'idle') return;
+      if (rec.target === 'melody') {
+        // Die Tasten-Aufnahme (this.rec) bestimmt Start und Ende (_recTick → _recFinish); hier nur anzeigen.
+        if (rec.phase === 'armed' && this.rec.phase === 'recording') rec.phase = 'recording';
+        this._renderSfRec(g);
+        return;
+      }
+      if (rec.phase === 'armed' && g >= rec.startStep) { rec.phase = 'recording'; this._renderSfRec(g); }
+      else if (rec.phase === 'armed') this._renderSfRec(g);
       if (rec.phase === 'recording' && g >= rec.endStep) this._sfRecStop();
       else if (rec.phase === 'recording') this._renderSfRec(g);
     }
@@ -5094,32 +5101,70 @@
       const meter = this._meter();
       const bars = this._recRotated(take);
       let next = bars;
-      if (rec.mode === 'add' && s.melodyBars && s.melodyRef === 'key' && s.melodyMeter === meter) {
+      // „dazu“ nur zu einer hörbaren eigenen Aufnahme — ist die Melodie aus, beginnt sie neu.
+      const merge = rec.mode === 'add' && s.melodyOn && s.melodyBars && s.melodyRef === 'key' && s.melodyMeter === meter;
+      if (merge) {
         next = Array.from({ length: Math.max(bars.length, s.melodyBars.length) }, (_, i) => [...(s.melodyBars[i % s.melodyBars.length] || []), ...(bars[i % bars.length] || [])]);
       }
       const clean = sanitizeMelodyBars(next, meter, true);
+      let status = clean ? null : t('lab.recEmpty');
       if (clean) {
+        // In „Meine Melodien“ ablegen (wie _recSave) — beim Wechseln der Melodie geht sie nicht verloren.
+        const lib = this._saved.melodies;
+        const own = merge && s.melodyOwnId ? lib.find((m) => m.id === s.melodyOwnId) : null;
+        let id = null;
+        let name = t('lab.sf.recName');
+        if (own) {
+          own.bars = clean.map((bar) => bar.map((note) => [...note])); own.meter = meter; own.ref = 'key';
+          ({ id, name } = own);
+        } else if (lib.length < MEL_MAX_OWN) {
+          let n = 1;
+          while (lib.some((m) => m.name === tf('lab.sf.recTakeN', { n }))) n++;
+          name = tf('lab.sf.recTakeN', { n });
+          id = `m${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
+          lib.push({ id, name, meter, bars: clean.map((bar) => bar.map((note) => [...note])), ref: 'key' });
+        } else status = t('lab.melLibraryFull');
         this._clearMelodyEdit();
-        s.melodyBars = clean; s.melodyMeter = meter; s.melodyRef = 'key'; s.melodyName = t('lab.sf.recName'); s.melodyOwnId = null; s.melodyOn = true;
+        s.melodyBars = clean; s.melodyMeter = meter; s.melodyRef = 'key'; s.melodyName = name; s.melodyOwnId = id; s.melodyOn = true;
+        this._persist();
+        status = status || tf('lab.sf.recDoneMelody', { name });
       }
       rec.phase = 'idle';
-      this._setStatus(t(clean ? 'lab.sf.recDone' : 'lab.recEmpty'));
+      this._setStatus(status);
       this._renderAll();
       this._renderSfRec();
     }
-    _renderSfRec(g = null) {
+    /** Anzeige der Aufnahme: Knopf, Takt x/y, Einzählen groß über den Tasten (`count`: Zählzeit
+     *  des Einzählers vor dem Start; sonst aus `g` bis zum Aufnahme-Anfang), Hinweis je Zielspur. */
+    _renderSfRec(g = null, count = null) {
       const rec = this.sfRec;
       const btn = this.$('.sf-rec-btn');
       if (!btn) return;
       const on = rec.phase !== 'idle';
-      btn.setAttribute('aria-pressed', String(on));
-      btn.classList.toggle('is-rec', rec.phase === 'recording');
       const barSteps = this._barSteps();
+      if (count === null && rec.phase === 'armed' && g !== null) {
+        const beats = METERS[this._meter()].beats.length;
+        const left = rec.startStep - g;
+        if (left > 0 && left <= barSteps) count = clamp(beats - Math.ceil(left / (barSteps / beats)) + 1, 1, beats);
+      }
+      if (rec.phase !== 'armed') count = null;
       const bar = g !== null ? Math.floor((g - rec.startStep) / barSteps) + 1 : 1;
       const total = Math.round((rec.endStep - rec.startStep) / barSteps);
-      this.$('.sf-rec-text').textContent = rec.phase === 'recording' ? tf('lab.sf.recRunning', { bar: clamp(bar, 1, total), total }) : rec.phase === 'armed' ? t('lab.sf.recArmed') : t('lab.sf.rec');
+      const text = rec.phase === 'recording' ? tf('lab.sf.recRunning', { bar: clamp(bar, 1, total), total })
+        : count !== null ? tf('lab.countIn', { n: count }) : rec.phase === 'armed' ? t('lab.sf.recArmed') : t('lab.sf.rec');
+      const target = on ? rec.target : this._studioTarget();
+      const note = rec.phase === 'recording' ? t('lab.sf.recHintOn') : on ? t('lab.sf.recHintArmed') : t(`lab.sf.recHint.${SURFACE_TARGETS.includes(target) ? target : 'chords'}`);
+      const key = `${rec.phase}|${text}|${note}|${rec.mode}|${count}`;
+      if (this._sfRecShown === key) return;
+      this._sfRecShown = key;
+      btn.setAttribute('aria-pressed', String(on));
+      btn.classList.toggle('is-rec', rec.phase === 'recording');
+      this.$('.sf-rec-text').textContent = text;
+      const big = this.$('.sf-count');
+      big.hidden = count === null;
+      big.textContent = count === null ? '' : String(count);
       this.$all('.sf-rec-mode [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === rec.mode)));
-      this.$('.sf-rec-note').textContent = t(on ? 'lab.sf.recHintOn' : 'lab.sf.recHint');
+      this.$('.sf-rec-note').textContent = note;
     }
 
     /* ---- Studio (D2, D3, B2): Spuren statt Reiter. Song-Zeile (Tonart · Takt · Tempo ·
@@ -5213,7 +5258,8 @@
       const meter = this._meter();
       const style = styleOf(s.styleId);
       const set = (k, v, sub) => { this.$(`[data-song="${k}"]`).textContent = v; this.$(`[data-song-sub="${k}"]`).textContent = sub; };
-      set('key', this._keyLabel(), t('lab.studio.keySub'));
+      // Keine Unterzeile (das Tonart-Blatt hat keine ±-Knöpfe); ein festes Leerzeichen hält die Zeilen der Zellen auf einer Höhe.
+      set('key', this._keyLabel(), '\u00a0');
       set('meter', meter, style ? tf('lab.studio.styleSub', { name: t(`lab.style.${style.id}.name`) }) : t('lab.studio.noStyle'));
       const level = swingLevelOf(s.swing);
       set('tempo', `${tempoSymbol(meter)} ${s.bpm}`, swingOffered(meter) || s.swing ? (level ? t(`lab.swingLevel.${level}`) : `${t('lab.swing')} ${Math.round(swingRatio(s.swing) * 100)} %`) : t('lab.swingLevel.straight'));
@@ -5249,6 +5295,7 @@
         return `<div class="t-card${id === target ? ' is-sel' : ''}${muted ? ' is-muted' : ''}${id === this.ui.hl ? ' is-hl' : ''}" data-track="${id}" style="--tc:${def.color}">
           <div class="t-top"><button class="t-open" type="button" data-action="open-track" data-value="${id}" aria-haspopup="dialog"><span class="t-bar" aria-hidden="true"></span>
             <span class="t-heads"><strong>${esc(name)}</strong><span>${esc(this._trackSub(id))}</span></span></button>
+            ${id === 'melody' ? `<button class="t-ms t-rec" type="button" data-action="mel-rec" aria-label="${esc(t('lab.melRecAria'))}" title="${esc(t('lab.melRecAria'))}"><i aria-hidden="true"></i></button>` : ''}
             <button class="t-ms" type="button" data-action="track-mute" data-value="${id}" aria-pressed="${muted}" aria-label="${esc(tf('lab.studio.muteAria', { name }))}">M</button>
             <button class="t-ms" type="button" data-action="track-solo" data-value="${id}" aria-pressed="${solo}" aria-label="${esc(tf('lab.studio.soloAria', { name }))}"${id === 'rec' ? ' hidden' : ''}>S</button></div>
           <div class="t-cells" style="grid-template-columns:repeat(${this._barSteps()},minmax(0,1fr))" aria-hidden="true">${cells}</div>${vol}</div>`;
@@ -5261,7 +5308,19 @@
     /** Ziel der Spielfläche: die markierte Spur (nur Spuren, in die man spielen kann). */
     _studioTarget() {
       const ids = this._studioTracks().filter((id) => SURFACE_TARGETS.includes(id));
-      return ids.includes(this.ui.studioTarget) ? this.ui.studioTarget : 'chords';
+      // Ohne Wahl: Melodie — „Keyboard“ ist der naheliegende Weg, eine Melodie einzuspielen.
+      return ids.includes(this.ui.studioTarget) ? this.ui.studioTarget : 'melody';
+    }
+    /** „● Einspielen“ (Melodie-Blatt/-Karte): Keyboard auf die Melodie, Aufnahme (ersetzen) scharf. */
+    _melRecord() {
+      if (this._uiMode() !== 'studio') this._applyView('studio');
+      this.ui.studioTarget = 'melody';
+      // Die Spielfläche liegt im Stapel unter den Blättern — das Spur-Blatt erst schließen.
+      if (!this.$('.track-layer').hidden) this._closeLayer(this.$('.track-layer'), { focus: false });
+      if (this.sfRec.phase !== 'idle') this._sfRecStop();
+      this.sfRec.mode = 'replace';
+      this._openSurface();
+      this._sfRecToggle();
     }
 
     _openTrack(id, tab = 'pattern') {
@@ -5401,7 +5460,7 @@
     }
 
     /** Kleines Blatt mit Bedienfeldern (Song-Zeile, + Spur, Übergang Keys/Sampler). */
-    _openPanelLayer(title, parts, { after = null } = {}) {
+    _openPanelLayer(title, parts, { after = null, onClose = null } = {}) {
       const layer = this.$('.panel-layer');
       const body = this.$('.panel-layer-body');
       this._restoreParts(body);
@@ -5409,7 +5468,10 @@
       this.$('.panel-layer-title').textContent = title;
       parts.forEach((p) => this._placePart(p, body));
       after?.();
-      if (layer.hidden) this._openLayer(layer, { onClose: () => { this._restoreParts(body); body.replaceChildren(); } });
+      // `onClose` läuft vor dem Zurücklegen der Bausteine (Fertig, Hintergrund, Escape).
+      const close = () => { onClose?.(); this._restoreParts(body); body.replaceChildren(); };
+      if (layer.hidden) this._openLayer(layer, { onClose: close });
+      else { const open = this._layers?.find((l) => l.el === layer); if (open) open.onClose = close; }
     }
 
     /* ---- Akkordfolgen-Editor (D6), gilt für alle Spuren. Länge je Akkord (½ · 1 · 2
@@ -8098,6 +8160,7 @@
       if (latest?.countIn) {
         this._renderBeatDots(latest.g + this._barSteps(), true);
         this._setStatus(tf('lab.countIn', { n: latest.countIn }));
+        if (this.sfRec.phase === 'armed') this._renderSfRec(null, latest.countIn);
         this.shown = null;
         latest = null;
       }
@@ -8173,8 +8236,16 @@
     _openSounds(view = 'library') {
       if (this._uiMode() !== 'studio') this._applyView('studio');
       this._primeSamples();
-      this._openPanelLayer(t('lab.menu.sounds'), ['sampler']);
+      // Schließen (Fertig/Hintergrund/Escape) mitten in der Aufnahme: Mikrofon aus, nichts
+      // speichern. Ein offener Editor übernimmt wie sein eigenes „Fertig“.
+      this._openPanelLayer(t('lab.menu.sounds'), ['sampler'], { onClose: () => this._closeSounds() });
       this._samplerGo(view);
+    }
+    _closeSounds() {
+      const smp = this.sampler;
+      if (smp.rec) this._smpRecAbort();
+      if (smp.view === 'edit' && smp.draft) this._editorFinish(true);
+      else if (smp.view === 'record') smp.view = 'pads';
     }
 
     /* ---- Halten-Roll: eine je Loop eigene, artikulierte Rhythmuszelle nur
@@ -8641,7 +8712,13 @@
       clearTimeout(this._padHold);
       if (smp.view === 'record' && view !== 'record') this._smpRecAbort();
       smp.view = view;
-      if (view === 'record') smp.rec = { kind: 'hit', countIn: true, click: true, trim: true, bars: 1, phase: 'idle', level: -90 };
+      if (view === 'record') {
+        // Aufnahmen kommen auf das gewählte Pad; ist es belegt und noch eines frei, auf das erste freie.
+        const pads = this._ownKit().pads;
+        const free = pads.findIndex((id) => !id);
+        if (pads[smp.sel] && free >= 0) smp.sel = free;
+        smp.rec = { kind: 'hit', countIn: true, click: true, trim: true, bars: 1, phase: 'idle', level: -90 };
+      }
       this._renderSampler();
       this.$('.lab-body').scrollTop = 0;
       this.$('.sampler-root [data-first]')?.focus?.();
@@ -8882,7 +8959,13 @@
       input.append(inHead, canvas, meter, ends);
       nodes.push(input);
 
-      const opts = this._mk('section', 'panel smp-panel smp-opts');
+      // Optionen eingeklappt: so bleibt der große Aufnahme-Knopf auch am Handy ohne Scrollen sichtbar.
+      const opts = this._mk('details', 'panel smp-panel smp-opts smp-opts-fold');
+      opts.open = !!smp.optsOpen;
+      opts.addEventListener('toggle', () => { smp.optsOpen = opts.open; });
+      const summary = this._mk('summary');
+      summary.dataset.role = 'opts-summary';
+      opts.append(summary);
       for (const [key, label, sub, locked] of [
         ['countIn', 'lab.sampler.optCountIn', 'lab.sampler.optCountInSub', rec.kind === 'loop'],
         ['click', 'lab.sampler.optClick', 'lab.sampler.optClickSub', false],
@@ -8903,7 +8986,7 @@
       nodes.push(this._mk('p', 'smp-note', t('lab.sampler.headphones')));
       if (smp.bluetoothHint) nodes.push(this._mk('p', 'smp-note', t('lab.sampler.bluetooth')));
 
-      const foot = this._mk('div', 'smp-rec-foot');
+      const foot = this._mk('div', `smp-rec-foot${rec.phase === 'counting' ? ' is-counting' : ''}`);
       const btn = this._mk('button', 'smp-rec-btn');
       btn.type = 'button'; btn.dataset.action = 'smp-rec-toggle';
       btn.classList.toggle('is-on', rec.phase !== 'idle');
@@ -8920,7 +9003,13 @@
     _smpRecLabel() {
       const rec = this.sampler.rec;
       if (!rec) return '';
-      if (rec.phase === 'counting') return t('lab.sampler.recCounting');
+      if (rec.phase === 'counting') {
+        // Zählzeit des Einzählers (wie im Groove: 1 … Schläge je Takt).
+        const ctx = this.engine.ctx;
+        const beats = METERS[rec.meter || this._meter()].beats.length;
+        const since = ctx && rec.barSec ? ctx.currentTime - (rec.downbeat - rec.barSec) : -1;
+        return since >= 0 ? tf('lab.countIn', { n: clamp(Math.floor(since / (rec.barSec / beats)) + 1, 1, beats) }) : t('lab.sampler.recCounting');
+      }
       if (rec.phase === 'recording') return t('lab.sampler.recRunning');
       return t((rec.countIn || rec.kind === 'loop') ? 'lab.sampler.recTapCount' : 'lab.sampler.recTapNow');
     }
@@ -8941,7 +9030,9 @@
       const bar = root.querySelector('.smp-meter b');
       if (bar) bar.style.left = `${clamp((db + 48) / 48, 0, 1) * 100}%`;
       const label = root.querySelector('[data-role="rec-label"]');
-      if (label) label.textContent = this._smpRecLabel();
+      if (label) { label.textContent = this._smpRecLabel(); label.parentElement.classList.toggle('is-counting', rec.phase === 'counting'); }
+      const summary = root.querySelector('[data-role="opts-summary"]');
+      if (summary) summary.textContent = `${t('lab.sampler.options')} · ${t(rec.kind === 'loop' || rec.countIn ? 'lab.sampler.optCountIn' : 'lab.sampler.optNoCountIn')}`;
     }
 
     _smpRecTickDraw() {
@@ -9101,6 +9192,8 @@
         loopBars: rec.bars, bpmAtRec: kind === 'loop' ? rec.bpm : null, meterAtRec: kind === 'loop' ? rec.meter : null, by: '', createdAt: Date.now(),
       });
       await this._saveSample(meta, blob, buffer);
+      // Was vorher auf dem Pad lag — „Verwerfen“ im Editor stellt es wieder her.
+      smp.undoPad = { kitId: this.state.sampler.kitId, index: smp.sel, prev: this._ownKit().pads[smp.sel] || null };
       this._assignPad(smp.sel, id);
       smp.rec = null;
       this._openEditor(id, { isNew: true });
@@ -9278,7 +9371,7 @@
         const row = this._mk('div', 'chip-row');
         row.setAttribute('role', 'radiogroup');
         row.setAttribute('aria-label', t('lab.snd.after'));
-        const current = this.ui.smpUse || 'pad';
+        const current = this.ui.smpUse || 'beat';
         const groove = d.kind === 'loop' ? t('lab.snd.afterRec') : d.kind === 'tone' ? t('lab.snd.afterBass') : tf('lab.snd.afterLane', { track: this._roleLabel(d) });
         for (const [id, label] of [['pad', tf('lab.snd.afterPad', { n: smp.sel + 1 })], ['beat', groove], ['save', t('lab.snd.afterSave')]]) {
           const b = this._radioChip('snd-after', id, label, current === id);
@@ -9289,7 +9382,10 @@
       }
 
       const foot = this._mk('div', 'smp-foot');
-      for (const [action, key, cls] of [['smp-to-beat', 'lab.sampler.toBeat', 'chip'], ['smp-cancel', 'lab.sampler.cancel', 'chip'], ['smp-delete', 'lab.sampler.delete', 'chip is-danger']]) {
+      // Frische Aufnahme: „Verwerfen“ (löscht sie wieder); „In den Beat“ erledigt dann „Danach verwenden als“.
+      const footBtns = smp.draftNew ? [['smp-cancel', 'lab.snd.discard', 'chip is-danger']]
+        : [['smp-to-beat', 'lab.sampler.toBeat', 'chip'], ['smp-cancel', 'lab.sampler.cancel', 'chip'], ['smp-delete', 'lab.sampler.delete', 'chip is-danger']];
+      for (const [action, key, cls] of footBtns) {
         const b = this._mk('button', cls, t(key));
         b.type = 'button'; b.dataset.action = action;
         if (action === 'smp-to-beat') b.dataset.value = d.id;
@@ -9364,6 +9460,8 @@
     async _editorFinish(save) {
       const smp = this.sampler;
       const d = smp.draft;
+      // Frische Aufnahme nicht übernommen (Verwerfen/‹): Sound löschen, Pad wie vorher.
+      if (!save && d && smp.draftNew) { this._discardTake(d.id); return; }
       let pending = null;
       if (save && d) {
         const meta = sanitizeSampleMeta({ ...d, name: d.name.trim() || tf('lab.sampler.defaultName', { n: smp.meta.size }) });
@@ -9373,16 +9471,43 @@
         }
       }
       const wasNew = smp.draftNew;
-      const use = this.ui.smpUse || 'pad';
+      const use = this.ui.smpUse || 'beat';
       this.ui.smpUse = null;
-      smp.draft = null; smp.draftBuffer = null; smp.draftPeaks = null;
+      smp.draft = null; smp.draftBuffer = null; smp.draftPeaks = null; smp.draftNew = false; smp.undoPad = null;
       this._samplerGo(smp.returnTo || 'pads');
       smp.returnTo = null;
       if (pending) await pending;
-      // E4: danach verwenden als — im Groove (Sample-Spur) oder nur speichern (Pad wieder frei).
-      if (save && d && wasNew && use === 'beat') this._padToBeat(d.id);
-      if (save && d && wasNew && use === 'save' && this._ownKit().pads[smp.sel] === d.id) { this._ownKit().pads[smp.sel] = null; this._samplerGo('library'); }
+      // E4: danach verwenden als — im Groove (Sample-Spur, Standard), Pad oder nur speichern (Pad wieder frei).
+      if (save && d && wasNew) {
+        const name = d.name.trim() || d.name;
+        let msg = null;
+        if (use === 'beat') {
+          this._padToBeat(d.id);
+          if (this.state.sampleLanes.some((l) => l.padId === d.id)) msg = tf('lab.snd.doneBeat', { name, track: this._trackName('rec') });
+        } else if (use === 'save') {
+          if (this._ownKit().pads[smp.sel] === d.id) { this._ownKit().pads[smp.sel] = null; this._samplerGo('library'); }
+          msg = tf('lab.snd.doneSave', { name });
+        } else msg = tf('lab.snd.donePad', { name, n: smp.sel + 1 });
+        if (msg) { this._setStatus(msg); this._toast(msg); }
+      }
       this._renderTracks(); this._renderLive(); this._renderSampler(); this._renderStudio();
+    }
+    /** Frische Aufnahme verwerfen: Sound löschen, das Pad bekommt zurück, was vorher darauf lag. */
+    _discardTake(id) {
+      const smp = this.sampler;
+      const undo = smp.undoPad;
+      this.ui.smpUse = null;
+      smp.draftNew = false; smp.undoPad = null; smp.returnTo = null;
+      this._deleteSample(id);
+      if (undo) {
+        const kit = this.state.sampler.kits.find((k) => k.id === undo.kitId);
+        if (kit && undo.prev && !kit.pads[undo.index]) kit.pads[undo.index] = undo.prev;
+        smp.sel = undo.index;
+      }
+      this._samplerGo('record');
+      this._renderTracks(); this._renderLive(); this._renderStudio();
+      this._setStatus(t('lab.snd.discarded'));
+      this._toast(t('lab.snd.discarded'));
     }
 
     _editorKind(kind) {
@@ -9522,12 +9647,18 @@
       const lane = { padId, on: true, layer: false, steps: {} };
       if (meta.kind === 'hit') {
         for (const [step, value] of Object.entries(s.beat[meta.track] || {})) lane.steps[step] = value < 1 ? Math.max(.1, value) : 1;
+        // Leere Zielzeile (Percussion/Clap fehlen in vielen Stilen): sonst bliebe die Spur stumm —
+        // dann auf die Zählzeiten 2 und 4 (3/4: auf die 2, 6/8: auf die zweite punktierte Viertel).
+        if (!Object.keys(lane.steps).length) {
+          const beats = METERS[this._meter()].beats;
+          (this._meter() === '6/8' ? [6] : beats.filter((_, i) => i % 2 === 1)).forEach((st) => { lane.steps[st] = 1; });
+        }
         if (meta.layerOriginal) lane.layer = true; else s.trackOn[meta.track] = false;
       } else lane.steps[0] = 1;
       s.sampleLanes.push(lane);
       s.beatEdited = true;
       this._primeSamples();
-      this._renderBeat(); this._renderSampler();
+      this._renderBeat(); this._renderSampler(); this._renderStudio();
       this._setStatus(tf('lab.sampler.toBeatDone', { name: meta.name }));
     }
 
@@ -11705,8 +11836,14 @@
         case 'sf-dots': this.ui.sf.dots = !this.ui.sf.dots; this.$('.sf-dots').setAttribute('aria-pressed', String(this.ui.sf.dots)); this._paintSurfaceDots(); break;
         case 'sf-shift': this.ui.sf.shift = clamp(this.ui.sf.shift + Number(value), -2, 1); this._buildSurfaceKeys(); break;
         case 'sf-kit': this.ui.sf.kitId = value; this._primeSamples(); this._renderSurface(); this.$(`.sf-opts-pads [data-value="${value}"]`)?.focus(); break;
-        case 'sf-record-own': this._closeLayer(this.$('.surface'), { focus: false }); this._openSounds('record'); break;
+        case 'sf-record-own':
+          // Angetipptes Pad (Chor: das 8.) — ist es im eigenen Kit belegt, sucht _samplerGo ein freies.
+          if (value !== undefined && value !== null && value !== '') this.sampler.sel = clamp(Number(value) || 0, 0, SAMPLER_PADS - 1);
+          this._closeLayer(this.$('.surface'), { focus: false }); this._openSounds('record');
+          break;
         case 'sf-rec': this._sfRecToggle(); break;
+        case 'mel-rec': this._melRecord(); break;
+        case 'studio-record-sound': this._openSounds('record'); break;
         case 'sf-rec-mode': this.sfRec.mode = value === 'replace' ? 'replace' : 'add'; this._renderSfRec(); break;
         // Studio (D2, D3)
         case 'open-track': if (!this.$('.track-layer').hidden) this._closeLayer(this.$('.track-layer'), { focus: false }); this._openTrack(value, target?.dataset.tab || 'pattern'); break;
@@ -11747,7 +11884,7 @@
         case 'panel-layer': {
           const parts = value === 'keys' ? ['arp', 'keyboard', 'rec'] : ['sampler'];
           if (value === 'sampler') { this._primeSamples(); this._renderSampler(); }
-          this._openPanelLayer(t(value === 'keys' ? 'lab.tabKeys' : 'lab.tabSampler'), parts);
+          this._openPanelLayer(t(value === 'keys' ? 'lab.tabKeys' : 'lab.tabSampler'), parts, value === 'keys' ? {} : { onClose: () => this._closeSounds() });
           break;
         }
         case 'cp-play': this._pushHistory(); s.chordPlay = value; if (value === 'rhythm' && !s.chordHits) s.chordHits = [[0, 4, 1], [4, 4, .8], [8, 4, .9], [12, 4, .8]].filter(([st]) => st < this._barSteps()); s.chordsOn = true; this._renderChordPart(); this._renderStudio(); this.$(`.cp-play [data-value="${value}"]`)?.focus(); break;
@@ -11901,6 +12038,8 @@
           s.chordHits = sanitizeHits(s.chordHits, this._barSteps());
           if (!s.chordHits && s.chordPlay === 'rhythm') s.chordPlay = 'held';
           if (!swingOffered(value)) s.swing = 0;
+          // Anderer Takt als der Stil: kein Stil mehr („eigener Stil“ statt weiter „Stil Pop“).
+          if (styleOf(s.styleId)?.meter !== value) s.styleId = null;
           s.sampleLanes = sanitizeSampleLanes(s.sampleLanes, this._barSteps());
           this._convertTempo();
           this._onTempoChange();
@@ -11917,7 +12056,7 @@
           s.beat = beatFromPattern(this._pattern());
           s.percSound = percOf(this._pattern());
           s.beatEdited = false;
-          if (this._meter() !== meterBefore) { this._convertTempo(); this._onTempoChange(); }
+          if (this._meter() !== meterBefore) { this._convertTempo(); this._onTempoChange(); if (styleOf(s.styleId)?.meter !== this._meter()) s.styleId = null; this._renderStudio(); this._renderChor(); }
           // Loops mit eigener Swing-Vorgabe (Swing Soul) bringen sie mit.
           if (typeof this._pattern().swing === 'number') { s.swing = this._pattern().swing; }
           this._ensureMelodyMeter();
@@ -11972,14 +12111,7 @@
           if (this.sampler.view === 'edit' && this.sampler.draft) this._editorFinish(true).then(() => this._padToBeat(value));
           else this._padToBeat(value);
           break;
-        case 'smp-record': {
-          // Aufnahmen kommen auf das gewählte Pad; ist es belegt und noch eines frei, auf das erste freie.
-          const pads = this._ownKit().pads;
-          const free = pads.findIndex((id) => !id);
-          if (pads[this.sampler.sel] && free >= 0) this.sampler.sel = free;
-          this._samplerGo('record');
-          break;
-        }
+        case 'smp-record': this._samplerGo('record'); break;
         case 'smp-library': this._samplerGo('library'); break;
         case 'smp-lane-remove': this._laneRemove(Number(value)); break;
         case 'smp-rec-kind': if (this.sampler.rec && this.sampler.rec.phase === 'idle') { this.sampler.rec.kind = SAMPLE_KINDS.includes(value) ? value : 'hit'; this._renderSampler(); } break;
@@ -12681,7 +12813,9 @@
   .smp-opt strong { font-size: .84rem; }
   .smp-opt span span { font-size: .72rem; color: var(--muted); }
   .smp-opt input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent); }
-  .smp-rec-foot { display: grid; justify-items: center; gap: 8px; padding: 8px 0 16px; }
+  .smp-rec-foot { display: grid; justify-items: center; gap: 8px; padding: 8px 0 16px; position: sticky; bottom: 0; background: var(--bg); z-index: 1; box-shadow: 0 -10px 14px -12px rgba(36, 27, 61, .35); }
+  .smp-rec-foot.is-counting .smp-rec-label { font-size: 1.6rem; font-weight: 900; color: var(--bad); }
+  .smp-opts-fold > summary { cursor: pointer; font-size: .78rem; font-weight: 800; min-height: 44px; display: flex; align-items: center; }
   .smp-rec-btn { width: 88px; height: 88px; border-radius: 50%; border: 6px solid color-mix(in srgb, var(--bad) 25%, #fff); background: var(--bad); display: grid; place-items: center; padding: 0; }
   .smp-rec-btn i { width: 30px; height: 30px; border-radius: 50%; background: #fff; transition: border-radius .15s; }
   .smp-rec-btn.is-on i { border-radius: 6px; }
@@ -13253,6 +13387,11 @@
   .mel-playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: rgba(36,27,61,.55); pointer-events: none; }
   .mel-edit-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: .74rem; font-weight: 800; color: var(--accent); }
   .mel-edit-link svg { width: 16px; height: 16px; }
+  /* „● Einspielen“ nur im Melodie-Blatt des Studios (das Bedienfeld hängt auch in anderen Ansichten). */
+  .mel-rec-link { display: none; }
+  .track-body .mel-rec-link { display: inline-flex; align-items: center; gap: 8px; margin: 8px 0 0 16px; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: .76rem; font-weight: 800; color: var(--text); }
+  .mel-rec-link i, .t-rec i { width: 12px; height: 12px; border-radius: 50%; background: var(--bad); display: block; }
+  .t-rec { display: grid; place-items: center; }
   .mel-top { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
   .mel-bars { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; }
   .mel-bar-tab { min-width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--line); font-size: .74rem; font-weight: 800; color: var(--muted); background: var(--surface-2); }
@@ -13468,11 +13607,17 @@
   .studio-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .studio-tools .chip { min-height: 40px; }
   .studio-fab-space { height: 84px; }
-  .kbd-fab {
-    position: sticky; bottom: 12px; justify-self: center; min-height: 48px; padding: 0 20px; border-radius: 999px; background: var(--text); color: #fff;
-    font-size: .82rem; font-weight: 800; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 8px 20px -8px rgba(36, 27, 61, .6); margin-top: -60px; z-index: 2;
-    max-width: 100%; white-space: nowrap; overflow: hidden;
+  .studio-fabs { position: sticky; bottom: 12px; justify-self: center; display: flex; gap: 8px; max-width: 100%; margin-top: -60px; z-index: 2; }
+  .kbd-fab, .mic-fab {
+    min-height: 48px; padding: 0 20px; border-radius: 999px; background: var(--text); color: #fff;
+    font-size: .82rem; font-weight: 800; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 8px 20px -8px rgba(36, 27, 61, .6);
+    white-space: nowrap; overflow: hidden; min-width: 0;
   }
+  .kbd-fab { flex: 0 1 auto; }
+  .mic-fab { flex: 0 0 auto; padding: 0 16px; background: var(--surface); color: var(--text); border: 1px solid var(--line); }
+  .mic-fab svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+  .mic-fab-short { display: none; }
+  @media (max-width: 440px) { .mic-fab-long { display: none; } .mic-fab-short { display: inline; } .kbd-fab, .mic-fab { padding: 0 12px; gap: 6px; font-size: .78rem; } }
   .kbd-fab-text { overflow: hidden; text-overflow: ellipsis; }
   .kbd-fab svg { width: 20px; height: 20px; }
   .track-head { justify-content: flex-start; }
@@ -13532,7 +13677,10 @@
   .sf-close { margin-left: auto; width: 44px; height: 44px; }
   .surface.is-studio .sf-head { padding-right: 52px; }
   .surface.is-studio .sf-close { position: absolute; top: 8px; right: max(12px, env(safe-area-inset-right)); }
-  .sf-body { flex: 1; min-height: 0; display: flex; }
+  .sf-body { flex: 1; min-height: 0; display: flex; position: relative; }
+  /* Einzählen groß über den Tasten (auf dem Handy ist die Statuszeile ausgeblendet). */
+  .sf-count { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 3; font-size: 5rem; font-weight: 900; color: var(--bad); background: rgba(255, 255, 255, .55); }
+  .sf-count[hidden] { display: none; }
   .sf-body > * { flex: 1; min-width: 0; }
   .surface.is-studio .sf-body { min-height: 220px; }
   .sf-piano { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; min-height: 180px; }
@@ -13594,6 +13742,8 @@
   .snd-mid { flex: 1; min-width: 0; display: grid; gap: 3px; }
   .snd-line { display: flex; gap: 2px 8px; align-items: baseline; min-width: 0; flex-wrap: wrap; }
   .panel-layer:has([data-part="sampler"]) .panel-layer-title { visibility: hidden; }
+  /* Im Sound-Editor zählt sein eigenes „Fertig“ — kein zweites darüber (Schließen übernimmt trotzdem). */
+  .panel-layer:has(.smp-head .smp-done) .layer-head { display: none; }
   .snd-line strong { font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .snd-line span { font-size: .68rem; color: var(--muted); white-space: nowrap; }
   .snd-wave { display: flex; align-items: center; gap: 2px; height: 20px; }
@@ -13814,7 +13964,10 @@
       <button class="chip" type="button" data-action="my-sounds">${t('lab.menu.sounds')}</button>
     </div>
     <div class="studio-fab-space" aria-hidden="true"></div>
-    <button class="kbd-fab" type="button" data-action="surface-open">${UI_ICON.piano}<span class="kbd-fab-text"></span></button>
+    <div class="studio-fabs">
+      <button class="kbd-fab" type="button" data-action="surface-open">${UI_ICON.piano}<span class="kbd-fab-text"></span></button>
+      <button class="mic-fab" type="button" data-action="studio-record-sound" aria-label="${t('lab.studio.micFab')}">${svg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>')}<span class="mic-fab-long">${t('lab.studio.micFab')}</span><span class="mic-fab-short" aria-hidden="true">${t('lab.studio.micFabShort')}</span></button>
+    </div>
   </section>
   <div class="studio-parts" hidden>
     <!-- Neue Bausteine der Spur-Blätter (werden beim Öffnen in das Blatt gehängt). -->
@@ -13877,7 +14030,7 @@
     <section data-part="addTrack" class="panel">
       <div class="add-list">
         <button class="menu-item" type="button" data-action="add-track-pick" data-value="drone"><span><strong>${t('lab.track.drone')}</strong><small>${t('lab.studio.add.drone')}</small></span></button>
-        <button class="menu-item" type="button" data-action="add-track-pick" data-value="rec"><span><strong>${t('lab.track.rec')}</strong><small>${t('lab.studio.add.rec')}</small></span></button>
+        <button class="menu-item" type="button" data-action="add-track-pick" data-value="rec"><span><strong>${t('lab.studio.addRecLabel')}</strong><small>${t('lab.studio.add.rec')}</small></span></button>
         <button class="menu-item" type="button" data-action="add-track-pick" data-value="arp"><span><strong>${t('lab.track.arp')}</strong><small>${t('lab.studio.add.arp')}</small></span></button>
       </div>
     </section>
@@ -14163,6 +14316,7 @@
         <div class="mel-view">
           <div class="mel-mini" aria-hidden="true"></div>
           <button class="mel-edit-link" type="button" data-action="mel-edit">${UI_ICON.edit}${t('lab.melEdit')}</button>
+          <button class="mel-rec-link" type="button" data-action="mel-rec"><i aria-hidden="true"></i>${t('lab.melRec')}</button>
         </div>
         <div class="mel-editor" hidden>
           <div class="mel-top">
@@ -14423,6 +14577,7 @@
       <div class="sf-piano" role="group" aria-label="${t('lab.sf.tab.piano')}"></div>
       <div class="sf-scale" role="group" aria-label="${t('lab.sf.tab.scale')}" hidden></div>
       <div class="sf-pads" role="group" aria-label="${t('lab.sf.tab.pads')}" hidden></div>
+      <div class="sf-count" aria-hidden="true" hidden></div>
     </div>
     <div class="sf-rec">
       <button class="sf-rec-btn" type="button" data-action="sf-rec" aria-pressed="false"><i aria-hidden="true"></i><span class="sf-rec-text">${t('lab.sf.rec')}</span></button>
