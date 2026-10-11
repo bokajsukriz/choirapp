@@ -10997,17 +10997,24 @@ function updateLoopMarks() {
 }
 
 function updateLoopUI() {
-  const r = loopRange();
+  // Die Leiste (Start/Ende/Schalter/Speichern) gehört nur dem spontanen
+  // Loop. Läuft ein gespeicherter, zeigt sie sich leer — der gespeicherte
+  // ist in der Liste farbig markiert und wird dort per Stopp beendet.
+  const fly = activeLoopId === null;
+  const r = fly ? loopRange() : null;
+  const on = fly && loopOn;
   $('#btn-loop-toggle').disabled = !r;
   $('#btn-loop-save').disabled = !r;
-  $('#btn-loop-toggle').setAttribute('aria-pressed', loopOn ? 'true' : 'false');
-  $('#btn-loop-toggle').setAttribute('aria-checked', loopOn ? 'true' : 'false');
-  $('#btn-loop-toggle').setAttribute('aria-label', t(loopOn ? 'player.loopOffAria' : 'player.loopOnAria'));
-  $('#btn-loop-a').setAttribute('aria-pressed', loopA !== null ? 'true' : 'false');
-  $('#btn-loop-b').setAttribute('aria-pressed', loopB !== null ? 'true' : 'false');
+  $('#btn-loop-toggle').setAttribute('aria-pressed', on ? 'true' : 'false');
+  $('#btn-loop-toggle').setAttribute('aria-checked', on ? 'true' : 'false');
+  $('#btn-loop-toggle').setAttribute('aria-label', t(on ? 'player.loopOffAria' : 'player.loopOnAria'));
+  $('#btn-loop-a').setAttribute('aria-pressed', fly && loopA !== null ? 'true' : 'false');
+  $('#btn-loop-b').setAttribute('aria-pressed', fly && loopB !== null ? 'true' : 'false');
 
   const info = $('#loop-info');
-  if (!r) {
+  if (!fly) {
+    info.textContent = t('player.loopHintBoth');
+  } else if (!r) {
     info.textContent = t(loopA === null && loopB === null
       ? 'player.loopHintBoth'
       : 'player.loopHintSecond');
@@ -11025,6 +11032,16 @@ function applyLoop() {
   audioSetLoop(loopOn && r ? r : null);
 }
 
+/** Beendet den laufenden Loop (gespeichert oder spontan) — zurück zum ganzen Song. */
+function stopLoop() {
+  loopA = loopB = null;
+  loopOn = false;
+  activeLoopId = null;
+  applyLoop();
+  updateLoopUI();
+  renderLoopList();
+}
+
 /** Loop einschalten und, falls nötig, an den Anfang des Abschnitts springen. */
 function activateLoop() {
   loopOn = true;
@@ -11039,6 +11056,9 @@ function activateLoop() {
 $('#btn-loop-a').addEventListener('click', async () => {
   // Audio.position gehört sonst dem gerade angehörten REC, nicht dem Song.
   await endRecordingPreview();
+  // Lief ein gespeicherter Loop, beginnt hier ein neuer spontaner — dessen
+  // Ende darf nicht vom gespeicherten übrig bleiben.
+  if (activeLoopId !== null) { loopB = null; loopOn = false; }
   loopA = Audio.position;
   if (loopB !== null && loopB <= loopA) loopB = null;
   activeLoopId = null;
@@ -11049,6 +11069,7 @@ $('#btn-loop-a').addEventListener('click', async () => {
 
 $('#btn-loop-b').addEventListener('click', async () => {
   await endRecordingPreview();
+  if (activeLoopId !== null) { loopA = null; loopOn = false; }
   loopB = Audio.position;
   if (loopA !== null && loopA >= loopB) loopA = null;
   activeLoopId = null;
@@ -11094,6 +11115,8 @@ $('#btn-loop-save').addEventListener('click', async () => {
   await DB.metaPut(loop);
   activeLoopId = id;
   await loadSongLoops();
+  // Ab jetzt läuft er als gespeicherter Loop — die Leiste wird wieder frei.
+  updateLoopUI();
   banner(t('loops.saved'), { kind: 'ok' });
 });
 
@@ -11119,6 +11142,7 @@ function hamburgerIcon() {
   return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
 }
 
+const ICON_STOP = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
 const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
 const ICON_DELETE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>';
 // Kasten mit Pfeil nach außen oben rechts — bewusst anders als das
@@ -11152,6 +11176,20 @@ function renderLoopList() {
       renderLoopList();
     });
 
+    const active = activeLoopId === loop.id;
+    let stop = null;
+    if (active) {
+      stop = el('button', {
+        class: 'icon-btn loop-stop', type: 'button', 'aria-label': t('loops.stopAria').replace('{name}', loop.name),
+      });
+      stop.innerHTML = ICON_STOP;
+      stop.addEventListener('click', () => {
+        if (routine?.scope === 'loops') routineStop();
+        stopLoop();
+        restoreLostFocus($('#loop-list .loop-item button') || $('#tab-btn-loops'));
+      });
+    }
+
     const menu = el('button', {
       class: 'icon-btn', type: 'button', 'aria-label': t('loops.menuAria').replace('{name}', loop.name),
     });
@@ -11176,15 +11214,16 @@ function renderLoopList() {
         });
         if (!ok) return;
         await DB.metaDelete(loop.key);
-        if (activeLoopId === loop.id) activeLoopId = null;
+        // Ein gelöschter Loop läuft nicht als spontaner weiter.
+        if (activeLoopId === loop.id) stopLoop();
         await loadSongLoops();
         restoreLostFocus($('#loop-list .loop-item button') || $('#tab-btn-loops'));
       }
     });
     host.append(el('div', {
       class: 'loop-item',
-      'data-active': activeLoopId === loop.id ? 'true' : 'false',
-    }, go, menu));
+      'data-active': active ? 'true' : 'false',
+    }, go, ...(stop ? [stop] : []), menu));
   }
 }
 

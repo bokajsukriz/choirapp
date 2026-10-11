@@ -2566,8 +2566,9 @@
       // Stil mit Energie (STYLES, 4.1/4.2), Raum (ROOMS, 4.3; null = Hall wie
       // eingestellt), Hören auf (HEAR_FOCUS, 4.5). styleId/energy null = eigene Einstellung.
       styleId: null, energy: null, room: 'rehearsal', hearFocus: 'balanced',
-      // Länge/Wechsel je Akkord (chordTimeline), Einzähler vor dem Start (1 Takt).
-      chordLen: null, chordPush: null, countIn: true,
+      // Länge/Wechsel je Akkord (chordTimeline). Der Einzähler ist kein Teil des
+      // Stands mehr, sondern eine Einstellung des Geräts (_saved.countIn).
+      chordLen: null, chordPush: null,
       // Spur Akkorde: Spielweise ('held' | 'rhythm' | 'arp'), Anschläge je Takt (rhythmisch),
       // Lage (−1/0/+1 Oktave). Bass: Spielweise (BASS_PLAYS, null = Linie wie bearbeitet)
       // und „bleibt auf der Eins“ (zieht bei vorgezogenen Akkorden nicht mit vor).
@@ -2823,7 +2824,6 @@
     s.energy = fresh ? oneOf(raw.energy, ENERGY_IDS, null) : null;
     s.room = fresh ? oneOf(raw.room, ROOM_IDS, null) : null;
     s.hearFocus = oneOf(raw.hearFocus, HEAR_IDS, 'balanced');
-    s.countIn = bool(raw.countIn, true);
     const nChords = progressionOfState(s).degrees.length;
     Object.assign(s, foldChordLens(raw.chordLen, nChords, s.chordBars));
     s.chordPush = normChordPush(raw.chordPush, nChords);
@@ -2940,6 +2940,8 @@
     speaker: svg('<path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>'),
     speakerOff: svg('<path d="M4 9h3l5-4v14l-5-4H4Z"/><path d="M16 9l5 6M21 9l-5 6"/>'),
     chevron: svg('<path d="m6 9 6 6 6-6"/>'),
+    folder: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
+    gear: svg('<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>'),
     piano: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 5v8M12 5v8M16 5v8M8 13v6M12 13v6M16 13v6"/>'),
     waves: svg('<path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 11v2"/>'),
   };
@@ -4351,7 +4353,7 @@
       this.sampler = { meta: new Map(), buffers: new Map(), blobs: new Map(), loading: new Map(), peaks: new Map(), peakCache: new Map(),
         decoder: null, loaded: false, view: 'pads', sel: 0, draft: null, draftBuffer: null, draftPeaks: null, draftNew: false, rec: null, live: true, bluetoothHint: false };
       this.stepClock = null;   // zuletzt eingeplanter Schritt { g, time } — für das Einrasten beim Live-Einspielen
-      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [], workshop: sanitizeWorkshopProgress(null), deconstruct: null, latency: 'interactive' };
+      this._saved = { slots: [null, null, null, null], last: null, melodies: [], progressions: [], workshop: sanitizeWorkshopProgress(null), deconstruct: null, latency: 'interactive', countIn: false };
       // de:construct: Solange die Ansicht offen ist, hält this.state „Meine
       // Version“ (_dcActive); der Studio-Stand wartet samt Undo in _dcStash.
       this._dcActive = false;
@@ -4456,6 +4458,9 @@
         this._saved.workshop = sanitizeWorkshopProgress(data.workshop);
         // Ablagen von vor de:construct haben kein Feld `deconstruct` → null.
         this._saved.deconstruct = sanitizeDeconstruct(data.deconstruct);
+        // Einzählen ist eine Einstellung (Menü › Einstellungen), standardmäßig aus.
+        // Ältere Ablagen hatten sie im Stand (dort immer an) — die zählt nicht mehr.
+        this._saved.countIn = data.countIn === true;
         if (LATENCY_HINTS.includes(data.latency)) {
           this._saved.latency = data.latency;
           this.engine.latencyHint = data.latency;
@@ -10564,7 +10569,7 @@
     _countInSteps() {
       // Aufnahme aus dem Stillstand zählt immer einen Takt ein (Berater), sonst nach Menü.
       if (this.sfRec?.phase === 'armed' && this.sfRec.startStep === 0) return -this._barSteps();
-      if (!this.state.countIn || ['workshop', 'deconstruct'].includes(this._uiMode())) return 0;
+      if (!this._saved.countIn || ['workshop', 'deconstruct'].includes(this._uiMode())) return 0;
       return -this._barSteps();
     }
 
@@ -10992,20 +10997,35 @@
       this._handleAction(def.action, String(next.i), null);
     }
 
-    /* ---- Menü (Speichern & Öffnen · Modus · Audio & Leistung) ---- */
+    /* ---- Menü: eine kurze Liste; „Speichern & Öffnen“ und „Einstellungen“
+       sind Unterseiten in derselben Schublade (‹ führt zurück). ---- */
 
     _openSheet() {
       this.$('.sheet').hidden = false;
       this.$('.menu-btn').setAttribute('aria-expanded', 'true');
       this._renderSheet();
-      this.$('.sheet-card').scrollTop = 0;
+      this._menuPage('', { focus: false });
       this.$('.sheet .menu-head [data-action="close-sheet"]').focus();
+    }
+
+    /** Unterseite des Menüs zeigen ('file' | 'settings'), '' = Hauptliste. */
+    _menuPage(page, { focus = true } = {}) {
+      const from = this._menuPageOpen || '';
+      this._menuPageOpen = page;
+      this.$('.menu-main').hidden = !!page;
+      this.$all('.menu-page').forEach((el) => { el.hidden = el.dataset.page !== page; });
+      this._flash('');
+      this.$('.sheet-card').scrollTop = 0;
+      if (!focus) return;
+      if (page) this.$(`.menu-page[data-page="${page}"] .menu-back`).focus();
+      else this.$(`.menu-main [data-action="menu-page"][data-value="${from}"]`)?.focus();
     }
 
     _closeSheet({ focus = true } = {}) {
       const sheet = this.$('.sheet');
       if (sheet.hidden) return;
       sheet.hidden = true;
+      this._menuPageOpen = '';
       this.$('.menu-btn').setAttribute('aria-expanded', 'false');
       this._flash('');
       if (focus) this.$('.menu-btn').focus();
@@ -11066,10 +11086,9 @@
         return row;
       }));
       this.$('.code-out').value = encodeState(this.state);
-      const master = this.$('.menu-master input');
-      master.value = String(this.state.mix.master);
-      this.$('.menu-master output').textContent = `${Math.round(this.state.mix.master * 100)} %`;
-      this.$('[data-switch="countIn"]').checked = !!this.state.countIn;
+      this.$('[data-switch="countIn"]').checked = !!this._saved.countIn;
+      const last = this._saved.slots[this._lastSlot];
+      this.$('.menu-file-sub').textContent = last ? `${tf('lab.slot', { n: this._lastSlot + 1 })} ›` : '›';
       this._renderViewMenu();
       this.$('.storage-hint').textContent = t(this._storage ? 'lab.autoSaveHint' : 'lab.noStorageHint');
     }
@@ -11816,7 +11835,7 @@
       if (key === 'progDominant') { this._progBegin(); s.progDominant = on; this._progCommit(); return; }
       if (key === 'chordAdd9') { this._pushHistory(); s.chordAdd9 = on; this._renderSatb(); return; }
       if (key === 'bassHold') { this._pushHistory(); s.bassHold = on; return; }
-      if (key === 'countIn') { s.countIn = on; return; }
+      if (key === 'countIn') { this._saved.countIn = on; this._persist(); return; }
       s[key] = on; // melodyOn, chordsOn
     }
 
@@ -12061,6 +12080,7 @@
         case 'picker-close': this._closePicker(); break;
         case 'picker-step': this._stepPicker(target.dataset.picker, Number(value)); break;
         case 'close-sheet': this._closeSheet(); break;
+        case 'menu-page': this._menuPage(value); break;
 
         // Beat
         case 'meter': {
@@ -12413,6 +12433,7 @@
         // Speichern
         case 'slot-save':
           this._saved.slots[Number(value)] = { state: this._snapshot(), savedAt: Date.now() };
+          this._lastSlot = Number(value);
           this._persist();
           this._renderSheet();
           this._flash(tf('lab.savedTo', { n: Number(value) + 1 }));
@@ -12421,6 +12442,7 @@
           const slot = this._saved.slots[Number(value)];
           if (!slot) break;
           this._applyState(sanitizeState(slot.state));
+          this._lastSlot = Number(value);
           this._renderSheet();
           this._flash(tf('lab.loadedFrom', { n: Number(value) + 1 }));
           break;
@@ -12475,6 +12497,7 @@
         else if (!this.$('.dc-sheet').hidden) this._dcSheetClose();
         else if (!this.$('.ovl-pop').hidden) this._toggleOverloadPop(false);
         else if (this.ui.dc.menu) { this.ui.dc.menu = false; this.ui.dc.revealAsk = false; this._renderDeconstruct(); this.$('.dc-more')?.focus(); }
+        else if (!this.$('.sheet').hidden && this._menuPageOpen) this._menuPage('');
         else if (!this.$('.sheet').hidden) this._closeSheet();
         else if (this.ui.beatZoom) this._setBeatZoom(false);
         else this.close();
@@ -12666,8 +12689,6 @@
   .view-opt:hover { background: var(--surface-2); }
   .beat-dots i.is-count { background: var(--text); }
   .ovl-bt { color: var(--muted); }
-  .menu-master { margin: 0 0 8px; grid-template-columns: 1fr 44px; row-gap: 4px; }
-  .menu-master > span { grid-column: 1 / -1; }
   .learn-back { padding: 0 0 8px; }
   .learn-list { display: grid; gap: 10px; }
   .learn-tile { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 12px 14px; display: grid; gap: 10px; }
@@ -13862,6 +13883,16 @@
   .menu-item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 6px; border-radius: 10px; font-size: .84rem; font-weight: 700; text-align: left; }
   .menu-item svg { width: 20px; height: 20px; color: var(--muted); }
   .menu-item:active { background: var(--surface-2); }
+  .menu-item > span:not(.menu-go) { flex: 1 1 auto; }
+  .menu-go { color: var(--muted); font-weight: 600; font-size: .76rem; }
+  .menu-page { display: grid; gap: 8px; padding-top: 4px; }
+  .menu-page .chip { min-height: 40px; }
+  .menu-back { justify-self: start; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 10px 0 4px; border-radius: 10px; font-size: .84rem; font-weight: 800; color: var(--accent); }
+  .menu-back span { font-weight: 700; }
+  .menu-page-title { font-size: 1rem; font-weight: 800; margin: 0 0 4px; }
+  .menu-setting { display: grid; gap: 4px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); }
+  .menu-setting .switch { justify-content: space-between; flex-direction: row-reverse; min-height: 36px; font-size: .84rem; }
+  .menu-setting .foot-note { margin: 0; }
   .slot-list { display: grid; gap: 6px; }
   .slot-row { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 8px 8px 12px; }
   .slot-text { display: grid; min-width: 0; }
@@ -14560,8 +14591,17 @@
       <h2 class="menu-title" id="gl-menu-title"><span>Groove</span> Lab</h2>
       <button class="icon-btn" type="button" data-action="close-sheet" aria-label="${t('lab.menuClose')}" title="${t('lab.menuClose')}">${UI_ICON.close}</button>
     </div>
-    <section class="menu-sec" aria-labelledby="gl-menu-file">
-      <h3 class="menu-sec-title" id="gl-menu-file">${t('lab.menu.file')}</h3>
+    <section class="menu-sec menu-actions menu-main">
+      <button class="menu-item" type="button" data-action="menu-page" data-value="file">${UI_ICON.folder}<span>${t('lab.menu.file')}</span><span class="menu-go menu-file-sub">›</span></button>
+      <button class="menu-item" type="button" data-action="my-sounds">${UI_ICON.waves}<span>${t('lab.menu.sounds')}</span></button>
+      <button class="menu-item menu-random" type="button" data-action="randomize">${UI_ICON.dice}<span>${t('lab.menu.random')}</span></button>
+      <button class="menu-item" type="button" data-action="menu-audio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-5"/></svg><span>${t('lab.ovl.titleIdle')}</span></button>
+      <button class="menu-item" type="button" data-action="menu-page" data-value="settings">${UI_ICON.gear}<span>${t('lab.menu.settings')}</span><span class="menu-go">›</span></button>
+      <button class="menu-item" type="button" data-action="close">${UI_ICON.close}<span>${t('lab.closeAria')}</span></button>
+    </section>
+    <section class="menu-page" data-page="file" aria-labelledby="gl-menu-file" hidden>
+      <button class="menu-back" type="button" data-action="menu-page" data-value="" aria-label="${t('lab.menu.back')}">‹ <span>${t('lab.menu.back')}</span></button>
+      <h3 class="menu-page-title" id="gl-menu-file">${t('lab.menu.file')}</h3>
       <div class="slot-list"></div>
       <div class="pill-row file-row">
         <button class="chip" type="button" data-action="file-save">${t('lab.fileSave')}</button>
@@ -14579,16 +14619,10 @@
       </details>
       <p class="foot-note storage-hint"></p>
     </section>
-    <section class="menu-sec" aria-labelledby="gl-menu-play">
-      <h3 class="menu-sec-title" id="gl-menu-play">${t('lab.menu.play')}</h3>
-      <label class="slider-line menu-master"><span>${t('lab.menu.master')}</span><input type="range" data-mix="master" min="0" max="1" step=".01"><output data-out="master"></output></label>
-      <div class="switch-row">${toggle('countIn', 'lab.menu.countIn')}</div>
-    </section>
-    <section class="menu-sec menu-actions">
-      <button class="menu-item" type="button" data-action="my-sounds">${UI_ICON.waves}<span>${t('lab.menu.sounds')}</span></button>
-      <button class="menu-item menu-random" type="button" data-action="randomize">${UI_ICON.dice}<span>${t('lab.menu.random')}</span></button>
-      <button class="menu-item" type="button" data-action="menu-audio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-5"/></svg><span>${t('lab.ovl.titleIdle')}</span></button>
-      <button class="menu-item" type="button" data-action="close">${UI_ICON.close}<span>${t('lab.closeAria')}</span></button>
+    <section class="menu-page" data-page="settings" aria-labelledby="gl-menu-settings" hidden>
+      <button class="menu-back" type="button" data-action="menu-page" data-value="" aria-label="${t('lab.menu.back')}">‹ <span>${t('lab.menu.back')}</span></button>
+      <h3 class="menu-page-title" id="gl-menu-settings">${t('lab.menu.settings')}</h3>
+      <div class="menu-setting">${toggle('countIn', 'lab.menu.countIn')}<p class="foot-note">${t('lab.menu.countInSub')}</p></div>
     </section>
   </div>
 </div>
@@ -14897,7 +14931,7 @@
       if (old.styleId !== null || old.energy !== null || old.room !== null || old.chordPush !== null || old.chordPlay !== 'held' || old.fx.reverbLength !== 2.5) fail('alter Stand bekommt Stil/Raum/Vorziehen');
       if (chordTimelineOf(old, 4, 16).lens[0] !== 32) fail('alter Stand: chordBars 2 nicht als Länge');
       const fresh = defaultState();
-      if (fresh.styleId !== 'pop' || fresh.energy !== 'drive' || fresh.room !== 'rehearsal' || fresh.melodyOn !== false || !fresh.countIn) fail('neuer Stand nicht Pop/Treibend/Probe, Melodie aus');
+      if (fresh.styleId !== 'pop' || fresh.energy !== 'drive' || fresh.room !== 'rehearsal' || fresh.melodyOn !== false || 'countIn' in fresh) fail('neuer Stand nicht Pop/Treibend/Probe, Melodie aus');
       const round = sanitizeState(JSON.parse(JSON.stringify(fresh)));
       if (!same(round, fresh)) fail('neuer Stand übersteht sanitizeState nicht unverändert');
       if (!same(sanitizeState(JSON.parse(JSON.stringify(round))), round)) fail('sanitizeState nicht idempotent');
@@ -15044,13 +15078,17 @@
     const lt = LESSON_TRACK[v.ui.ws?.lesson?.tab]?.[0];
     if (v._uiMode() !== 'studio' || (lt && (v.ui.track !== lt || !v.$(`.t-card.is-hl[data-track="${lt}"]`)))) fail('Kurs → Studio');
     v._closeAllLayers();
-    // Einzähler: ein Takt, nicht in Workshop/de:construct.
+    // Einzähler: standardmäßig aus; eingeschaltet ein Takt, nicht in Workshop/de:construct.
+    const countWas = v._saved.countIn;
+    if (countWas !== false || v._countInSteps() !== 0) fail('Einzähler ist standardmäßig an');
+    v._saved.countIn = true;
     if (v._countInSteps() !== -v._barSteps()) fail('Einzähler fehlt');
     v._applyView('workshop');
     if (v._countInSteps() !== 0) fail('Einzähler im Workshop');
     v._applyView('studio');
-    v.state.countIn = false;
+    v._saved.countIn = false;
     if (v._countInSteps() !== 0) fail('Einzähler lässt sich nicht abschalten');
+    v._saved.countIn = countWas;
     return failed;
   }
 
