@@ -2242,6 +2242,17 @@
     arp: { bus: 'arp', lock: null, color: '#2f8fd6', pattern: ['arp'], sound: ['arpSoundNote'], mix: [] },
     rec: { bus: null, lock: null, color: '#b15b00', pattern: ['recNote'], sound: null, mix: [] },
   };
+  /** Die vier Grundspuren — löschbar über `removed` (gelöscht = in der Liste und stumm). */
+  const FIXED_TRACKS = ['drums', 'bass', 'chords', 'melody'];
+  /** Gruppen des Studios wie in einer DAW: Instrumente · Drums & Pads · Audio. Sample-Spuren
+   *  ordnen sich nach ihrer Art ein (Ton → Instrument, Schlag → Pads, Loop → Audio). */
+  const STUDIO_GROUPS = [
+    { id: 'inst', tracks: ['chords', 'melody', 'bass', 'drone', 'arp'], kind: 'tone' },
+    { id: 'drums', tracks: ['drums'], kind: 'hit' },
+    { id: 'audio', tracks: [], kind: 'loop' },
+  ];
+  /** Farbe einer Sample-Spur je Art. */
+  const LANE_COLOR = { hit: '#b15b00', tone: '#8a6d00', loop: '#c2416b' };
   /** Klänge der Chor-Spielfläche (Klang ▾). */
   const SURFACE_SOUNDS = ['Klavier', 'Tape Keys', 'Vintage Organ', 'E-Gitarre', 'Streicher', 'Moon Pad'];
   /** Bass-Stufe (wie in DRUM_PATTERNS) eines gespielten Tons über dem Akkord `h`. */
@@ -2548,6 +2559,8 @@
       sound: soundFromPreset(presetIndexByName('Klavier')),
       mix: { drums: .8, bass: .8, melody: .75, arp: .6, chords: .45, keys: .8, drone: .5, master: .8 },
       mute: { drums: false, bass: false, melody: false, arp: false, chords: false, keys: false, drone: false },
+      // Im Studio gelöschte Grundspuren (FIXED_TRACKS); sie bleiben stumm, bis sie wieder hinzukommen.
+      removed: [],
       fx: { reverbLength: 1.8, echoDiv: 3, echoFeedback: .35, chorus: .2, reverbOn: true, echoOn: true, chorusOn: true },
       // Aufgenommene Reglerbewegungen: je Klang-Parameter ein Wert pro
       // Sechzehntel, geloopt über `steps` Schritte ab `offset`.
@@ -2747,6 +2760,7 @@
     s.beat = sanitizeBeat(raw.beat, pattern);
     s.beatEdited = bool(raw.beatEdited, false);
     for (const track of TRACK_IDS) s.trackOn[track] = bool(obj(raw.trackOn)[track], true);
+    s.removed = Array.isArray(raw.removed) ? FIXED_TRACKS.filter((id) => raw.removed.includes(id)) : [];
     s.bassSoundId = oneOf(raw.bassSoundId, BASS_SOUNDS.map((b) => b.id), raw.view === 'deconstruct' ? 'round' : (raw.view === 'choir' && raw.layout !== 2) || raw.view === 'workshop' || raw.choirTask || raw.lessonId ? 'pluck' : s.bassSoundId);
     // Alte Stände aus Chor-Aufgaben, Workshop und de:construct (ohne die
     // neuen Felder) klingen weiter wie damals.
@@ -2944,6 +2958,7 @@
     gear: svg('<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>'),
     piano: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 5v8M12 5v8M16 5v8M8 13v6M12 13v6M16 13v6"/>'),
     waves: svg('<path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 11v2"/>'),
+    trash: svg('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'),
   };
 
   // Ein Piktogramm je Drumloop und Klang-Preset (siehe `icon`) plus die
@@ -5201,11 +5216,19 @@
     }
 
     _trackDef(id) { return STUDIO_TRACKS[id]; }
-    /** Spuren, die gerade da sind: die vier festen plus Liegeton, 2. Akkorde, Aufnahme. */
+    /** Spuren, die gerade da sind: die vier festen (außer gelöschten) plus Liegeton, 2. Akkorde, Aufnahme. */
     _studioTracks() {
       const s = this.state;
-      return ['drums', 'bass', 'chords', 'melody', ...(s.droneOn ? ['drone'] : []), ...(s.arpOn ? ['arp'] : []), ...(s.sampleLanes.length ? ['rec'] : [])];
+      return [...FIXED_TRACKS.filter((id) => !this._trackGone(id)), ...(s.droneOn ? ['drone'] : []), ...(s.arpOn ? ['arp'] : []), ...(s.sampleLanes.length ? ['rec'] : [])];
     }
+    /** Gelöschte Grundspur: in `removed` und stumm. Schaltet sie woanders (Chor) jemand
+     *  wieder laut, ist sie wieder da — nie eine klingende Spur, die man nicht sieht. */
+    _trackGone(id, s = this.state) {
+      return FIXED_TRACKS.includes(id) && s.removed.includes(id) && !!s.mute[this._trackDef(id).bus];
+    }
+    /** Art einer Sample-Spur (fehlt das Sample auf dem Gerät: Schlag). */
+    _laneKind(lane) { return this._sampleMeta(lane.padId)?.kind || 'hit'; }
+    _laneName(lane) { return this._sampleMeta(lane.padId)?.name || t('lab.sampler.missing'); }
     _trackMuted(id) {
       const s = this.state;
       if (id === 'rec') return s.sampleLanes.every((l) => !l.on);
@@ -5290,20 +5313,45 @@
       const active = this.shadowRoot.activeElement;
       const refocus = active && cards.contains(active) && active.closest('.t-card')
         ? `.t-card[data-track="${active.closest('.t-card').dataset.track}"] ${active.dataset.mix ? 'input[data-mix]' : `[data-action="${active.dataset.action}"]`}` : null;
-      cards.innerHTML = ids.map((id) => {
+      const del = (id, name) => `<button class="t-ms t-del" type="button" data-action="track-remove" data-value="${id}" aria-label="${esc(tf('lab.studio.removeAria', { name }))}" title="${esc(tf('lab.studio.removeAria', { name }))}">${UI_ICON.trash}</button>`;
+      const cellRow = (cells) => `<div class="t-cells" style="grid-template-columns:repeat(${this._barSteps()},minmax(0,1fr))" aria-hidden="true">${cells.map((on) => `<i${on ? ' class="on"' : ''}></i>`).join('')}</div>`;
+      const card = (id) => {
         const def = this._trackDef(id);
         const muted = this._trackMuted(id);
         const solo = this.ui.solo === id;
         const name = this._trackName(id);
-        const cells = this._trackCells(id).map((on) => `<i${on ? ' class="on"' : ''}></i>`).join('');
         const vol = def.bus && !(id === 'melody' && muted) ? `<label class="t-vol">${UI_ICON.speaker}<input type="range" min="0" max="1" step=".01" data-mix="${def.bus}" value="${s.mix[def.bus]}" aria-label="${esc(tf('lab.studio.volumeAria', { name }))}"></label>` : '';
         return `<div class="t-card${id === target ? ' is-sel' : ''}${muted ? ' is-muted' : ''}${id === this.ui.hl ? ' is-hl' : ''}" data-track="${id}" style="--tc:${def.color}">
           <div class="t-top"><button class="t-open" type="button" data-action="open-track" data-value="${id}" aria-haspopup="dialog"><span class="t-bar" aria-hidden="true"></span>
             <span class="t-heads"><strong>${esc(name)}</strong><span>${esc(this._trackSub(id))}</span></span></button>
             ${id === 'melody' ? `<button class="t-ms t-rec" type="button" data-action="mel-rec" aria-label="${esc(t('lab.melRecAria'))}" title="${esc(t('lab.melRecAria'))}"><i aria-hidden="true"></i></button>` : ''}
             <button class="t-ms" type="button" data-action="track-mute" data-value="${id}" aria-pressed="${muted}" aria-label="${esc(tf('lab.studio.muteAria', { name }))}">M</button>
-            <button class="t-ms" type="button" data-action="track-solo" data-value="${id}" aria-pressed="${solo}" aria-label="${esc(tf('lab.studio.soloAria', { name }))}"${id === 'rec' ? ' hidden' : ''}>S</button></div>
-          <div class="t-cells" style="grid-template-columns:repeat(${this._barSteps()},minmax(0,1fr))" aria-hidden="true">${cells}</div>${vol}</div>`;
+            <button class="t-ms" type="button" data-action="track-solo" data-value="${id}" aria-pressed="${solo}" aria-label="${esc(tf('lab.studio.soloAria', { name }))}">S</button></div>
+          ${cellRow(this._trackCells(id))}<div class="t-foot">${vol}${del(id, name)}</div></div>`;
+      };
+      // Sample-Spuren einzeln, damit jede in ihrer Gruppe steht; Antippen öffnet das Aufnahme-Blatt.
+      const laneCard = (lane, i) => {
+        const meta = this._sampleMeta(lane.padId);
+        const name = this._laneName(lane);
+        const id = `lane-${i}`;
+        const sub = meta ? `${this._kindLabel(meta.kind)} · ${this._roleLabel(meta)}` : t('lab.track.rec');
+        const steps = Object.keys(lane.steps || {}).map(Number);
+        const cells = Array.from({ length: this._barSteps() }, (_, st) => steps.includes(st));
+        return `<div class="t-card${lane.on ? '' : ' is-muted'}" data-track="${id}" style="--tc:${LANE_COLOR[this._laneKind(lane)]}">
+          <div class="t-top"><button class="t-open" type="button" data-action="open-track" data-value="rec" aria-haspopup="dialog"><span class="t-bar" aria-hidden="true"></span>
+            <span class="t-heads"><strong>${esc(name)}</strong><span>${esc(sub)}</span></span></button>
+            <button class="t-ms" type="button" data-action="lane-toggle" data-value="${i}" aria-pressed="${!lane.on}" aria-label="${esc(tf('lab.studio.muteAria', { name }))}">M</button></div>
+          ${cellRow(cells)}<div class="t-foot">${del(id, name)}</div></div>`;
+      };
+      cards.innerHTML = STUDIO_GROUPS.map((g) => {
+        const items = [
+          ...g.tracks.filter((id) => ids.includes(id)).map(card),
+          ...s.sampleLanes.map((lane, i) => [lane, i]).filter(([lane]) => this._laneKind(lane) === g.kind).map(([lane, i]) => laneCard(lane, i)),
+        ];
+        const label = t(`lab.studio.group.${g.id}`);
+        return `<section class="t-group" data-group="${g.id}" aria-label="${esc(label)}">
+          <div class="t-group-head"><h3>${esc(label)}</h3><button class="t-group-add" type="button" data-action="add-track" data-value="${g.id}" aria-haspopup="dialog" aria-label="${esc(tf('lab.studio.groupAddAria', { name: label }))}">+</button></div>
+          ${items.length ? items.join('') : `<button class="t-group-empty" type="button" data-action="add-track" data-value="${g.id}" aria-haspopup="dialog">${esc(t(`lab.studio.groupEmpty.${g.id}`))}</button>`}</section>`;
       }).join('');
       cards.querySelectorAll('input[data-mix]').forEach((el) => this._paintLevel?.(el));
       if (refocus) cards.querySelector(refocus)?.focus();
@@ -5314,7 +5362,8 @@
     _studioTarget() {
       const ids = this._studioTracks().filter((id) => SURFACE_TARGETS.includes(id));
       // Ohne Wahl: Melodie — „Keyboard“ ist der naheliegende Weg, eine Melodie einzuspielen.
-      return ids.includes(this.ui.studioTarget) ? this.ui.studioTarget : 'melody';
+      if (ids.includes(this.ui.studioTarget)) return this.ui.studioTarget;
+      return ids.includes('melody') ? 'melody' : ids[0] || 'melody';
     }
     /** „● Einspielen“ (Melodie-Blatt/-Karte): Keyboard auf die Melodie, Aufnahme (ersetzen) scharf. */
     _melRecord() {
@@ -5390,9 +5439,53 @@
       box.innerHTML = `${def.bus ? `<label class="slider-line"><span>${t('lab.studio.volume')}</span><input type="range" min="0" max="1" step=".01" data-mix="${def.bus}" value="${s.mix[def.bus]}" aria-label="${tf('lab.studio.volumeAria', { name })}"><output data-out="mix-${def.bus}">${Math.round(s.mix[def.bus] * 100)} %</output></label>` : ''}
         <div class="chip-row"><button class="chip" type="button" data-action="track-mute" data-value="${id}" aria-pressed="${muted}">${t('lab.chor.mute')}</button>
         ${id !== 'rec' ? `<button class="chip" type="button" data-action="track-solo" data-value="${id}" aria-pressed="${this.ui.solo === id}">${t('lab.studio.solo')}</button>` : ''}
-        ${['drone', 'arp'].includes(id) ? `<button class="chip" type="button" data-action="track-remove" data-value="${id}">${t('lab.studio.remove')}</button>` : ''}</div>
+        <button class="chip" type="button" data-action="track-remove" data-value="${id}">${t('lab.studio.remove')}</button></div>
         ${id === 'drums' ? `<p class="foot-note">${t('lab.studio.pumpHint')}</p>` : ''}${id === 'melody' || id === 'chords' ? `<p class="foot-note">${t('lab.studio.roomMixHint')}</p>` : ''}`;
       return box;
+    }
+    /** Spur löschen (Karte 🗑 oder Mix-Blatt). Grundspuren verschwinden stumm (`removed`), Liegeton
+     *  und 2. Akkorde schalten ab, Sample-Spuren fallen aus dem Raster (das Sample bleibt in
+     *  „Meine Sounds“). Rückgängig macht ↶. */
+    _removeTrack(id) {
+      const s = this.state;
+      const laneIndex = /^lane-(\d+)$/.test(id) ? Number(id.slice(5)) : -1;
+      const lane = s.sampleLanes[laneIndex];
+      if (laneIndex >= 0 && !lane) return;
+      if (!lane && !this._trackDef(id)) return;
+      const name = lane ? this._laneName(lane) : this._trackName(id);
+      if (lane) this._laneRemove(laneIndex);
+      else {
+        this._pushHistory();
+        if (id === 'drone') this._setDrone(false);
+        else if (id === 'arp') s.arpOn = false;
+        else if (id === 'rec') { const gone = s.sampleLanes; s.sampleLanes = []; this._restoreLaneRows(gone); }
+        else {
+          s.removed = [...s.removed.filter((x) => x !== id), id];
+          s.mute[this._trackDef(id).bus] = true;
+        }
+      }
+      if (this.ui.solo === id) this.ui.solo = null;
+      if (this.ui.studioTarget === id) this.ui.studioTarget = null;
+      if (!this.$('.track-layer').hidden) this._closeLayer(this.$('.track-layer'), { focus: false });
+      this._syncEngine(); this._renderAll();
+      this._setStatus(tf('lab.studio.removed', { name }));
+      this.$('.add-track')?.focus();
+    }
+    /** „+ Spur“: je Gruppe, was dazukommen kann (gelöschte Grundspuren, Liegeton, 2. Akkorde,
+     *  Mikro-Aufnahme der passenden Art); `only` zeigt nur eine Gruppe (+ am Gruppenkopf). */
+    _renderAddTrack(only = null) {
+      const s = this.state;
+      const item = (value, name, sub) => `<button class="menu-item" type="button" data-action="add-track-pick" data-value="${value}"><span><strong>${name}</strong><small>${sub}</small></span></button>`;
+      const groups = STUDIO_GROUPS.filter((g) => !only || g.id === only || !STUDIO_GROUPS.some((x) => x.id === only));
+      this.$('[data-part="addTrack"] .add-list').innerHTML = groups.map((g) => {
+        const items = [
+          ...g.tracks.filter((id) => FIXED_TRACKS.includes(id) && this._trackGone(id)).map((id) => item(id, this._trackName(id), t('lab.studio.add.back'))),
+          ...(g.id === 'inst' && !s.droneOn ? [item('drone', t('lab.track.drone'), t('lab.studio.add.drone'))] : []),
+          ...(g.id === 'inst' && !s.arpOn ? [item('arp', t('lab.track.arp'), t('lab.studio.add.arp'))] : []),
+          item(g.kind, t(`lab.studio.add.${g.kind}Label`), t(`lab.studio.add.${g.kind}`)),
+        ];
+        return `${groups.length > 1 ? `<span class="sub-label">${t(`lab.studio.group.${g.id}`)}</span>` : ''}${items.join('')}`;
+      }).join('');
     }
     /** Baustein Akkorde/Muster: Spielweise, Satz, Lage, Anschläge je Takt (D3). */
     _renderChordPart() {
@@ -8246,13 +8339,15 @@
     _closeAllLayers() { while (this._layers?.length) this._closeLayer(undefined, { focus: false }); }
 
     /** „Meine Sounds“ (Sampler-Bibliothek). Bis zur eigenen Ansicht: Studio, Reiter Sampler. */
-    _openSounds(view = 'library') {
+    /** Meine Sounds; `kind` wählt bei der Aufnahme die Art vor (Schlag · Ton · Loop, aus „+ Spur“). */
+    _openSounds(view = 'library', kind = null) {
       if (this._uiMode() !== 'studio') this._applyView('studio');
       this._primeSamples();
       // Schließen (Fertig/Hintergrund/Escape) mitten in der Aufnahme: Mikrofon aus, nichts
       // speichern. Ein offener Editor übernimmt wie sein eigenes „Fertig“.
       this._openPanelLayer(t('lab.menu.sounds'), ['sampler'], { onClose: () => this._closeSounds() });
       this._samplerGo(view);
+      if (kind && this.sampler.rec) { this.sampler.rec.kind = kind; this._renderSampler(); }
     }
     _closeSounds() {
       const smp = this.sampler;
@@ -9708,7 +9803,16 @@
       if (!lane) return;
       this._pushHistory();
       s.sampleLanes.splice(index, 1);
+      this._restoreLaneRows([lane]);
       this._renderBeat(); this._renderSampler();
+    }
+    /** Ersetzte eine Schlag-Spur eine Drum-Zeile (ohne „Originalklang darunter“), klingt die
+     *  Zeile wieder, sobald keine andere Spur sie mehr ersetzt. */
+    _restoreLaneRows(gone) {
+      const s = this.state;
+      const replaced = (l) => { const m = this._sampleMeta(l.padId); return m?.kind === 'hit' && !l.layer ? m.track : null; };
+      const still = new Set(s.sampleLanes.map(replaced).filter(Boolean));
+      for (const track of gone.map(replaced)) if (track && !still.has(track) && track in s.trackOn) s.trackOn[track] = true;
     }
 
     /** Zellen einer Sample-Spur: antippen schaltet 1 → .6 → aus (wie die Drum-Spuren). */
@@ -11918,18 +12022,20 @@
           break;
         }
         case 'track-solo': this.ui.solo = this.ui.solo === value ? null : value; this._syncEngine(); this._renderStudio(); if (this.ui.track) this._showTrackTab(this.ui.trackTab); break;
-        case 'track-remove':
-          this._pushHistory();
-          if (value === 'drone') this._setDrone(false); else if (value === 'arp') { s.arpOn = false; this._renderKeys(); }
-          this._closeLayer(this.$('.track-layer'), { focus: false });
-          this._renderStudio(); this.$('.add-track')?.focus();
-          break;
-        case 'add-track': this._openPanelLayer(t('lab.studio.addTitle'), ['addTrack']); break;
+        case 'track-remove': this._removeTrack(value); break;
+        case 'add-track': this._openPanelLayer(t('lab.studio.addTitle'), ['addTrack'], { after: () => this._renderAddTrack(value) }); break;
         case 'add-track-pick':
           this._closeLayer(this.$('.panel-layer'), { focus: false });
           if (value === 'drone') { this._setDrone(true); this._renderStudio(); this._openTrack('drone'); }
           else if (value === 'arp') { this._pushHistory(); s.arpOn = true; s.arpAuto = true; this._renderKeys(); this._renderStudio(); this._openTrack('arp'); }
-          else this._openSounds('record');
+          else if (FIXED_TRACKS.includes(value)) {
+            this._pushHistory();
+            s.removed = s.removed.filter((id) => id !== value);
+            s.mute[this._trackDef(value).bus] = false;
+            if (value === 'bass') s.trackOn.bass = true;
+            if (value === 'chords') s.chordsOn = true;
+            this._syncEngine(); this._renderAll(); this._openTrack(value);
+          } else this._openSounds('record', SAMPLE_KINDS.includes(value) ? value : null);
           break;
         case 'song-key': this._openKeyLayer(); break;
         case 'song-meter': this._openPanelLayer(t('lab.studio.meter'), ['meterSel'], { after: () => this.$all('.meter-chips [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === this._meter()))) }); break;
@@ -13648,7 +13754,12 @@
   .song-prog { min-height: 48px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); display: flex; align-items: center; gap: 8px; padding: 0 10px; text-align: left; }
   .song-prog-list { flex: 1; min-width: 0; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .song-prog-edit { font-size: .72rem; font-weight: 700; color: var(--muted); white-space: nowrap; }
-  .track-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .track-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .t-group { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .t-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 0 4px; }
+  .t-group-head h3 { margin: 0; font-size: .66rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .t-group-add { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: 1.1rem; font-weight: 800; }
+  .t-group-empty { min-height: 44px; border-radius: 14px; border: 2px dashed var(--line); font-size: .74rem; font-weight: 700; color: var(--muted); padding: 0 12px; }
   .t-card, .t-heads { min-width: 0; }
   .t-card { grid-template-columns: minmax(0, 1fr); }
   .t-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 8px 8px 10px 10px; display: grid; gap: 7px; }
@@ -13669,6 +13780,10 @@
   .t-vol { display: flex; align-items: center; gap: 8px; padding-left: 20px; color: var(--muted); }
   .t-vol svg { width: 16px; height: 16px; flex: 0 0 auto; }
   .t-vol input { flex: 1; accent-color: var(--accent); min-height: 32px; }
+  .t-foot { display: flex; align-items: center; gap: 8px; padding-left: 20px; }
+  .t-foot .t-vol { flex: 1; min-width: 0; padding-left: 0; }
+  .t-del { width: 36px; height: 36px; margin-left: auto; display: inline-grid; place-items: center; color: var(--muted); }
+  .t-del svg { width: 18px; height: 18px; }
   .add-track { min-height: 48px; border-radius: 16px; border: 2px dashed var(--line); font-size: .78rem; font-weight: 700; color: var(--text); }
   .studio-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .studio-tools .chip { min-height: 40px; }
@@ -13716,6 +13831,7 @@
   @media (max-width: 359px) {
     .song-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .t-ms { width: 40px; }
+    .t-ms.t-del { width: 36px; }
   }
 
 
@@ -14105,9 +14221,6 @@
     </section>
     <section data-part="addTrack" class="panel">
       <div class="add-list">
-        <button class="menu-item" type="button" data-action="add-track-pick" data-value="drone"><span><strong>${t('lab.track.drone')}</strong><small>${t('lab.studio.add.drone')}</small></span></button>
-        <button class="menu-item" type="button" data-action="add-track-pick" data-value="rec"><span><strong>${t('lab.studio.addRecLabel')}</strong><small>${t('lab.studio.add.rec')}</small></span></button>
-        <button class="menu-item" type="button" data-action="add-track-pick" data-value="arp"><span><strong>${t('lab.track.arp')}</strong><small>${t('lab.studio.add.arp')}</small></span></button>
       </div>
     </section>
   </div>
@@ -14983,6 +15096,20 @@
     v._handleAction('add-track-pick', 'arp', null);
     if (!v.state.arpOn || !v.$('.t-card[data-track="arp"]') || v.$('.track-layer').hidden) fail('+ Spur: 2. Akkorde');
     v._closeAllLayers();
+    // Gruppen (Instrumente · Drums & Pads · Audio) und Löschen jeder Spur, ↶ holt sie zurück.
+    if (v.$all('.t-group').length !== 3 || !v.$('.t-group[data-group="drums"] .t-card[data-track="drums"]') || !v.$('.t-group[data-group="inst"] .t-card[data-track="arp"]')) fail('Spur-Gruppen');
+    v._handleAction('track-remove', 'chords', null);
+    if (v.$('.t-card[data-track="chords"]') || !v.state.removed.includes('chords') || v._busLevel('chords') !== 0) fail('Spur löschen');
+    v._handleAction('add-track', 'inst', null);
+    if (!v.$('.panel-layer-body [data-action="add-track-pick"][data-value="chords"]')) fail('+ Spur: gelöschte Spur fehlt');
+    v._handleAction('add-track-pick', 'chords', null);
+    if (!v.$('.t-card[data-track="chords"]') || v.state.removed.length || v.state.mute.chords) fail('Gelöschte Spur wieder hinzufügen');
+    v._closeAllLayers();
+    v._handleAction('track-remove', 'arp', null);
+    if (v.state.arpOn || v.$('.t-card[data-track="arp"]')) fail('2. Akkorde löschen');
+    v.undo();
+    if (!v.state.arpOn) fail('Löschen rückgängig');
+    v.state.arpOn = false; v._renderAll();
     const keyBefore = v.state.keyRoot; const tempoBefore = v.state.eighths;
     v.randomize();
     if (v.state.keyRoot !== keyBefore || v.state.eighths !== tempoBefore) fail('Zufällig ändert Tonart oder Tempo');
