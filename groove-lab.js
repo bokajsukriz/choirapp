@@ -2235,7 +2235,7 @@
    *  droneOn, 2. Akkorde-Spur = Arp-Ebene, Aufnahme = Sample-Spuren (Phrasen). */
   const STUDIO_TRACKS = {
     drums: { bus: 'drums', lock: 'beat', color: 'var(--accent)', pattern: ['loop', 'grid'], sound: ['kit'], mix: ['groove'] },
-    bass: { bus: 'bass', lock: 'beat', color: '#c4620f', pattern: ['bassPlay', 'grid'], sound: ['bassSound'], mix: [] },
+    bass: { bus: 'bass', lock: 'beat', color: SATB_COLOR.B, pattern: ['bassPlay', 'grid'], sound: ['bassSound'], mix: [] },
     chords: { bus: 'chords', lock: 'harmony', color: '#2f6fd6', pattern: ['chordPlay', 'satb'], sound: ['chordSoundSel'], mix: [] },
     melody: { bus: 'melody', lock: 'melody', color: '#0f7c6e', pattern: ['melody'], sound: ['sound'], mix: [] },
     drone: { bus: 'drone', lock: null, color: '#7a5bd6', pattern: ['drone'], sound: null, mix: [] },
@@ -2247,8 +2247,8 @@
   /** Gruppen des Studios wie in einer DAW: Instrumente · Drums & Pads · Audio. Sample-Spuren
    *  ordnen sich nach ihrer Art ein (Ton → Instrument, Schlag → Pads, Loop → Audio). */
   const STUDIO_GROUPS = [
-    { id: 'inst', tracks: ['chords', 'melody', 'bass', 'drone', 'arp'], kind: 'tone' },
     { id: 'drums', tracks: ['drums'], kind: 'hit' },
+    { id: 'inst', tracks: ['bass', 'chords', 'melody', 'drone', 'arp'], kind: 'tone' },
     { id: 'audio', tracks: [], kind: 'loop' },
   ];
   /** Farbe einer Sample-Spur je Art. */
@@ -2558,6 +2558,8 @@
       octave: 4,
       sound: soundFromPreset(presetIndexByName('Klavier')),
       mix: { drums: .8, bass: .8, melody: .75, arp: .6, chords: .45, keys: .8, drone: .5, master: .8 },
+      // Panorama je Ebene (-1 links … 1 rechts).
+      pan: { drums: 0, bass: 0, melody: 0, arp: 0, chords: 0, keys: 0, drone: 0 },
       mute: { drums: false, bass: false, melody: false, arp: false, chords: false, keys: false, drone: false },
       // Im Studio gelöschte Grundspuren (FIXED_TRACKS); sie bleiben stumm, bis sie wieder hinzukommen.
       removed: [],
@@ -2817,6 +2819,7 @@
     // Ältere Stände hatten je Ebene einen eigenen Klang — dann gilt der der Melodie.
     s.sound = sanitizeSound(raw.sound || obj(raw.sounds).melody, s.sound);
     for (const bus of [...BUSES, 'master']) s.mix[bus] = num(obj(raw.mix)[bus], 0, 1, s.mix[bus]);
+    for (const bus of BUSES) s.pan[bus] = num(obj(raw.pan)[bus], -1, 1, 0);
     for (const bus of BUSES) s.mute[bus] = bool(obj(raw.mute)[bus], false);
     const fx = obj(raw.fx);
     s.fx = {
@@ -3411,8 +3414,15 @@
       const limiterTrim = gain(.78);
       master.connect(limiterTrim).connect(limiter).connect(ctx.destination);
 
-      const drums = gain(.72, master);
-      const bass = gain(.8, master);
+      // Panorama je Ebene (Mix-Blatt): StereoPanner hinter dem Pegel; ohne ihn (alte Browser) mono durch.
+      this.panners = {};
+      const panned = (id, node, to) => {
+        const p = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+        if (p) { node.connect(p).connect(to); this.panners[id] = p; } else node.connect(to);
+        return node;
+      };
+      const drums = panned('drums', gain(.72), master);
+      const bass = panned('bass', gain(.8), master);
       const duck = gain(1, master);
       // Synth-Summe: leiser als früher (.55) und mit Hochpass bei 140 Hz —
       // unten gehört der Platz Bass und Kick; ohne diese Trennung klang der
@@ -3461,7 +3471,7 @@
         const input = gain(1);
         const shaper = ctx.createWaveShaper();
         shaper.oversample = '2x';
-        const level = gain(.7, id === 'drone' ? master : synthSum);
+        const level = panned(id, gain(.7), id === 'drone' ? master : synthSum);
         input.connect(shaper).connect(level);
         const reverbSend = gain(0, reverbIn);
         const echoSend = gain(0, echoIn);
@@ -3502,6 +3512,12 @@
       if (!this.ctx) return;
       const node = this.layers[bus]?.level || this.buses[bus];
       node?.gain.setTargetAtTime(clamp(value, 0, 1), this.ctx.currentTime, .02);
+    }
+
+    /** Panorama einer Ebene: -1 links … 1 rechts. */
+    setBusPan(bus, value) {
+      if (!this.ctx) return;
+      this.panners?.[bus]?.pan.setTargetAtTime(clamp(value, -1, 1), this.ctx.currentTime, .02);
     }
 
     /** Vorverzögerung des Halls in s (Raum-Makro, Redesign 4.3). */
@@ -4524,6 +4540,18 @@
       this._applyState(sanitizeState(JSON.parse(prev)), { history: false });
     }
 
+    /** Menü → Neues Projekt: zurück zum Ausgangsstand (Pop, alle Grundspuren). Die
+     *  Sampler-Kits bleiben (sie gehören zu „Meine Sounds“); ↶ holt den alten Stand zurück. */
+    newProject() {
+      const fresh = defaultState();
+      fresh.sampler = this.state.sampler;
+      if (this.state.droneOn) this._setDrone(false);
+      this.ui.solo = null;
+      this.ui.studioTarget = null;
+      this._applyState(fresh);
+      this._setStatus(t('lab.menu.newProjectDone'));
+    }
+
     _applyState(state, { history = true } = {}) {
       if (history) this._pushHistory();
       const droneWasOn = this.state.droneOn;
@@ -4886,7 +4914,7 @@
       this.$('.sf-opts-keys').hidden = ui.tab === 'pads';
       this.$('.sf-dots').hidden = ui.tab !== 'piano';
       this.$('.sf-dots').setAttribute('aria-pressed', String(ui.dots));
-      this.$('.sf-opts-pads').hidden = ui.tab !== 'pads';
+      this.$('.sf-opts-pads').hidden = ui.tab !== 'pads' || !choir;
       const soundSel = this.$('.sf-sound');
       soundSel.closest('.sf-select').hidden = !choir;
       this._options(soundSel, SURFACE_SOUNDS.map((name) => [name, name]), ui.preset);
@@ -4952,6 +4980,7 @@
       // Pads: 8 Pads des Kits; in Chor ist ein freies letztes Pad „Eigenen Sound aufnehmen“.
       const kit = this._sfKit();
       const choir = this.$('.surface').classList.contains('is-choir');
+      if (!choir) { this.$('.sf-pads').replaceChildren(...this._studioDrumPads()); this._paintSurfaceDots(); return; }
       this.$('.sf-pads').replaceChildren(...Array.from({ length: SAMPLER_PADS }, (_, i) => {
         // In Chor bleibt das 8. Pad immer „Eigenen Sound aufnehmen“ (auch bei vollen Kits).
         const id = choir && i === SAMPLER_PADS - 1 ? null : kit.pads[i];
@@ -4995,6 +5024,36 @@
       this.$all('.sf-scale .pad').forEach((k) => k.classList.toggle('is-tone', pcs.has(mod(Number(k.dataset.midi), 12))));
     }
 
+    /** Studio-Pads der Drums: genau die Zeilen der Spur (Klang des Kits, wie beim Abspielen)
+     *  plus die Sample-Pads (Schlag-Spuren) — was man hört, landet so auch im Muster. */
+    _studioDrumPads() {
+      const pad = (label, sub, fn) => {
+        const b = this._mk('button', 'sf-pad');
+        b.type = 'button';
+        b.append(this._mk('strong', '', label), this._mk('span', '', sub));
+        b.setAttribute('aria-label', `${label} · ${sub}`);
+        b.addEventListener('pointerdown', (e) => { if (e.button > 0) return; e.preventDefault(); fn(b); });
+        b.addEventListener('click', (e) => { if (e.detail === 0) fn(b); });
+        return b;
+      };
+      const hit = (b) => { b.classList.add('is-hit'); global.setTimeout(() => b.classList.remove('is-hit'), 140); };
+      const kitName = t(`lab.kit.${resolveKit(this.state.drumKit, this._pattern())}`);
+      return [
+        ...DRUM_TRACKS.map((track) => pad(trackLabel(track), kitName, async (b) => {
+          hit(b);
+          const tap = this.engine.ready ? this.engine.ctx.currentTime : null;
+          await this._preview(track, 1);
+          if (tap !== null) this._surfaceTap({ drumTrack: track, tap });
+        })),
+        ...this.state.sampleLanes.filter((l) => this._laneKind(l) === 'hit').map((lane) => pad(this._laneName(lane), this._kindLabel('hit'), async (b) => {
+          hit(b);
+          const tap = this.engine.ready ? this.engine.ctx.currentTime : null;
+          await this._auditionPad(lane.padId);
+          if (tap !== null) this._surfaceTap({ padId: lane.padId, tap });
+        })),
+      ];
+    }
+
     /** Pad der Spielfläche: hören und (Studio, Aufnahme läuft) ins Muster legen. */
     async _surfacePad(index) {
       const id = this._sfKit().pads[index];
@@ -5007,7 +5066,7 @@
     }
 
     /** Anschlag während der Aufnahme ins Muster der Zielspur legen (Sechzehntel-Raster). */
-    _surfaceTap({ padId = null, midi = null, tap }) {
+    _surfaceTap({ padId = null, drumTrack = null, midi = null, tap }) {
       const rec = this.sfRec;
       if (rec.phase !== 'recording' && rec.phase !== 'armed') return;
       if (!this.playing || !this.stepClock || rec.target === 'melody') return;
@@ -5018,7 +5077,11 @@
       if (g < rec.startStep || g >= rec.endStep) return;
       const barSteps = this._barSteps();
       const st = mod(g, barSteps);
-      if (rec.target === 'drums' && padId) {
+      if (rec.target === 'drums' && drumTrack) {
+        (s.beat[drumTrack] ||= {})[st] = 1;
+        s.trackOn[drumTrack] = true;
+        s.beatEdited = true;
+      } else if (rec.target === 'drums' && padId) {
         const meta = this._sampleMeta(padId);
         if (!meta) return;
         if (isFactoryId(padId) && DRUM_TRACKS.includes(meta.track)) { s.beat[meta.track][st] = 1; s.trackOn[meta.track] = true; }
@@ -5324,7 +5387,7 @@
         return `<div class="t-card${id === target ? ' is-sel' : ''}${muted ? ' is-muted' : ''}${id === this.ui.hl ? ' is-hl' : ''}" data-track="${id}" style="--tc:${def.color}">
           <div class="t-top"><button class="t-open" type="button" data-action="open-track" data-value="${id}" aria-haspopup="dialog"><span class="t-bar" aria-hidden="true"></span>
             <span class="t-heads"><strong>${esc(name)}</strong><span>${esc(this._trackSub(id))}</span></span></button>
-            ${id === 'melody' ? `<button class="t-ms t-rec" type="button" data-action="mel-rec" aria-label="${esc(t('lab.melRecAria'))}" title="${esc(t('lab.melRecAria'))}"><i aria-hidden="true"></i></button>` : ''}
+            ${SURFACE_TARGETS.includes(id) ? `<button class="t-ms t-rec" type="button" data-action="track-arm" data-value="${id}" aria-pressed="${id === target}" aria-label="${esc(tf('lab.studio.armAria', { name }))}" title="${esc(tf('lab.studio.armAria', { name }))}"><i aria-hidden="true"></i></button>` : ''}
             <button class="t-ms" type="button" data-action="track-mute" data-value="${id}" aria-pressed="${muted}" aria-label="${esc(tf('lab.studio.muteAria', { name }))}">M</button>
             <button class="t-ms" type="button" data-action="track-solo" data-value="${id}" aria-pressed="${solo}" aria-label="${esc(tf('lab.studio.soloAria', { name }))}">S</button></div>
           ${cellRow(this._trackCells(id))}<div class="t-foot">${vol}${del(id, name)}</div></div>`;
@@ -5355,7 +5418,7 @@
       }).join('');
       cards.querySelectorAll('input[data-mix]').forEach((el) => this._paintLevel?.(el));
       if (refocus) cards.querySelector(refocus)?.focus();
-      this.$('.kbd-fab-text').textContent = tf('lab.studio.kbdFab', { name: this._trackName(target) });
+      this.$('.kbd-fab-text').textContent = tf(target === 'drums' ? 'lab.studio.padsFab' : 'lab.studio.kbdFab', { name: this._trackName(target) });
       if (!this.$('.track-layer').hidden) this._renderTrackHead();
     }
     /** Ziel der Spielfläche: die markierte Spur (nur Spuren, in die man spielen kann). */
@@ -5428,20 +5491,23 @@
       this._renderTrackHead();
       body.scrollTop = 0;
     }
-    /** Mix der Spur: Lautstärke, Stumm/Solo; optionale Spuren lassen sich entfernen. */
+    /** Mix der Spur: Lautstärke und Panorama (Stumm/Solo/Löschen sitzen auf der Karte). */
     _trackMixBlock(id) {
       const s = this.state;
       const def = this._trackDef(id);
       const box = document.createElement('section');
       box.className = 'panel track-mix';
       const name = this._trackName(id);
-      const muted = this._trackMuted(id);
-      box.innerHTML = `${def.bus ? `<label class="slider-line"><span>${t('lab.studio.volume')}</span><input type="range" min="0" max="1" step=".01" data-mix="${def.bus}" value="${s.mix[def.bus]}" aria-label="${tf('lab.studio.volumeAria', { name })}"><output data-out="mix-${def.bus}">${Math.round(s.mix[def.bus] * 100)} %</output></label>` : ''}
-        <div class="chip-row"><button class="chip" type="button" data-action="track-mute" data-value="${id}" aria-pressed="${muted}">${t('lab.chor.mute')}</button>
-        ${id !== 'rec' ? `<button class="chip" type="button" data-action="track-solo" data-value="${id}" aria-pressed="${this.ui.solo === id}">${t('lab.studio.solo')}</button>` : ''}
-        <button class="chip" type="button" data-action="track-remove" data-value="${id}">${t('lab.studio.remove')}</button></div>
-        ${id === 'drums' ? `<p class="foot-note">${t('lab.studio.pumpHint')}</p>` : ''}${id === 'melody' || id === 'chords' ? `<p class="foot-note">${t('lab.studio.roomMixHint')}</p>` : ''}`;
+      box.innerHTML = def.bus ? `<label class="slider-line"><span>${t('lab.studio.volume')}</span><input type="range" min="0" max="1" step=".01" data-mix="${def.bus}" value="${s.mix[def.bus]}" aria-label="${tf('lab.studio.volumeAria', { name })}"><output data-out="mix-${def.bus}">${Math.round(s.mix[def.bus] * 100)} %</output></label>
+        <label class="slider-line"><span>${t('lab.studio.pan')}</span><input type="range" min="-1" max="1" step=".05" data-pan="${def.bus}" value="${s.pan[def.bus]}" aria-label="${tf('lab.studio.panAria', { name })}"><output data-out="pan-${def.bus}">${this._panLabel(s.pan[def.bus])}</output></label>
+        ${id === 'drums' ? `<p class="foot-note">${t('lab.studio.pumpHint')}</p>` : ''}${id === 'melody' || id === 'chords' ? `<p class="foot-note">${t('lab.studio.roomMixHint')}</p>` : ''}`
+        : `<p class="foot-note">${t('lab.studio.mixLanes')}</p>`;
       return box;
+    }
+    /** Panorama als Text: „Mitte“, „L 40“, „R 25“. */
+    _panLabel(v) {
+      const n = Math.round(Math.abs(v) * 100);
+      return n === 0 ? t('lab.studio.panCenter') : `${v < 0 ? t('lab.studio.panL') : t('lab.studio.panR')} ${n}`;
     }
     /** Spur löschen (Karte 🗑 oder Mix-Blatt). Grundspuren verschwinden stumm (`removed`), Liegeton
      *  und 2. Akkorde schalten ab, Sample-Spuren fallen aus dem Raster (das Sample bleibt in
@@ -7366,7 +7432,7 @@
     _applyLevels(eng, master) {
       const s = this.state;
       eng.setMaster(master * (ENERGY_TRIM[s.energy]?.all ?? 1));
-      for (const bus of BUSES) eng.setBusLevel(bus, this._busLevel(bus, s));
+      for (const bus of BUSES) { eng.setBusLevel(bus, this._busLevel(bus, s)); eng.setBusPan?.(bus, s.pan[bus]); }
       const room = ROOMS[s.room];
       const wet = (sound, factor) => (room ? { ...sound, reverbWet: clamp(room.wet * factor, 0, 1) } : sound);
       for (const layer of SOUND_LAYERS) eng.setLayerSound(layer, wet(this._heardSound(), ROOM_SEND[layer]));
@@ -11829,6 +11895,10 @@
         } else if (el.dataset.kit) {
           s.kit[el.dataset.kit] = Number(el.value);
           this._renderKit();
+        } else if (el.dataset.pan) {
+          s.pan[el.dataset.pan] = Number(el.value);
+          this.engine.setBusPan(el.dataset.pan, s.pan[el.dataset.pan]);
+          this.$all(`[data-out="pan-${el.dataset.pan}"]`).forEach((o) => { o.textContent = this._panLabel(s.pan[el.dataset.pan]); });
         } else if (el.dataset.mix) {
           s.mix[el.dataset.mix] = Number(el.value);
           if (el.dataset.mix === 'master') this.$all('[data-out="master"]').forEach((o) => { o.textContent = `${Math.round(s.mix.master * 100)} %`; });
@@ -12021,6 +12091,15 @@
           if (this.ui.track) this._showTrackTab(this.ui.trackTab);
           break;
         }
+        case 'track-arm':
+          // Scharf = Ziel der Spielfläche (Keyboard/Pads); aufgenommen wird erst mit „● Aufnehmen“ dort.
+          if (SURFACE_TARGETS.includes(value) && this.sfRec.phase === 'idle') {
+            this.ui.studioTarget = value;
+            this._renderStudio();
+            if (!this.$('.surface').hidden) this._renderSurface();
+            this.$(`.t-card[data-track="${value}"] [data-action="track-arm"]`)?.focus();
+          }
+          break;
         case 'track-solo': this.ui.solo = this.ui.solo === value ? null : value; this._syncEngine(); this._renderStudio(); if (this.ui.track) this._showTrackTab(this.ui.trackTab); break;
         case 'track-remove': this._removeTrack(value); break;
         case 'add-track': this._openPanelLayer(t('lab.studio.addTitle'), ['addTrack'], { after: () => this._renderAddTrack(value) }); break;
@@ -12169,6 +12248,7 @@
         case 'dc-adopt': this._dcAdopt(); break;
         case 'toggle-transport': if (this.playing) this.stop(); else if (!this._starting) this.start(); break;
         case 'randomize': this._closeSheet({ focus: false }); this.randomize(); break;
+        case 'new-project': this._closeSheet({ focus: false }); this.newProject(); break;
         case 'undo': this.undo(); break;
         case 'tap-tempo': this._tapTempo(); break;
         case 'tab': this._setTab(target.dataset.tab); break;
@@ -13564,6 +13644,8 @@
   .track-body .mel-rec-link { display: inline-flex; align-items: center; gap: 8px; margin: 8px 0 0 16px; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: .76rem; font-weight: 800; color: var(--text); }
   .mel-rec-link i, .t-rec i { width: 12px; height: 12px; border-radius: 50%; background: var(--bad); display: block; }
   .t-rec { display: grid; place-items: center; }
+  .t-ms.t-rec[aria-pressed="true"] { background: var(--bad); border-color: var(--bad); }
+  .t-ms.t-rec[aria-pressed="true"] i { background: #fff; }
   .mel-top { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
   .mel-bars { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; }
   .mel-bar-tab { min-width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--line); font-size: .74rem; font-weight: 800; color: var(--muted); background: var(--surface-2); }
@@ -13785,8 +13867,6 @@
   .t-del { width: 36px; height: 36px; margin-left: auto; display: inline-grid; place-items: center; color: var(--muted); }
   .t-del svg { width: 18px; height: 18px; }
   .add-track { min-height: 48px; border-radius: 16px; border: 2px dashed var(--line); font-size: .78rem; font-weight: 700; color: var(--text); }
-  .studio-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .studio-tools .chip { min-height: 40px; }
   .studio-fab-space { height: 84px; }
   .studio-fabs { position: sticky; bottom: 12px; justify-self: center; display: flex; gap: 8px; max-width: 100%; margin-top: -60px; z-index: 2; }
   .kbd-fab, .mic-fab {
@@ -14152,9 +14232,6 @@
     <button class="song-prog" type="button" data-action="prog-sheet" aria-haspopup="dialog"><span class="song-k">${t('lab.studio.prog')}</span><strong class="song-prog-list"></strong><span class="song-prog-edit">${t('lab.studio.edit')} ›</span></button>
     <div class="track-cards"></div>
     <button class="add-track" type="button" data-action="add-track" aria-haspopup="dialog">${t('lab.studio.addTrack')}</button>
-    <div class="studio-tools"><span class="sub-label">${t('lab.studio.more')}</span>
-      <button class="chip" type="button" data-action="my-sounds">${t('lab.menu.sounds')}</button>
-    </div>
     <div class="studio-fab-space" aria-hidden="true"></div>
     <div class="studio-fabs">
       <button class="kbd-fab" type="button" data-action="surface-open">${UI_ICON.piano}<span class="kbd-fab-text"></span></button>
@@ -14705,6 +14782,7 @@
       <button class="icon-btn" type="button" data-action="close-sheet" aria-label="${t('lab.menuClose')}" title="${t('lab.menuClose')}">${UI_ICON.close}</button>
     </div>
     <section class="menu-sec menu-actions menu-main">
+      <button class="menu-item" type="button" data-action="new-project">${UI_ICON.newPage}<span>${t('lab.menu.newProject')}</span></button>
       <button class="menu-item" type="button" data-action="menu-page" data-value="file">${UI_ICON.folder}<span>${t('lab.menu.file')}</span><span class="menu-go menu-file-sub">›</span></button>
       <button class="menu-item" type="button" data-action="my-sounds">${UI_ICON.waves}<span>${t('lab.menu.sounds')}</span></button>
       <button class="menu-item menu-random" type="button" data-action="randomize">${UI_ICON.dice}<span>${t('lab.menu.random')}</span></button>
