@@ -904,11 +904,12 @@
 
   // Mischpult-Kanäle. Melodie, Arp und Tasten teilen sich EINEN Synth-Klang
   // (SOUND_LAYERS), haben aber eigene Kanäle für die Lautstärke.
-  const BUSES = ['drums', 'bass', 'melody', 'arp', 'chords', 'keys', 'drone'];
+  const BUSES = ['drums', 'bass', 'melody', 'arp', 'chords', 'pad', 'keys', 'drone'];
   const BUS_KEY = { drums: 'lab.busDrums', bass: 'lab.busBass', melody: 'lab.busMelody', arp: 'lab.busArp',
-                    chords: 'lab.busChords', keys: 'lab.busKeys', drone: 'lab.busDrone' };
+                    chords: 'lab.busChords', pad: 'lab.busPad', keys: 'lab.busKeys', drone: 'lab.busDrone' };
   const SOUND_LAYERS = ['melody', 'arp', 'keys'];
-  const SYNTH_LAYERS = [...SOUND_LAYERS, 'chords', 'drone'];
+  // 'pad': eigene Pad-Spur; 'bassSyn': der Bass mit Synth-Klang (läuft in den Bass-Bus).
+  const SYNTH_LAYERS = [...SOUND_LAYERS, 'chords', 'pad', 'drone', 'bassSyn'];
 
   const ECHO_DIVISIONS = [[1, '1/16'], [2, '1/8'], [3, '1/8·'], [4, '1/4'], [6, '1/4·']];
   const LFO_SYNCS = [[0, 'lab.lfoFree'], [1, '1/16'], [2, '1/8'], [4, '1/4'], [8, '1/2'], [16, 'lab.bar1']];
@@ -2202,13 +2203,13 @@
   const ROOM_SEND = { chordsPad: 1, chordsKeys: .6, melody: .7, arp: .6, drone: .7, keys: .5 };
   /** „Hören auf“: Faktor auf state.mix je Bus (state.mix bleibt unverändert). */
   const HEAR_FOCUS = {
-    rhythm: { drums: 1.18, bass: 1.12, chords: .6, drone: .6, melody: .85, arp: .7, keys: 1 },
+    rhythm: { drums: 1.18, bass: 1.12, chords: .6, pad: .6, drone: .6, melody: .85, arp: .7, keys: 1 },
     balanced: {},
-    harmony: { drums: .45, bass: .8, chords: 1.33, drone: 1.33, melody: .85, arp: 1.1, keys: 1 },
+    harmony: { drums: .45, bass: .8, chords: 1.33, pad: 1.33, drone: 1.33, melody: .85, arp: 1.1, keys: 1 },
   };
   /** Energie: „Voll“ = dichter, nicht lauter — Gesamtpegel und einzelne Busse ausgleichen. */
   const ENERGY_TRIM = {
-    still: { all: 1.06, chords: 1.1, bass: .9 }, calm: { all: 1 }, drive: { all: .94 }, full: { all: .85, drums: .9, chords: .9 },
+    still: { all: 1.06, chords: 1.1, pad: 1.1, bass: .9 }, calm: { all: 1 }, drive: { all: .94 }, full: { all: .85, drums: .9, chords: .9, pad: .9 },
   };
   /** Helligkeit der Akkorde je Energie (Faktor auf den Filter). */
   const ENERGY_BRIGHT = { still: .85, calm: .9, drive: 1, full: 1.25 };
@@ -2235,22 +2236,42 @@
    *  droneOn, 2. Akkorde-Spur = Arp-Ebene, Aufnahme = Sample-Spuren (Phrasen). */
   const STUDIO_TRACKS = {
     drums: { bus: 'drums', lock: 'beat', color: 'var(--accent)', pattern: ['loop', 'grid'], sound: ['kit'], mix: ['groove'] },
-    bass: { bus: 'bass', lock: 'beat', color: '#c4620f', pattern: ['bassPlay', 'grid'], sound: ['bassSound'], mix: [] },
-    chords: { bus: 'chords', lock: 'harmony', color: '#2f6fd6', pattern: ['chordPlay', 'satb'], sound: ['chordSoundSel'], mix: [] },
+    bass: { bus: 'bass', lock: 'beat', color: SATB_COLOR.B, pattern: ['bassPlay', 'grid'], sound: ['sound'], mix: [] },
+    chords: { bus: 'chords', lock: 'harmony', color: '#2f6fd6', pattern: ['chordPlay', 'satb'], sound: ['sound'], mix: [] },
     melody: { bus: 'melody', lock: 'melody', color: '#0f7c6e', pattern: ['melody'], sound: ['sound'], mix: [] },
     drone: { bus: 'drone', lock: null, color: '#7a5bd6', pattern: ['drone'], sound: null, mix: [] },
     arp: { bus: 'arp', lock: null, color: '#2f8fd6', pattern: ['arp'], sound: ['arpSoundNote'], mix: [] },
     rec: { bus: null, lock: null, color: '#b15b00', pattern: ['recNote'], sound: null, mix: [] },
+    pad: { bus: 'pad', lock: 'harmony', color: '#5b6fd6', pattern: [], sound: ['sound'], mix: [] },
   };
   /** Die vier Grundspuren — löschbar über `removed` (gelöscht = in der Liste und stumm). */
   const FIXED_TRACKS = ['drums', 'bass', 'chords', 'melody'];
   /** Gruppen des Studios wie in einer DAW: Instrumente · Drums & Pads · Audio. Sample-Spuren
    *  ordnen sich nach ihrer Art ein (Ton → Instrument, Schlag → Pads, Loop → Audio). */
   const STUDIO_GROUPS = [
-    { id: 'inst', tracks: ['chords', 'melody', 'bass', 'drone', 'arp'], kind: 'tone' },
     { id: 'drums', tracks: ['drums'], kind: 'hit' },
+    { id: 'inst', tracks: ['bass', 'chords', 'pad', 'melody', 'drone', 'arp'], kind: 'tone', extras: true },
     { id: 'audio', tracks: [], kind: 'loop' },
   ];
+  /** Instrumentenspuren mit gemeinsamer Oberfläche: jede spielt den Grundton (Rhythmus aus
+   *  bassVariant), die Akkorde (gehalten, im Rhythmus oder als Arpeggio) oder eine eigene,
+   *  eingespielte Melodie. Oktave = Transposition für alle drei. Die Typen sind nur Vorgaben. */
+  const INST_PLAYS = ['root', 'chords', 'own'];
+  const ROOT_RHYTHMS = ['whole', 'half', 'quarter', 'eighths', 'offbeat', 'octaves', 'line'];
+  const CHORD_RHYTHMS = ['held', 'half', 'quarter', 'eighths', 'offbeat', 'arp'];
+  const INST_TYPES = {
+    bass: { play: 'root', rootRhythm: 'eighths', chordRhythm: 'held', octave: -1, preset: 'Warm Sub', bassId: 'finger', color: SATB_COLOR.B },
+    chords: { play: 'chords', rootRhythm: 'whole', chordRhythm: 'held', octave: 0, preset: 'Klavier', bassId: null, color: '#2f6fd6' },
+    pad: { play: 'chords', rootRhythm: 'whole', chordRhythm: 'held', octave: 0, preset: 'Moon Pad', bassId: null, color: '#5b6fd6' },
+    melody: { play: 'own', rootRhythm: 'quarter', chordRhythm: 'arp', octave: 0, preset: 'Analog Lead', bassId: null, color: '#0f7c6e' },
+  };
+  const INST_TYPE_IDS = Object.keys(INST_TYPES);
+  /** Höchstens so viele zusätzliche Instrumentenspuren (jede ist eine eigene Ebene der Engine). */
+  const INST_MAX = 8;
+  /** Spielweisen, die der bisherige Zustand einer Grundspur selbst abbildet (Bass: Stil-Linie
+   *  oder eigene Linie, Akkorde/Pad: Akkorde, Melodie: Vorlage/Aufnahme); sonst gilt trackAlt. */
+  const NATIVE_PLAY = { bass: ['root', 'own'], chords: ['chords'], pad: ['chords'], melody: ['own'] };
+  const PRIMARY_INST = Object.keys(NATIVE_PLAY);
   /** Farbe einer Sample-Spur je Art. */
   const LANE_COLOR = { hit: '#b15b00', tone: '#8a6d00', loop: '#c2416b' };
   /** Klänge der Chor-Spielfläche (Klang ▾). */
@@ -2557,8 +2578,18 @@
       keysLayout: 'piano',
       octave: 4,
       sound: soundFromPreset(presetIndexByName('Klavier')),
-      mix: { drums: .8, bass: .8, melody: .75, arp: .6, chords: .45, keys: .8, drone: .5, master: .8 },
-      mute: { drums: false, bass: false, melody: false, arp: false, chords: false, keys: false, drone: false },
+      // Zusatzspuren (instruments) haben ihre Einträge in mix/pan/mute unter ihrer Id.
+      mix: { drums: .8, bass: .8, melody: .75, arp: .6, chords: .45, pad: .45, keys: .8, drone: .5, master: .8 },
+      // Panorama je Ebene (-1 links … 1 rechts).
+      pan: { drums: 0, bass: 0, melody: 0, arp: 0, chords: 0, pad: 0, keys: 0, drone: 0 },
+      mute: { drums: false, bass: false, melody: false, arp: false, chords: false, pad: false, keys: false, drone: false },
+      // Instrumentenspuren (gemeinsame Oberfläche): Spielweise der Grundspuren ('native' = wie
+      // ihr bisheriger Zustand, sonst 'root' | 'chords' | 'own' nach trackAlt), eigene
+      // Synth-Klänge der Grundspuren (null = Preset/Sample wie bisher) und Zusatzspuren.
+      trackPlay: { bass: 'native', chords: 'native', pad: 'native', melody: 'native' },
+      trackAlt: { bass: instConfig('bass'), chords: instConfig('chords'), pad: instConfig('pad'), melody: instConfig('melody') },
+      bassSynth: null, chordSynth: null, padSynth: null,
+      instruments: [],
       // Im Studio gelöschte Grundspuren (FIXED_TRACKS); sie bleiben stumm, bis sie wieder hinzukommen.
       removed: [],
       fx: { reverbLength: 1.8, echoDiv: 3, echoFeedback: .35, chorus: .2, reverbOn: true, echoOn: true, chorusOn: true },
@@ -2816,8 +2847,20 @@
     s.octave = int(raw.octave, 2, 5, 4);
     // Ältere Stände hatten je Ebene einen eigenen Klang — dann gilt der der Melodie.
     s.sound = sanitizeSound(raw.sound || obj(raw.sounds).melody, s.sound);
+    s.instruments = sanitizeInstruments(raw.instruments, pattern.meter);
+    const instIds = s.instruments.map((tr) => tr.id);
     for (const bus of [...BUSES, 'master']) s.mix[bus] = num(obj(raw.mix)[bus], 0, 1, s.mix[bus]);
-    for (const bus of BUSES) s.mute[bus] = bool(obj(raw.mute)[bus], false);
+    for (const id of instIds) s.mix[id] = num(obj(raw.mix)[id], 0, 1, .7);
+    for (const bus of [...BUSES, ...instIds]) s.pan[bus] = num(obj(raw.pan)[bus], -1, 1, 0);
+    for (const bus of [...BUSES, ...instIds]) s.mute[bus] = bool(obj(raw.mute)[bus], false);
+    for (const id of PRIMARY_INST) {
+      const play = obj(raw.trackPlay)[id];
+      s.trackPlay[id] = INST_PLAYS.includes(play) && !NATIVE_PLAY[id].includes(play) ? play : 'native';
+      s.trackAlt[id] = instConfig(id, obj(raw.trackAlt)[id], pattern.meter);
+    }
+    s.bassSynth = raw.bassSynth ? sanitizeSound(raw.bassSynth, soundFromPreset(presetIndexByName(INST_TYPES.bass.preset))) : null;
+    s.chordSynth = raw.chordSynth ? sanitizeSound(raw.chordSynth, soundFromPreset(presetIndexByName(INST_TYPES.chords.preset))) : null;
+    s.padSynth = raw.padSynth ? sanitizeSound(raw.padSynth, soundFromPreset(presetIndexByName(INST_TYPES.pad.preset))) : null;
     const fx = obj(raw.fx);
     s.fx = {
       reverbLength: num(fx.reverbLength, .2, 4, s.fx.reverbLength),
@@ -2905,6 +2948,37 @@
     if (SAMPLE_INSTRUMENTS.includes(raw.sample)) sound.sample = raw.sample; else delete sound.sample;
     sound.custom = raw.custom === true;
     return sound;
+  }
+
+  /** Einstellungen einer Instrumentenspur (Spielweise, Rhythmen, Oktave, eigene Töne) aus
+   *  den Vorgaben des Typs, überschrieben mit gültigen Werten aus `raw`. */
+  function instConfig(type, raw = null, meter = null) {
+    const d = INST_TYPES[type] || INST_TYPES.melody;
+    const r = raw && typeof raw === 'object' ? raw : {};
+    const notes = meter && r.notesMeter === meter ? sanitizeMelodyBars(r.notes, meter, true) : null;
+    return {
+      play: INST_PLAYS.includes(r.play) ? r.play : d.play,
+      rootRhythm: ROOT_RHYTHMS.includes(r.rootRhythm) ? r.rootRhythm : d.rootRhythm,
+      chordRhythm: CHORD_RHYTHMS.includes(r.chordRhythm) ? r.chordRhythm : d.chordRhythm,
+      octave: Number.isInteger(r.octave) ? clamp(r.octave, -3, 3) : d.octave,
+      notes, notesMeter: notes ? meter : null,
+    };
+  }
+  /** Neue Zusatzspur eines Typs (Klang aus der Vorgabe, Bass mit dem Sample-Bass). */
+  function newInstrument(type, id) {
+    const d = INST_TYPES[type];
+    return { id, type, ...instConfig(type), sound: soundFromPreset(presetIndexByName(d.preset)), bassId: d.bassId };
+  }
+  function sanitizeInstruments(raw, meter) {
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set();
+    return raw.filter((r) => r && typeof r === 'object' && INST_TYPE_IDS.includes(r.type) && /^i\d{1,4}$/.test(r.id) && !seen.has(r.id) && seen.add(r.id))
+      .slice(0, INST_MAX)
+      .map((r) => ({
+        id: r.id, type: r.type, ...instConfig(r.type, r, meter),
+        sound: sanitizeSound(r.sound, soundFromPreset(presetIndexByName(INST_TYPES[r.type].preset))),
+        bassId: BASS_SOUNDS.some((b) => b.id === r.bassId) ? r.bassId : null,
+      }));
   }
 
   // Teilen per Code: "GL1." + Base64 des JSON-Stands (UTF-8-sicher).
@@ -3411,8 +3485,15 @@
       const limiterTrim = gain(.78);
       master.connect(limiterTrim).connect(limiter).connect(ctx.destination);
 
-      const drums = gain(.72, master);
-      const bass = gain(.8, master);
+      // Panorama je Ebene (Mix-Blatt): StereoPanner hinter dem Pegel; ohne ihn (alte Browser) mono durch.
+      this.panners = {};
+      const panned = (id, node, to) => {
+        const p = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+        if (p) { node.connect(p).connect(to); this.panners[id] = p; } else node.connect(to);
+        return node;
+      };
+      const drums = panned('drums', gain(.72), master);
+      const bass = panned('bass', gain(.8), master);
       const duck = gain(1, master);
       // Synth-Summe: leiser als früher (.55) und mit Hochpass bei 140 Hz —
       // unten gehört der Platz Bass und Kick; ohne diese Trennung klang der
@@ -3456,22 +3537,48 @@
       delay.connect(echoTone).connect(feedback).connect(delay);
       delay.connect(duck);
 
-      this.layers = {};
-      for (const id of SYNTH_LAYERS) {
-        const input = gain(1);
-        const shaper = ctx.createWaveShaper();
-        shaper.oversample = '2x';
-        const level = gain(.7, id === 'drone' ? master : synthSum);
-        input.connect(shaper).connect(level);
-        const reverbSend = gain(0, reverbIn);
-        const echoSend = gain(0, echoIn);
-        level.connect(reverbSend);
-        level.connect(echoSend);
-        this.layers[id] = { input, shaper, level, reverbSend, echoSend };
-      }
-
       this.buses = { master, drums, bass, duck, synthSum, chorusWet, convolver, delay, feedback, reverbIn, reverbReturn, echoIn, preDelay };
+      this.layers = {};
+      for (const id of SYNTH_LAYERS) this._makeLayer(id, id === 'drone' ? master : id === 'bassSyn' ? bass : synthSum, id !== 'bassSyn');
       this.noiseBuffer = this._whiteNoise(.5);
+    }
+
+    /** Eine Klang-Ebene: Eingang → Waveshaper (Drive) → Pegel → Panorama → Ziel, dazu Hall-/Echo-Sends. */
+    _makeLayer(id, to, pan = true) {
+      const ctx = this.ctx;
+      const gain = (value, dest) => { const g = ctx.createGain(); g.gain.value = value; if (dest) g.connect(dest); return g; };
+      const input = gain(1);
+      const shaper = ctx.createWaveShaper();
+      shaper.oversample = '2x';
+      const level = gain(.7);
+      const panner = pan && ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      if (panner) { level.connect(panner).connect(to); this.panners[id] = panner; } else level.connect(to);
+      input.connect(shaper).connect(level);
+      const reverbSend = gain(0, this.buses.reverbIn);
+      const echoSend = gain(0, this.buses.echoIn);
+      level.connect(reverbSend);
+      level.connect(echoSend);
+      this.layers[id] = { input, shaper, level, reverbSend, echoSend, panner };
+      return this.layers[id];
+    }
+
+    /** Ebene einer zusätzlichen Instrumentenspur (bei Bedarf anlegen). Bass-Spuren gehen
+     *  am Hochpass der Synth-Summe vorbei direkt auf den Master. */
+    ensureLayer(id, low = false) {
+      if (!this.ctx || this.layers[id]) return;
+      this._makeLayer(id, low ? this.buses.master : this.buses.synthSum);
+    }
+
+    /** Ebenen gelöschter Zusatzspuren abbauen (alles außer `keep` und den festen Ebenen). */
+    pruneLayers(keep) {
+      if (!this.layers) return;
+      for (const [id, L] of Object.entries(this.layers)) {
+        if (SYNTH_LAYERS.includes(id) || keep.includes(id)) continue;
+        for (const v of [...this.voices]) if (v.layer === id) this._releaseVoice(v, true);
+        try { L.input.disconnect(); L.level.disconnect(); L.panner?.disconnect(); } catch { /* schon getrennt */ }
+        delete this.layers[id];
+        delete this.panners[id];
+      }
     }
 
     async stop() {
@@ -3502,6 +3609,12 @@
       if (!this.ctx) return;
       const node = this.layers[bus]?.level || this.buses[bus];
       node?.gain.setTargetAtTime(clamp(value, 0, 1), this.ctx.currentTime, .02);
+    }
+
+    /** Panorama einer Ebene: -1 links … 1 rechts. */
+    setBusPan(bus, value) {
+      if (!this.ctx) return;
+      this.panners?.[bus]?.pan.setTargetAtTime(clamp(value, -1, 1), this.ctx.currentTime, .02);
     }
 
     /** Vorverzögerung des Halls in s (Raum-Makro, Redesign 4.3). */
@@ -3819,7 +3932,7 @@
      * (Vorhören, Pads) klingt sie kurz. `sound.sample`: nächster Ton aus
      * samples/bass, umgestimmt; fehlt er, klingt 'round'.
      */
-    playBass(time, midi, velocity, sound, duration = .3) {
+    playBass(time, midi, velocity, sound, duration = .3, dest = null) {
       const ctx = this.ctx;
       let buffer = null;
       let base = 0;
@@ -3852,7 +3965,7 @@
         source = ctx.createBufferSource();
         source.buffer = buffer;
         source.playbackRate.value = Math.pow(2, (midi - base) / 12);
-        source.connect(gain).connect(this.buses.bass);
+        source.connect(gain).connect((dest || this.buses.bass));
       } else {
         source = ctx.createOscillator();
         const filter = ctx.createBiquadFilter();
@@ -3861,7 +3974,7 @@
         filter.type = 'lowpass'; filter.Q.value = sound.q;
         filter.frequency.setValueAtTime(sound.cutoff + sound.envAmount, time);
         if (sound.envAmount) filter.frequency.exponentialRampToValueAtTime(sound.cutoff, time + sound.decay * .8);
-        source.connect(filter).connect(gain).connect(this.buses.bass);
+        source.connect(filter).connect(gain).connect((dest || this.buses.bass));
       }
       source.start(time); source.stop(stop);
     }
@@ -4524,6 +4637,18 @@
       this._applyState(sanitizeState(JSON.parse(prev)), { history: false });
     }
 
+    /** Menü → Neues Projekt: zurück zum Ausgangsstand (Pop, alle Grundspuren). Die
+     *  Sampler-Kits bleiben (sie gehören zu „Meine Sounds“); ↶ holt den alten Stand zurück. */
+    newProject() {
+      const fresh = defaultState();
+      fresh.sampler = this.state.sampler;
+      if (this.state.droneOn) this._setDrone(false);
+      this.ui.solo = null;
+      this.ui.studioTarget = null;
+      this._applyState(fresh);
+      this._setStatus(t('lab.menu.newProjectDone'));
+    }
+
     _applyState(state, { history = true } = {}) {
       if (history) this._pushHistory();
       const droneWasOn = this.state.droneOn;
@@ -4846,6 +4971,15 @@
       return own.pads.some(Boolean) ? own : kits.find((k) => k.pads.some(Boolean)) || own;
     }
     /** Klang beim Spielen: Chor — gewählter Klang; Studio — der Klang der Zielspur. */
+    /** Spuren, in die Keyboard/Pads spielen können: die bisherigen plus Pad und Zusatzspuren. */
+    _isTarget(id) { return SURFACE_TARGETS.includes(id) || id === 'pad' || this.state.instruments.some((tr) => tr.id === id); }
+    /** Spielfläche nimmt eigene Töne in die Spur auf (Grundton/Akkorde/Eigene der gemeinsamen
+     *  Oberfläche) — alles außer Drums, Arp, dem Bass mit eigener Linie und der Melodie selbst. */
+    _recIntoNotes(id) {
+      if (id === 'pad' || this.state.instruments.some((tr) => tr.id === id)) return true;
+      if (id === 'chords') return true;
+      return (id === 'bass' || id === 'melody') && this.state.trackPlay[id] !== 'native';
+    }
     _surfaceSound() {
       if (this.$('.surface').classList.contains('is-choir')) {
         const name = this.ui.sf?.preset || 'Klavier';
@@ -4857,9 +4991,20 @@
     /** Ein Ton der Spielfläche (gibt die Stimme zurück, Bass ist ein kurzer Anschlag). */
     _surfaceVoice(midi) {
       const now = this.engine.ctx.currentTime;
-      if (this.$('.surface').classList.contains('is-studio') && this._studioTarget() === 'bass') {
-        this.engine.playBass(now, midi - 24, 1, this._bassSound(), this._stepSeconds() * 3);
+      const studio = this.$('.surface').classList.contains('is-studio');
+      const target = studio ? this._studioTarget() : null;
+      if (target === 'bass' && this.state.trackPlay.bass === 'native') {
+        this._bassNote(now, midi - 24, 1, this._stepSeconds() * 3);
         return null;
+      }
+      // Instrumentenspuren: ihr Klang, um ihre Oktave versetzt — so, wie es danach klingt.
+      if (target && this._recIntoNotes(target)) {
+        this._syncEngine();
+        const inst = this._instOf(target);
+        const m = midi + 12 * inst.cfg.octave;
+        if (inst.bassId || !inst.sound) { this._instTone(inst, m, now, .3, this._stepSeconds() * 3); return null; }
+        if (inst.sound.sample) this.engine.ensureInstrument(inst.sound.sample);
+        return this.engine.playTone(inst.sound, m, now, .3, undefined, { layer: inst.layer, stepSeconds: this._stepSeconds() });
       }
       const sound = this._surfaceSound();
       if (sound.sample) this.engine.ensureInstrument(sound.sample);
@@ -4886,13 +5031,13 @@
       this.$('.sf-opts-keys').hidden = ui.tab === 'pads';
       this.$('.sf-dots').hidden = ui.tab !== 'piano';
       this.$('.sf-dots').setAttribute('aria-pressed', String(ui.dots));
-      this.$('.sf-opts-pads').hidden = ui.tab !== 'pads';
+      this.$('.sf-opts-pads').hidden = ui.tab !== 'pads' || !choir;
       const soundSel = this.$('.sf-sound');
       soundSel.closest('.sf-select').hidden = !choir;
       this._options(soundSel, SURFACE_SOUNDS.map((name) => [name, name]), ui.preset);
       const targetSel = this.$('.sf-target');
       this.$('.sf-target-wrap').hidden = choir;
-      this._options(targetSel, this._studioTracks().filter((id) => SURFACE_TARGETS.includes(id)).map((id) => [id, this._trackName(id)]), target);
+      this._options(targetSel, this._studioTracks().filter((id) => this._isTarget(id)).map((id) => [id, this._trackName(id)]), target);
       this.$('.sf-rec').hidden = choir;
       // Pads: Kit-Wahl (mitgelieferte Kits + eigene).
       const kits = this._allKits();
@@ -4952,6 +5097,7 @@
       // Pads: 8 Pads des Kits; in Chor ist ein freies letztes Pad „Eigenen Sound aufnehmen“.
       const kit = this._sfKit();
       const choir = this.$('.surface').classList.contains('is-choir');
+      if (!choir) { this.$('.sf-pads').replaceChildren(...this._studioDrumPads()); this._paintSurfaceDots(); return; }
       this.$('.sf-pads').replaceChildren(...Array.from({ length: SAMPLER_PADS }, (_, i) => {
         // In Chor bleibt das 8. Pad immer „Eigenen Sound aufnehmen“ (auch bei vollen Kits).
         const id = choir && i === SAMPLER_PADS - 1 ? null : kit.pads[i];
@@ -4995,6 +5141,36 @@
       this.$all('.sf-scale .pad').forEach((k) => k.classList.toggle('is-tone', pcs.has(mod(Number(k.dataset.midi), 12))));
     }
 
+    /** Studio-Pads der Drums: genau die Zeilen der Spur (Klang des Kits, wie beim Abspielen)
+     *  plus die Sample-Pads (Schlag-Spuren) — was man hört, landet so auch im Muster. */
+    _studioDrumPads() {
+      const pad = (label, sub, fn) => {
+        const b = this._mk('button', 'sf-pad');
+        b.type = 'button';
+        b.append(this._mk('strong', '', label), this._mk('span', '', sub));
+        b.setAttribute('aria-label', `${label} · ${sub}`);
+        b.addEventListener('pointerdown', (e) => { if (e.button > 0) return; e.preventDefault(); fn(b); });
+        b.addEventListener('click', (e) => { if (e.detail === 0) fn(b); });
+        return b;
+      };
+      const hit = (b) => { b.classList.add('is-hit'); global.setTimeout(() => b.classList.remove('is-hit'), 140); };
+      const kitName = t(`lab.kit.${resolveKit(this.state.drumKit, this._pattern())}`);
+      return [
+        ...DRUM_TRACKS.map((track) => pad(trackLabel(track), kitName, async (b) => {
+          hit(b);
+          const tap = this.engine.ready ? this.engine.ctx.currentTime : null;
+          await this._preview(track, 1);
+          if (tap !== null) this._surfaceTap({ drumTrack: track, tap });
+        })),
+        ...this.state.sampleLanes.filter((l) => this._laneKind(l) === 'hit').map((lane) => pad(this._laneName(lane), this._kindLabel('hit'), async (b) => {
+          hit(b);
+          const tap = this.engine.ready ? this.engine.ctx.currentTime : null;
+          await this._auditionPad(lane.padId);
+          if (tap !== null) this._surfaceTap({ padId: lane.padId, tap });
+        })),
+      ];
+    }
+
     /** Pad der Spielfläche: hören und (Studio, Aufnahme läuft) ins Muster legen. */
     async _surfacePad(index) {
       const id = this._sfKit().pads[index];
@@ -5007,10 +5183,10 @@
     }
 
     /** Anschlag während der Aufnahme ins Muster der Zielspur legen (Sechzehntel-Raster). */
-    _surfaceTap({ padId = null, midi = null, tap }) {
+    _surfaceTap({ padId = null, drumTrack = null, midi = null, tap }) {
       const rec = this.sfRec;
       if (rec.phase !== 'recording' && rec.phase !== 'armed') return;
-      if (!this.playing || !this.stepClock || rec.target === 'melody') return;
+      if (!this.playing || !this.stepClock || rec.notes) return;
       const s = this.state;
       const ctx = this.engine.ctx;
       const latency = ctx.outputLatency || ctx.baseLatency || 0;
@@ -5018,7 +5194,11 @@
       if (g < rec.startStep || g >= rec.endStep) return;
       const barSteps = this._barSteps();
       const st = mod(g, barSteps);
-      if (rec.target === 'drums' && padId) {
+      if (rec.target === 'drums' && drumTrack) {
+        (s.beat[drumTrack] ||= {})[st] = 1;
+        s.trackOn[drumTrack] = true;
+        s.beatEdited = true;
+      } else if (rec.target === 'drums' && padId) {
         const meta = this._sampleMeta(padId);
         if (!meta) return;
         if (isFactoryId(padId) && DRUM_TRACKS.includes(meta.track)) { s.beat[meta.track][st] = 1; s.trackOn[meta.track] = true; }
@@ -5059,10 +5239,10 @@
       this._pushHistory();
       const barSteps = this._barSteps();
       const bars = clamp(chordCycleBars(this._chordTimeline()), 1, MEL_MAX_BARS);
-      if (rec.mode === 'replace') {
+      const notes = this._recIntoNotes(target);
+      if (rec.mode === 'replace' && !notes) {
         if (target === 'drums') { for (const tr of DRUM_TRACKS) s.beat[tr] = {}; s.sampleLanes.forEach((l) => { if (this._sampleMeta(l.padId)?.kind === 'hit') l.steps = {}; }); s.beatEdited = true; }
         if (target === 'bass') { s.beat.bass = {}; s.bassPlay = null; }
-        if (target === 'chords') { s.chordHits = null; }
       }
       // Aus dem Stillstand: ab Schritt 0 (nach dem Einzähler) — vor dem Start scharf
       // stellen, damit der Scheduler den Anfang der Aufnahme sieht.
@@ -5075,8 +5255,9 @@
       }
       rec.endStep = rec.startStep + bars * barSteps;
       rec.target = target;
+      rec.notes = notes || target === 'melody';
       rec.phase = 'armed';
-      if (target === 'melody') {
+      if (rec.notes) {
         // Die Melodie nimmt die vorhandene Tasten-Aufnahme (Töne mit Länge, Tonart-Bezug).
         const r = this.rec;
         r.bars = bars; r.barSteps = barSteps; r.notes = []; r.open.clear(); r.take = null; r.startTime = 0;
@@ -5093,7 +5274,7 @@
     _sfRecTick(g) {
       const rec = this.sfRec;
       if (rec.phase === 'idle') return;
-      if (rec.target === 'melody') {
+      if (rec.notes) {
         // Die Tasten-Aufnahme (this.rec) bestimmt Start und Ende (_recTick → _recFinish); hier nur anzeigen.
         if (rec.phase === 'armed' && this.rec.phase === 'recording') rec.phase = 'recording';
         this._renderSfRec(g);
@@ -5107,10 +5288,34 @@
     _sfRecStop() {
       const rec = this.sfRec;
       if (rec.phase === 'idle') return;
-      if (rec.target === 'melody' && (this.rec.phase === 'armed' || this.rec.phase === 'recording')) { this._recFinish(); return; }
+      if (rec.notes && (this.rec.phase === 'armed' || this.rec.phase === 'recording')) { this._recFinish(); return; }
       rec.phase = 'idle';
       this._setStatus(t(this._sfRecDirty ? 'lab.sf.recDone' : 'lab.recEmpty'));
       this._sfRecDirty = false;
+      this._renderAll();
+      this._renderSfRec();
+    }
+    /** Aufnahme in eine Instrumentenspur: eigene Töne (dazu = zusammenführen), Spielweise „Eigene“. */
+    _sfRecInst(id, take) {
+      const s = this.state;
+      const rec = this.sfRec;
+      const meter = this._meter();
+      const extra = s.instruments.find((tr) => tr.id === id);
+      const cfg = extra || s.trackAlt[id];
+      const bars = this._recRotated(take);
+      const old = cfg.notes && cfg.notesMeter === meter ? cfg.notes : null;
+      const next = rec.mode === 'add' && old
+        ? Array.from({ length: Math.max(bars.length, old.length) }, (_, i) => [...(old[i % old.length] || []), ...(bars[i % bars.length] || [])])
+        : bars;
+      const clean = sanitizeMelodyBars(next, meter, true);
+      rec.phase = 'idle';
+      if (clean) {
+        cfg.notes = clean; cfg.notesMeter = meter;
+        if (extra) extra.play = 'own'; else s.trackPlay[id] = 'own';
+        if (id === 'melody') s.melodyOn = true;
+        if (id === 'chords') s.chordsOn = true;
+        this._setStatus(t('lab.sf.recDone'));
+      } else this._setStatus(t('lab.recEmpty'));
       this._renderAll();
       this._renderSfRec();
     }
@@ -5173,7 +5378,7 @@
       const text = rec.phase === 'recording' ? tf('lab.sf.recRunning', { bar: clamp(bar, 1, total), total })
         : count !== null ? tf('lab.countIn', { n: count }) : rec.phase === 'armed' ? t('lab.sf.recArmed') : t('lab.sf.rec');
       const target = on ? rec.target : this._studioTarget();
-      const note = rec.phase === 'recording' ? t('lab.sf.recHintOn') : on ? t('lab.sf.recHintArmed') : t(`lab.sf.recHint.${SURFACE_TARGETS.includes(target) ? target : 'chords'}`);
+      const note = rec.phase === 'recording' ? t('lab.sf.recHintOn') : on ? t('lab.sf.recHintArmed') : t(`lab.sf.recHint.${this._recIntoNotes(target) ? 'melody' : SURFACE_TARGETS.includes(target) ? target : 'chords'}`);
       const key = `${rec.phase}|${text}|${note}|${rec.mode}|${count}`;
       if (this._sfRecShown === key) return;
       this._sfRecShown = key;
@@ -5215,12 +5420,21 @@
       }
     }
 
-    _trackDef(id) { return STUDIO_TRACKS[id]; }
-    /** Spuren, die gerade da sind: die vier festen (außer gelöschten) plus Liegeton, 2. Akkorde, Aufnahme. */
+    _trackDef(id) {
+      if (hasOwn(STUDIO_TRACKS, id)) return STUDIO_TRACKS[id];
+      const tr = this.state.instruments.find((x) => x.id === id);
+      return tr ? { bus: id, lock: null, color: INST_TYPES[tr.type].color, pattern: [], sound: ['sound'], mix: [], extra: true } : undefined;
+    }
+    /** Spuren, die gerade da sind: die festen (außer gelöschten), Pad, Liegeton, 2. Akkorde,
+     *  die Zusatz-Instrumente und die Aufnahme. */
     _studioTracks() {
       const s = this.state;
-      return [...FIXED_TRACKS.filter((id) => !this._trackGone(id)), ...(s.droneOn ? ['drone'] : []), ...(s.arpOn ? ['arp'] : []), ...(s.sampleLanes.length ? ['rec'] : [])];
+      const here = (id) => !this._trackGone(id);
+      return [...['drums', 'bass', 'chords'].filter(here), ...(s.chordPad ? ['pad'] : []), ...(here('melody') ? ['melody'] : []),
+        ...(s.droneOn ? ['drone'] : []), ...(s.arpOn ? ['arp'] : []), ...s.instruments.map((tr) => tr.id), ...(s.sampleLanes.length ? ['rec'] : [])];
     }
+    /** Instrumentenspur mit der gemeinsamen Oberfläche (Grundspuren und Zusatzspuren). */
+    _isInst(id) { return PRIMARY_INST.includes(id) || this.state.instruments.some((tr) => tr.id === id); }
     /** Gelöschte Grundspur: in `removed` und stumm. Schaltet sie woanders (Chor) jemand
      *  wieder laut, ist sie wieder da — nie eine klingende Spur, die man nicht sieht. */
     _trackGone(id, s = this.state) {
@@ -5241,17 +5455,44 @@
       if (s.mute[bus] || (bus === 'drums' && this.ui.drumsFaded) || (solo && bus !== solo && bus !== 'keys')) return 0;
       return s.mix[bus] * busFactor(s, bus);
     }
-    _trackName(id) { return t(`lab.track.${id}`); }
+    _trackName(id) {
+      const s = this.state;
+      const tr = s.instruments.find((x) => x.id === id);
+      if (!tr) return t(`lab.track.${id}`);
+      // Zusatzspuren: Typ und laufende Nummer („Pad 2“) — die Grundspur des Typs zählt mit.
+      const primary = this._studioTracks().includes(tr.type) ? 1 : 0;
+      const n = primary + s.instruments.filter((x) => x.type === tr.type).indexOf(tr) + 1;
+      return n > 1 ? `${t(`lab.track.${tr.type}`)} ${n}` : t(`lab.track.${tr.type}`);
+    }
+    /** Unterzeile einer Instrumentenspur, die nicht nach ihrem bisherigen Zustand spielt. */
+    _instSub(id) {
+      const inst = this._instOf(id);
+      const cfg = inst.cfg;
+      const how = inst.play === 'root' ? t(`lab.bassPlay.${cfg.rootRhythm}`) : inst.play === 'chords' ? t(`lab.inst.rhythm.${cfg.chordRhythm}`)
+        : cfg.notes && cfg.notesMeter === this._meter() ? t('lab.inst.ownNotes') : t('lab.inst.noNotes');
+      return [t(`lab.inst.play.${inst.play}`), how, this._instSoundName(id)].join(' · ');
+    }
+    /** Name des Klangs einer Instrumentenspur (Sample-Bass, Preset oder „Eigener Klang“). */
+    _instSoundName(id) {
+      const inst = this._instOf(id);
+      if (inst.bassId) return (BASS_SOUNDS.find((b) => b.id === inst.bassId) || BASS_SOUNDS[0]).name;
+      const sound = inst.sound;
+      if (!sound) return '';
+      return sound.custom ? t('lab.customSound') : SYNTH_PRESETS[sound.presetIndex]?.name || '';
+    }
     _trackSub(id) {
       const s = this.state;
       const pattern = this._pattern();
+      if (s.instruments.some((tr) => tr.id === id) || (PRIMARY_INST.includes(id) && s.trackPlay[id] !== 'native')) return this._instSub(id);
       switch (id) {
+        case 'pad': return [t('lab.inst.play.chords'), t('lab.inst.rhythm.held'), s.padSynth ? this._instSoundName('pad') : t(`lab.studio.pad${s.chordPad === 'airy' ? 'Airy' : 'Moon'}`)].join(' · ');
         case 'drums': return [pattern.name, t(`lab.kit.${resolveKit(s.drumKit, pattern)}`), s.fills ? tf('lab.studio.fillEvery', { n: s.fills }) : t('lab.studio.noFill')].join(' · ');
         case 'bass': {
           const match = s.bassPlay && JSON.stringify(Object.entries(bassVariant(pattern, s.bassPlay)).sort()) === JSON.stringify(Object.entries(s.beat.bass || {}).sort());
-          return [match ? t(`lab.bassPlay.${s.bassPlay}`) : t('lab.studio.ownLine'), this._bassSound().name].join(' · ');
+          return [match ? t(`lab.bassPlay.${s.bassPlay}`) : t('lab.studio.ownLine'), this._instSoundName('bass')].join(' · ');
         }
-        case 'chords': return [`${t(`lab.chordSound.${s.chordSound}`)}${s.chordPad ? ` + ${t('lab.chor.pad')}` : ''}`, t(`lab.studio.voicing.${s.chordVoicing}`), t(`lab.studio.play.${s.chordPlay}`)].join(' · ');
+        // Das Pad hat eine eigene Karte.
+        case 'chords': return [s.chordSynth ? this._instSoundName('chords') : t(`lab.chordSound.${s.chordSound}`), t(`lab.studio.voicing.${s.chordVoicing}`), t(`lab.studio.play.${s.chordPlay}`)].join(' · ');
         case 'melody': return s.melodyOn && !s.mute.melody ? [this._melody().name, SYNTH_PRESETS[s.sound.presetIndex]?.name || ''].join(' · ') : t('lab.studio.melodyOff');
         case 'drone': return [this._keyLabel(), s.droneFifth ? t('lab.studio.withFifth') : ''].filter(Boolean).join(' · ');
         case 'arp': return [t(ARP_MODES.find(([m]) => m === s.arpMode)?.[1] || 'lab.arpUp'), s.arpAuto ? t('lab.arpAuto') : t('lab.studio.arpManual')].join(' · ');
@@ -5265,7 +5506,16 @@
       const n = this._barSteps();
       const on = new Set();
       const keys = (obj) => Object.keys(obj || {}).map(Number);
-      if (id === 'drums') DRUM_TRACKS.forEach((tr) => { if (s.trackOn[tr]) keys(s.beat[tr]).forEach((st) => on.add(st)); });
+      if (s.instruments.some((tr) => tr.id === id) || (PRIMARY_INST.includes(id) && s.trackPlay[id] !== 'native')) {
+        const { cfg, play } = this._instOf(id);
+        if (play === 'root') keys(this._rhythmLine(cfg.rootRhythm)).forEach((st) => on.add(st));
+        else if (play === 'chords') {
+          if (cfg.chordRhythm === 'held') on.add(0);
+          else if (cfg.chordRhythm === 'arp') for (let st = 0; st < n; st += CHORD_ARP.every) on.add(st);
+          else keys(this._rhythmLine(cfg.chordRhythm)).forEach((st) => on.add(st));
+        } else if (cfg.notes && cfg.notesMeter === this._meter()) (cfg.notes[0] || []).forEach(([at]) => on.add(Math.floor(at)));
+      } else if (id === 'pad') on.add(0);
+      else if (id === 'drums') DRUM_TRACKS.forEach((tr) => { if (s.trackOn[tr]) keys(s.beat[tr]).forEach((st) => on.add(st)); });
       else if (id === 'bass') keys(s.beat.bass).forEach((st) => on.add(st));
       else if (id === 'chords') {
         if (s.chordPlay === 'rhythm' && s.chordHits) s.chordHits.forEach(([st]) => on.add(st));
@@ -5324,7 +5574,7 @@
         return `<div class="t-card${id === target ? ' is-sel' : ''}${muted ? ' is-muted' : ''}${id === this.ui.hl ? ' is-hl' : ''}" data-track="${id}" style="--tc:${def.color}">
           <div class="t-top"><button class="t-open" type="button" data-action="open-track" data-value="${id}" aria-haspopup="dialog"><span class="t-bar" aria-hidden="true"></span>
             <span class="t-heads"><strong>${esc(name)}</strong><span>${esc(this._trackSub(id))}</span></span></button>
-            ${id === 'melody' ? `<button class="t-ms t-rec" type="button" data-action="mel-rec" aria-label="${esc(t('lab.melRecAria'))}" title="${esc(t('lab.melRecAria'))}"><i aria-hidden="true"></i></button>` : ''}
+            ${this._isTarget(id) ? `<button class="t-ms t-rec" type="button" data-action="track-arm" data-value="${id}" aria-pressed="${id === target}" aria-label="${esc(tf('lab.studio.armAria', { name }))}" title="${esc(tf('lab.studio.armAria', { name }))}"><i aria-hidden="true"></i></button>` : ''}
             <button class="t-ms" type="button" data-action="track-mute" data-value="${id}" aria-pressed="${muted}" aria-label="${esc(tf('lab.studio.muteAria', { name }))}">M</button>
             <button class="t-ms" type="button" data-action="track-solo" data-value="${id}" aria-pressed="${solo}" aria-label="${esc(tf('lab.studio.soloAria', { name }))}">S</button></div>
           ${cellRow(this._trackCells(id))}<div class="t-foot">${vol}${del(id, name)}</div></div>`;
@@ -5346,6 +5596,7 @@
       cards.innerHTML = STUDIO_GROUPS.map((g) => {
         const items = [
           ...g.tracks.filter((id) => ids.includes(id)).map(card),
+          ...(g.extras ? s.instruments.map((tr) => card(tr.id)) : []),
           ...s.sampleLanes.map((lane, i) => [lane, i]).filter(([lane]) => this._laneKind(lane) === g.kind).map(([lane, i]) => laneCard(lane, i)),
         ];
         const label = t(`lab.studio.group.${g.id}`);
@@ -5355,12 +5606,12 @@
       }).join('');
       cards.querySelectorAll('input[data-mix]').forEach((el) => this._paintLevel?.(el));
       if (refocus) cards.querySelector(refocus)?.focus();
-      this.$('.kbd-fab-text').textContent = tf('lab.studio.kbdFab', { name: this._trackName(target) });
+      this.$('.kbd-fab-text').textContent = tf(target === 'drums' ? 'lab.studio.padsFab' : 'lab.studio.kbdFab', { name: this._trackName(target) });
       if (!this.$('.track-layer').hidden) this._renderTrackHead();
     }
     /** Ziel der Spielfläche: die markierte Spur (nur Spuren, in die man spielen kann). */
     _studioTarget() {
-      const ids = this._studioTracks().filter((id) => SURFACE_TARGETS.includes(id));
+      const ids = this._studioTracks().filter((id) => this._isTarget(id));
       // Ohne Wahl: Melodie — „Keyboard“ ist der naheliegende Weg, eine Melodie einzuspielen.
       if (ids.includes(this.ui.studioTarget)) return this.ui.studioTarget;
       return ids.includes('melody') ? 'melody' : ids[0] || 'melody';
@@ -5380,12 +5631,22 @@
     _openTrack(id, tab = 'pattern') {
       if (!this._trackDef(id)) return;
       const layer = this.$('.track-layer');
-      if (SURFACE_TARGETS.includes(id)) this.ui.studioTarget = id;
+      if (this._isTarget(id)) this.ui.studioTarget = id;
       this.ui.track = id;
       layer.dataset.track = id;
       this._showTrackTab(tab);
       this._renderStudio();
-      this._openLayer(layer, { onClose: () => { this._restoreParts(this.$('.track-body')); this.$('.track-body').replaceChildren(); this.ui.track = null; this._renderStudio(); }, focus: '.track-tabs [aria-selected="true"]' });
+      this._openLayer(layer, {
+        onClose: () => {
+          this._restoreParts(this.$('.track-body'));
+          this.$('.track-body').replaceChildren();
+          this.ui.track = null;
+          // Der Klang-Editor gehört wieder der Melodie (Reiter „Klang“ der übrigen Ansichten).
+          if (this.ui.soundFor) { this.ui.soundFor = null; this._soundDraft = null; this._renderSound(); }
+          this._renderStudio();
+        },
+        focus: '.track-tabs [aria-selected="true"]',
+      });
     }
     _renderTrackHead() {
       const id = this.ui.track;
@@ -5418,30 +5679,132 @@
       body.setAttribute('aria-labelledby', `tt-${tab}`);
       this._restoreParts(body);
       body.replaceChildren();
+      // Instrumentenspuren: gemeinsame Oberfläche — Spielt (Grundton · Akkorde · Eigene) und
+      // Klang (Schnellwahl + Synth-Editor auf genau diese Spur).
+      const inst = this._isInst(id);
+      if (this.ui.soundFor !== (inst ? id : null)) this._soundDraft = null;
+      this.ui.soundFor = inst ? id : null;
       if (tab === 'mix') body.append(this._trackMixBlock(id));
-      for (const part of def[tab] || []) this._placePart(part, body);
+      if (tab === 'pattern' && inst) body.append(this._instPlayBlock(id));
+      if (tab === 'sound' && inst) { const quick = this._instSoundBlock(id); if (quick) body.append(quick); }
+      for (const part of tab === 'pattern' && inst ? this._nativeParts(id) : def[tab] || []) this._placePart(part, body);
       if (id === 'bass' || id === 'drums') this._renderTracks();
       if (id === 'chords') this._renderChordPart();
       if (id === 'bass') this._renderBassPart();
       if (id === 'rec') this._renderRecLanes();
-      if (id === 'melody' && tab === 'sound') this._renderSound();
+      if (inst && tab === 'sound') this._renderSound();
       this._renderTrackHead();
       body.scrollTop = 0;
     }
-    /** Mix der Spur: Lautstärke, Stumm/Solo; optionale Spuren lassen sich entfernen. */
+    /** Bisherige Bedienfelder einer Grundspur, die zur gewählten Spielweise gehören. */
+    _nativeParts(id) {
+      const s = this.state;
+      if (s.trackPlay[id] && s.trackPlay[id] !== 'native') return [];
+      if (id === 'bass') return s.bassPlay ? ['bassPlay', 'grid'] : ['grid'];
+      if (id === 'chords') return ['chordPlay', 'satb'];
+      if (id === 'melody') return ['melody'];
+      return [];
+    }
+    /** „Spielt“: Grundton · Akkorde · Eigene Melodie, darunter Rhythmus bzw. Einspielen, Oktave. */
+    _instPlayBlock(id) {
+      const s = this.state;
+      const inst = this._instOf(id);
+      const cfg = inst.cfg;
+      const native = PRIMARY_INST.includes(id) && s.trackPlay[id] === 'native';
+      const box = document.createElement('section');
+      box.className = 'panel inst-play';
+      const radio = (action, value, label, on) => `<button class="chip" type="button" role="radio" data-action="${action}" data-value="${value}" aria-checked="${on}">${label}</button>`;
+      const hasNotes = !!(cfg.notes && cfg.notesMeter === this._meter());
+      let opts = '';
+      if (!native && inst.play === 'root') {
+        opts = `<span class="sub-label" id="inst-rh">${t('lab.inst.rhythm')}</span><div class="chip-row" role="radiogroup" aria-labelledby="inst-rh">${ROOT_RHYTHMS.map((r) => radio('inst-rhythm', r, t(`lab.bassPlay.${r}`), cfg.rootRhythm === r)).join('')}</div>`;
+      } else if (!native && inst.play === 'chords') {
+        opts = `<span class="sub-label" id="inst-rh">${t('lab.inst.rhythm')}</span><div class="chip-row" role="radiogroup" aria-labelledby="inst-rh">${CHORD_RHYTHMS.map((r) => radio('inst-rhythm', r, t(`lab.inst.rhythm.${r}`), cfg.chordRhythm === r)).join('')}</div>`;
+      } else if (!native) {
+        opts = `<p class="foot-note">${t(hasNotes ? 'lab.inst.ownHas' : 'lab.inst.ownEmpty')}</p>`;
+      }
+      const rec = inst.play === 'own' ? `<div class="chip-row"><button class="chip inst-rec" type="button" data-action="inst-rec"><i aria-hidden="true"></i>${t('lab.inst.record')}</button>${!native && hasNotes ? `<button class="chip" type="button" data-action="inst-clear">${t('lab.inst.clear')}</button>` : ''}</div>` : '';
+      const oct = native ? '' : `<div class="inst-oct"><span class="sub-label">${t('lab.inst.octave')}</span><button class="chip" type="button" data-action="inst-oct" data-value="-1" aria-label="${t('lab.inst.octDown')}">−</button><output>${cfg.octave > 0 ? '+' : ''}${cfg.octave}</output><button class="chip" type="button" data-action="inst-oct" data-value="1" aria-label="${t('lab.inst.octUp')}">+</button></div>`;
+      box.innerHTML = `<span class="sub-label" id="inst-play-label">${t('lab.inst.plays')}</span>
+        <div class="seg inst-play-seg" role="radiogroup" aria-labelledby="inst-play-label">${INST_PLAYS.map((p) => `<button type="button" role="radio" data-action="inst-play" data-value="${p}" aria-checked="${inst.play === p}">${t(`lab.inst.play.${p}`)}</button>`).join('')}</div>
+        <p class="foot-note">${t(`lab.inst.hint.${inst.play}`)}</p>${opts}${rec}${oct}`;
+      return box;
+    }
+    /** Klang-Schnellwahl über dem Synth-Editor: Bass-Klänge (Samples/Presets), Akkord-Klänge, Pads. */
+    _instSoundBlock(id) {
+      const s = this.state;
+      const extra = s.instruments.find((tr) => tr.id === id);
+      const radio = (action, value, label, on) => `<button class="chip" type="button" role="radio" data-action="${action}" data-value="${value}" aria-checked="${on}">${label}</button>`;
+      let chips = '';
+      if (id === 'bass' || extra?.type === 'bass') {
+        const cur = extra ? extra.bassId : s.bassSynth ? null : s.bassSoundId;
+        chips = BASS_SOUNDS.map((b) => radio('inst-bass', b.id, b.name, cur === b.id)).join('');
+      } else if (id === 'chords') {
+        chips = CHORD_SOUND_IDS.map((c) => radio('cs-sound', c, t(`lab.chordSound.${c}`), !s.chordSynth && s.chordSound === c)).join('');
+      } else if (id === 'pad') {
+        chips = Object.keys(CHORD_PADS).map((c) => radio('inst-pad', c, t(`lab.studio.pad${c === 'airy' ? 'Airy' : 'Moon'}`), !s.padSynth && s.chordPad === c)).join('');
+      } else return null;
+      const box = document.createElement('section');
+      box.className = 'panel inst-sound';
+      box.innerHTML = `<span class="sub-label" id="inst-quick">${t('lab.inst.quick')}</span><div class="chip-row" role="radiogroup" aria-labelledby="inst-quick">${chips}</div><p class="foot-note">${t('lab.inst.quickHint')}</p>`;
+      return box;
+    }
+    /** Kurz anspielen: Grundton des Akkords im Klang und in der Lage der Spur. */
+    async _auditionInst(id) {
+      try { await this._ensureAudio(); } catch { return; }
+      this._syncEngine();
+      const inst = this._instOf(id);
+      if (!inst) return;
+      const h = this._currentHarmony();
+      const root = (this._bassRoots()[h.index] ?? 36 + mod(h.keyRoot + degreeSemis(h.steps, h.deg), 12)) + 12 + 12 * inst.cfg.octave;
+      this._instTone(inst, root, this.engine.ctx.currentTime + .01, .24, .6);
+    }
+    /** „● Einspielen“: Spur scharf, Keyboard auf, Aufnahme (ersetzen) läuft an. */
+    _instRecord(id) {
+      if (this._uiMode() !== 'studio') this._applyView('studio');
+      this.ui.studioTarget = id;
+      if (!this.$('.track-layer').hidden) this._closeLayer(this.$('.track-layer'), { focus: false });
+      if (this.sfRec.phase !== 'idle') this._sfRecStop();
+      this.sfRec.mode = 'replace';
+      this._openSurface();
+      this._sfRecToggle();
+    }
+    /** Spielweise wählen. Grundspuren: was ihr bisheriger Zustand kann, bleibt dort ('native'). */
+    _setInstPlay(id, play) {
+      const s = this.state;
+      if (!INST_PLAYS.includes(play)) return;
+      this._pushHistory();
+      const extra = s.instruments.find((tr) => tr.id === id);
+      if (extra) extra.play = play;
+      else if (PRIMARY_INST.includes(id)) {
+        s.trackPlay[id] = NATIVE_PLAY[id].includes(play) ? 'native' : play;
+        if (id === 'bass' && play === 'own') s.bassPlay = null;
+        if (id === 'bass' && play === 'root' && !s.bassPlay) { s.bassPlay = 'eighths'; s.beat.bass = bassVariant(this._pattern(), 'eighths'); }
+        if (id === 'bass') s.trackOn.bass = true;
+        if (id === 'chords') s.chordsOn = true;
+        if (id === 'melody') s.melodyOn = true;
+      }
+      this._syncEngine(); this._renderAll();
+      if (this.ui.track === id) this._showTrackTab('pattern');
+      this.$(`.inst-play-seg [data-value="${play}"]`)?.focus();
+    }
+    /** Mix der Spur: Lautstärke und Panorama (Stumm/Solo/Löschen sitzen auf der Karte). */
     _trackMixBlock(id) {
       const s = this.state;
       const def = this._trackDef(id);
       const box = document.createElement('section');
       box.className = 'panel track-mix';
       const name = this._trackName(id);
-      const muted = this._trackMuted(id);
-      box.innerHTML = `${def.bus ? `<label class="slider-line"><span>${t('lab.studio.volume')}</span><input type="range" min="0" max="1" step=".01" data-mix="${def.bus}" value="${s.mix[def.bus]}" aria-label="${tf('lab.studio.volumeAria', { name })}"><output data-out="mix-${def.bus}">${Math.round(s.mix[def.bus] * 100)} %</output></label>` : ''}
-        <div class="chip-row"><button class="chip" type="button" data-action="track-mute" data-value="${id}" aria-pressed="${muted}">${t('lab.chor.mute')}</button>
-        ${id !== 'rec' ? `<button class="chip" type="button" data-action="track-solo" data-value="${id}" aria-pressed="${this.ui.solo === id}">${t('lab.studio.solo')}</button>` : ''}
-        <button class="chip" type="button" data-action="track-remove" data-value="${id}">${t('lab.studio.remove')}</button></div>
-        ${id === 'drums' ? `<p class="foot-note">${t('lab.studio.pumpHint')}</p>` : ''}${id === 'melody' || id === 'chords' ? `<p class="foot-note">${t('lab.studio.roomMixHint')}</p>` : ''}`;
+      box.innerHTML = def.bus ? `<label class="slider-line"><span>${t('lab.studio.volume')}</span><input type="range" min="0" max="1" step=".01" data-mix="${def.bus}" value="${s.mix[def.bus]}" aria-label="${tf('lab.studio.volumeAria', { name })}"><output data-out="mix-${def.bus}">${Math.round(s.mix[def.bus] * 100)} %</output></label>
+        <label class="slider-line"><span>${t('lab.studio.pan')}</span><input type="range" min="-1" max="1" step=".05" data-pan="${def.bus}" value="${s.pan[def.bus]}" aria-label="${tf('lab.studio.panAria', { name })}"><output data-out="pan-${def.bus}">${this._panLabel(s.pan[def.bus])}</output></label>
+        ${id === 'drums' ? `<p class="foot-note">${t('lab.studio.pumpHint')}</p>` : ''}${id === 'melody' || id === 'chords' ? `<p class="foot-note">${t('lab.studio.roomMixHint')}</p>` : ''}`
+        : `<p class="foot-note">${t('lab.studio.mixLanes')}</p>`;
       return box;
+    }
+    /** Panorama als Text: „Mitte“, „L 40“, „R 25“. */
+    _panLabel(v) {
+      const n = Math.round(Math.abs(v) * 100);
+      return n === 0 ? t('lab.studio.panCenter') : `${v < 0 ? t('lab.studio.panL') : t('lab.studio.panR')} ${n}`;
     }
     /** Spur löschen (Karte 🗑 oder Mix-Blatt). Grundspuren verschwinden stumm (`removed`), Liegeton
      *  und 2. Akkorde schalten ab, Sample-Spuren fallen aus dem Raster (das Sample bleibt in
@@ -5456,7 +5819,12 @@
       if (lane) this._laneRemove(laneIndex);
       else {
         this._pushHistory();
-        if (id === 'drone') this._setDrone(false);
+        const extra = s.instruments.find((tr) => tr.id === id);
+        if (extra) {
+          s.instruments = s.instruments.filter((tr) => tr !== extra);
+          delete s.mix[id]; delete s.pan[id]; delete s.mute[id];
+        } else if (id === 'pad') { s.chordPad = null; s.padSynth = null; s.trackPlay.pad = 'native'; }
+        else if (id === 'drone') this._setDrone(false);
         else if (id === 'arp') s.arpOn = false;
         else if (id === 'rec') { const gone = s.sampleLanes; s.sampleLanes = []; this._restoreLaneRows(gone); }
         else {
@@ -5471,19 +5839,43 @@
       this._setStatus(tf('lab.studio.removed', { name }));
       this.$('.add-track')?.focus();
     }
-    /** „+ Spur“: je Gruppe, was dazukommen kann (gelöschte Grundspuren, Liegeton, 2. Akkorde,
-     *  Mikro-Aufnahme der passenden Art); `only` zeigt nur eine Gruppe (+ am Gruppenkopf). */
+    /** Fehlt die Grundspur dieses Typs (gelöscht bzw. beim Pad: aus)? Dann kommt sie zurück. */
+    _primaryMissing(type) { return type === 'pad' ? !this.state.chordPad : this._trackGone(type); }
+    /** Instrumentenspur hinzufügen: fehlende Grundspur zurückholen, sonst eine Zusatzspur. */
+    _addInstrument(type) {
+      const s = this.state;
+      if (!INST_TYPES[type]) return;
+      if (type !== 'pad' && this._trackGone(type)) { this._handleAction('add-track-pick', type, null); return; }
+      this._pushHistory();
+      let id = type;
+      if (type === 'pad' && !s.chordPad) { s.chordPad = 'moon'; s.mute.pad = false; }
+      else {
+        if (s.instruments.length >= INST_MAX) { this._setStatus(tf('lab.studio.instFull', { n: INST_MAX })); return; }
+        let n = 1;
+        while (s.instruments.some((tr) => tr.id === `i${n}`)) n++;
+        id = `i${n}`;
+        s.instruments.push(newInstrument(type, id));
+        s.mix[id] = .7; s.pan[id] = 0; s.mute[id] = false;
+      }
+      this._syncEngine(); this._renderAll(); this._openTrack(id);
+    }
+    /** „+ Spur“: je Gruppe, was dazukommen kann (Instrumente: Pad · Melodie · Akkorde · Bass;
+     *  sonst gelöschte Drums, Mikro-Aufnahme der passenden Art); `only` zeigt nur eine Gruppe. */
     _renderAddTrack(only = null) {
       const s = this.state;
       const item = (value, name, sub) => `<button class="menu-item" type="button" data-action="add-track-pick" data-value="${value}"><span><strong>${name}</strong><small>${sub}</small></span></button>`;
       const groups = STUDIO_GROUPS.filter((g) => !only || g.id === only || !STUDIO_GROUPS.some((x) => x.id === only));
       this.$('[data-part="addTrack"] .add-list').innerHTML = groups.map((g) => {
-        const items = [
-          ...g.tracks.filter((id) => FIXED_TRACKS.includes(id) && this._trackGone(id)).map((id) => item(id, this._trackName(id), t('lab.studio.add.back'))),
-          ...(g.id === 'inst' && !s.droneOn ? [item('drone', t('lab.track.drone'), t('lab.studio.add.drone'))] : []),
-          ...(g.id === 'inst' && !s.arpOn ? [item('arp', t('lab.track.arp'), t('lab.studio.add.arp'))] : []),
-          item(g.kind, t(`lab.studio.add.${g.kind}Label`), t(`lab.studio.add.${g.kind}`)),
-        ];
+        // Instrumente: vier Typen mit Vorgaben, sonst gleich — eine fehlende Grundspur kommt
+        // zurück, sonst entsteht eine Zusatzspur. Drums/Audio: gelöschte Drums, Mikro-Aufnahme.
+        const full = s.instruments.length >= INST_MAX;
+        const items = g.id === 'inst'
+          ? ['pad', 'melody', 'chords', 'bass'].filter((type) => !full || this._primaryMissing(type))
+            .map((type) => item(`inst:${type}`, t(`lab.track.${type}`), t(`lab.studio.add.inst.${type}`)))
+          : [
+            ...g.tracks.filter((id) => FIXED_TRACKS.includes(id) && this._trackGone(id)).map((id) => item(id, this._trackName(id), t('lab.studio.add.back'))),
+            item(g.kind, t(`lab.studio.add.${g.kind}Label`), t(`lab.studio.add.${g.kind}`)),
+          ];
         return `${groups.length > 1 ? `<span class="sub-label">${t(`lab.studio.group.${g.id}`)}</span>` : ''}${items.join('')}`;
       }).join('');
     }
@@ -7230,15 +7622,21 @@
      *  ohne geladene Samples übernimmt die Engine den Ersatzklang 'Airy Choir'). */
     _chordSound() {
       const s = this.state;
+      if (s.chordSynth) return s.chordSynth;
       const key = `${s.chordSound}|${s.energy}`;
       if (this._chordSoundCache?.key === key) return this._chordSoundCache.sound;
-      const entry = CHORD_SOUNDS.find(([id]) => id === s.chordSound) || CHORD_SOUNDS[0];
-      const base = s.chordSound === 'choir' ? CHOIR_CHORD_SOUND : s.chordSound === 'synth' ? CHORD_SOUND : soundFromPreset(presetIndexByName(entry[1]));
+      const base = this._chordBaseSound();
       // Energie: Voll etwas heller, Still etwas dunkler (nur der Filter, nie die Lage).
       const bright = ENERGY_BRIGHT[s.energy] ?? 1;
       const sound = bright === 1 ? base : { ...base, cutoff: clamp(base.cutoff * bright, 100, 12000) };
       this._chordSoundCache = { key, sound };
       return sound;
+    }
+    /** Grundklang der Akkorde aus chordSound (ohne Energie-Helligkeit). */
+    _chordBaseSound() {
+      const s = this.state;
+      const entry = CHORD_SOUNDS.find(([id]) => id === s.chordSound) || CHORD_SOUNDS[0];
+      return s.chordSound === 'choir' ? CHOIR_CHORD_SOUND : s.chordSound === 'synth' ? CHORD_SOUND : soundFromPreset(presetIndexByName(entry[1]));
     }
     /** Art des Akkord-Klangs ('pad' | 'keys') — bestimmt den Anteil am Raum. */
     _chordSoundKind() { return (CHORD_SOUNDS.find(([id]) => id === this.state.chordSound) || CHORD_SOUNDS[0])[2]; }
@@ -7259,9 +7657,23 @@
     }
     _renderSampleNote() {
       const note = this.$('.sample-note');
-      if (note) note.hidden = !(this.state.sound.sample && !this.engine.instrumentReady(this.state.sound.sample));
+      const sound = this._editSound();
+      if (note) note.hidden = !(sound.sample && !this.engine.instrumentReady(sound.sample));
     }
     _bassSound() { return BASS_SOUNDS.find((b) => b.id === this.state.bassSoundId) || BASS_SOUNDS[0]; }
+    /** Ein Basston der Bass-Spur: Sample-/Preset-Bass oder (bassSynth) der Synth im Bass-Bus. */
+    _bassNote(time, midi, velocity = 1, duration = .3) {
+      const syn = this.state.bassSynth;
+      if (!syn) { this.engine.playBass(time, midi, velocity, this._bassSound(), duration); return; }
+      if (syn.sample) this.engine.ensureInstrument(syn.sample);
+      this.engine.playTone(syn, midi, time, .32 * velocity, duration, { layer: 'bassSyn', glide: 0, stepSeconds: this._stepSeconds() });
+    }
+    /** Klang der Pad-Spur: eigener Synth oder das Preset von chordPad ([Klang, Pegel]). */
+    _padSound() {
+      const s = this.state;
+      if (s.padSynth) return [s.padSynth, .5];
+      return this._chordPadSound() || [soundFromPreset(presetIndexByName(INST_TYPES.pad.preset)), .5];
+    }
 
     /** Harmonie an einem Schritt: Tonart, Modus, Akkordstufe. */
     /** `pushed: false` — ohne vorgezogene Wechsel (Melodie, siehe chordAtStep). */
@@ -7366,12 +7778,22 @@
     _applyLevels(eng, master) {
       const s = this.state;
       eng.setMaster(master * (ENERGY_TRIM[s.energy]?.all ?? 1));
-      for (const bus of BUSES) eng.setBusLevel(bus, this._busLevel(bus, s));
+      for (const bus of BUSES) { eng.setBusLevel(bus, this._busLevel(bus, s)); eng.setBusPan?.(bus, s.pan[bus]); }
       const room = ROOMS[s.room];
       const wet = (sound, factor) => (room ? { ...sound, reverbWet: clamp(room.wet * factor, 0, 1) } : sound);
       for (const layer of SOUND_LAYERS) eng.setLayerSound(layer, wet(this._heardSound(), ROOM_SEND[layer]));
       eng.setLayerSound('chords', wet(this._chordSound(), this._chordSoundKind() === 'pad' ? ROOM_SEND.chordsPad : ROOM_SEND.chordsKeys));
       eng.setLayerSound('drone', wet(DRONE_SOUND, ROOM_SEND.drone));
+      eng.setLayerSound('pad', wet(this._padSound()[0], ROOM_SEND.chordsPad));
+      if (s.bassSynth) eng.setLayerSound('bassSyn', wet(s.bassSynth, .3));
+      // Zusatzspuren: je eine eigene Ebene mit Pegel, Panorama und Klang.
+      for (const tr of s.instruments) {
+        eng.ensureLayer(tr.id, tr.type === 'bass');
+        eng.setBusLevel(tr.id, this._busLevel(tr.id, s));
+        eng.setBusPan?.(tr.id, s.pan[tr.id] ?? 0);
+        eng.setLayerSound(tr.id, wet(tr.sound, tr.type === 'pad' ? ROOM_SEND.chordsPad : tr.type === 'bass' ? .3 : ROOM_SEND.melody));
+      }
+      eng.pruneLayers?.(s.instruments.map((tr) => tr.id));
       eng.setPreDelay(room ? room.pre / 1000 : .025);
     }
 
@@ -7982,15 +8404,30 @@
       // nimmt die Harmonie ohne Vorziehen, ebenso der Bass mit „bleibt auf der Eins“.
       const pushedAny = this._chordTimeline().push.some(Boolean);
       const hMel = pushedAny ? this._harmonyAt(g, false) : h;
-      if (s.trackOn.bass && this._dcHears('bass')) this._playBassStep(g, step, swung, stepSec, barSteps, beat.bass || {}, s.bassHold ? hMel : h);
+      const alt = this._altPlay();
+      if (s.trackOn.bass && this._dcHears('bass')) {
+        if (alt.bass) this._playInstStep(this._instOf('bass'), g, step, swung, stepSec, barSteps, h);
+        else this._playBassStep(g, step, swung, stepSec, barSteps, beat.bass || {}, s.bassHold ? hMel : h);
+      }
 
-      if (s.chordsOn && this._dcHears('chords')) this._playChordStep(g, step, swung, stepSec, barSteps, h);
+      if (s.chordsOn && this._dcHears('chords')) {
+        if (alt.chords) this._playInstStep(this._instOf('chords'), g, step, swung, stepSec, barSteps, h);
+        else this._playChordStep(g, step, swung, stepSec, barSteps, h);
+      }
+      if (s.chordPad && this._dcHears('chords')) {
+        if (alt.pad) this._playInstStep(this._instOf('pad'), g, step, swung, stepSec, barSteps, h);
+        else if (h.chordStart) { const [sound, level] = this._padSound(); this._playChord(h, swung, Math.max(1, h.end - g) * stepSec, level, sound, 'pad'); }
+      }
+      if (this._dcHears('all')) for (const tr of s.instruments) this._playInstStep(this._instOf(tr.id), g, step, swung, stepSec, barSteps, h);
       // Nach einer Aufnahme loopt die Aufnahme statt der Melodie, bis sie
       // gespeichert oder verworfen ist; beim Einzählen/Aufnehmen: Stille.
       const recPhase = this.rec.phase;
       if (recPhase === 'done') {
         if (this.rec.looping) this._playMelodyStep(g, hMel, swung, stepSec, this.rec.loopBars, 'key', true);
-      } else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording' && this._dcHears('melody')) this._playMelodyStep(g, hMel, swung, stepSec);
+      } else if (s.melodyOn && recPhase !== 'armed' && recPhase !== 'recording' && this._dcHears('melody')) {
+        if (alt.melody) this._playInstStep(this._instOf('melody'), g, step, swung, stepSec, barSteps, hMel);
+        else this._playMelodyStep(g, hMel, swung, stepSec);
+      }
 
       if (s.arpOn && this._dcHears('all')) {
         const trigger = this._arpTrigger(g);
@@ -8145,22 +8582,21 @@
         const down = mod(step + push, barSteps);
         const len = push + (bass[down] !== undefined ? bassNoteSteps(bass, down, barSteps) : 0);
         this._bassTie = bass[down] !== undefined ? g + push : null;
-        this.engine.playBass(time, this._bassMidi(h, 0), 1, this._bassSound(), Math.max(1, len) * stepSec * .92);
+        this._bassNote(time, this._bassMidi(h, 0), 1, Math.max(1, len) * stepSec * .92);
         return;
       }
       if (bass[step] === undefined) return;
       if (this._bassTie === g) { this._bassTie = null; return; }
-      this.engine.playBass(time, this._bassMidi(h, bass[step]), 1, this._bassSound(), bassNoteSteps(bass, step, barSteps) * stepSec * .92);
+      this._bassNote(time, this._bassMidi(h, bass[step]), 1, bassNoteSteps(bass, step, barSteps) * stepSec * .92);
     }
 
     /** Akkorde-Spur je Schritt: gehalten (je Akkordanfang), rhythmisch (Anschläge je Takt,
-     *  dazu jeder Wechsel — auch ein vorgezogener) oder Arpeggio; darunter ggf. der Pad-Layer. */
+     *  dazu jeder Wechsel — auch ein vorgezogener) oder Arpeggio. Das Pad ist eine eigene Spur. */
     _playChordStep(g, step, time, stepSec, barSteps, h) {
       const s = this.state;
       const left = Math.max(1, h.end - g);
       // Workshop, de:construct und Chor-Aufgaben spielen die Akkorde wie früher gehalten.
       const play = ['workshop', 'deconstruct'].includes(this._uiMode()) ? 'held' : s.chordPlay;
-      if (h.chordStart) { const pad = this._chordPadSound(); if (pad) this._playChord(h, time, left * stepSec, pad[1], pad[0]); }
       if (play === 'held' || (play === 'rhythm' && !s.chordHits)) {
         if (h.chordStart) this._playChord(h, time, left * stepSec);
         return;
@@ -8184,12 +8620,11 @@
 
     /** Akkord im Satz der Folge. `level`: Faktor auf die Lautstärke; `sound`: anderer
      *  Klang (Pad-Layer). Die Lage (chordOctave) verschiebt alle Stimmen um Oktaven. */
-    _playChord(h, time, duration, level = 1, sound = this._chordSound()) {
+    _playChord(h, time, duration, level = 1, sound = this._chordSound(), layer = 'chords', shift = 12 * (this.state.chordOctave || 0)) {
       const voicing = this._voicings()[h.index];
       if (!voicing) return;
       const s = this.state;
       const anyFocus = SATB.some((v) => s.satb[v] === 'focus');
-      const shift = 12 * (s.chordOctave || 0);
       for (const voice of SATB) {
         const mode = s.satb[voice];
         if (mode === 'mute') continue;
@@ -8197,7 +8632,7 @@
         let midi = voicing[voice] + shift;
         if (midi < 36) midi += 12;
         this.engine.playTone(sound, midi, time, velocity, duration * .97,
-          { layer: 'chords', glide: 0, stepSeconds: this._stepSeconds() });
+          { layer, glide: 0, stepSeconds: this._stepSeconds() });
       }
     }
 
@@ -8225,6 +8660,93 @@
     }
 
     /** `rec`: Schleife einer Aufnahme (kein Echo, keine Anpassung). */
+    /** Grundspuren, die gerade nicht nach ihrem bisherigen Zustand spielen (trackPlay ≠ 'native'). */
+    _altPlay() {
+      const tp = this.state.trackPlay;
+      return { bass: tp.bass !== 'native', chords: tp.chords !== 'native', pad: tp.pad !== 'native', melody: tp.melody !== 'native' };
+    }
+    /** Eine Instrumentenspur einheitlich: Einstellungen (cfg), Spielweise, Klang und Ebene.
+     *  Grundspuren nehmen trackAlt und ihren eigenen Klang/Bus; Zusatzspuren alles selbst. */
+    _instOf(id) {
+      const s = this.state;
+      const extra = s.instruments.find((tr) => tr.id === id);
+      if (extra) return { id, type: extra.type, cfg: extra, play: extra.play, layer: id, sound: extra.sound, bassId: extra.bassId, primary: false };
+      if (!PRIMARY_INST.includes(id)) return null;
+      const cfg = s.trackAlt[id];
+      const tp = s.trackPlay[id];
+      const play = tp !== 'native' ? tp : id === 'bass' ? (s.bassPlay ? 'root' : 'own') : NATIVE_PLAY[id][0];
+      const sound = id === 'bass' ? s.bassSynth : id === 'chords' ? this._chordSound() : id === 'pad' ? this._padSound()[0] : this._heardSound();
+      return { id, type: id, cfg, play, layer: id === 'bass' ? 'bassSyn' : id, sound, bassId: id === 'bass' && !s.bassSynth ? s.bassSoundId : null, primary: true };
+    }
+    /** Ein Ton einer Instrumentenspur (Sample-Bass über playBass in die Ebene, sonst Synth). */
+    _instTone(inst, midi, time, velocity, duration) {
+      const eng = this.engine;
+      if (inst.bassId) {
+        const bass = BASS_SOUNDS.find((b) => b.id === inst.bassId) || BASS_SOUNDS[0];
+        // Grundspur Bass: in den Bass-Bus; Zusatzspur: in ihre eigene Ebene.
+        eng.playBass(time, midi, Math.min(1, velocity * 4), bass, duration, inst.primary ? null : eng.layers[inst.layer]?.input);
+        return;
+      }
+      if (!inst.sound) return;
+      if (inst.sound.sample) eng.ensureInstrument(inst.sound.sample);
+      eng.playTone(inst.sound, midi, time, velocity, duration, { layer: inst.layer, glide: 0, stepSeconds: this._stepSeconds() });
+    }
+    /** Wiedergabe einer Instrumentenspur je Schritt: Grundton (Rhythmus wie die Bass-Linien),
+     *  Akkorde (Satz der Akkorde-Spur, gehalten/rhythmisch/Arpeggio) oder eigene Töne. */
+    _playInstStep(inst, g, step, time, stepSec, barSteps, h) {
+      if (!inst) return;
+      const cfg = inst.cfg;
+      const oct = 12 * cfg.octave;
+      const left = Math.max(1, h.end - g);
+      if (inst.play === 'root') {
+        const line = this._rhythmLine(cfg.rootRhythm);
+        if (line[step] === undefined) return;
+        const root = (this._bassRoots()[h.index] ?? 36 + mod(h.keyRoot + degreeSemis(h.steps, h.deg), 12)) + 12 + oct;
+        const midi = bassNoteMidi(root, h.steps, h.deg, h.bass || 0, line[step]);
+        this._instTone(inst, midi, time, .24, Math.min(left, bassNoteSteps(line, step, barSteps)) * stepSec * .92);
+      } else if (inst.play === 'chords') {
+        const rhythm = cfg.chordRhythm;
+        if (rhythm === 'held') { if (h.chordStart) this._instChord(inst, h, time, left * stepSec, oct); return; }
+        if (rhythm === 'arp') {
+          if (step % CHORD_ARP.every) return;
+          const k = Math.floor((g - h.start) / CHORD_ARP.every);
+          const root = 48 + mod(h.keyRoot + degreeSemis(h.steps, h.deg), 12) + oct;
+          const deg = CHORD_ARP.degs[k % CHORD_ARP.degs.length];
+          this._instTone(inst, root + degreeSemis(h.steps, h.deg + deg) - degreeSemis(h.steps, h.deg), time, .16, Math.min(left, CHORD_ARP.every * 1.8) * stepSec);
+          return;
+        }
+        const line = this._rhythmLine(rhythm);
+        // Jeder Akkordwechsel schlägt an, auch zwischen den Rhythmus-Schlägen.
+        if (line[step] === undefined && !h.chordStart) return;
+        const next = Object.keys(line).map(Number).find((st) => st > step) ?? barSteps;
+        this._instChord(inst, h, time, Math.min(left, next - step) * stepSec * .92, oct);
+      } else {
+        const notes = cfg.notes;
+        if (!notes || cfg.notesMeter !== this._meter()) return;
+        for (const [at, deg, len, alt = 0] of melodyNotesAt(g, notes, barSteps)) {
+          const midi = melodyMidi(deg, alt, h, 'key', this._mode().steps, 4) + oct;
+          const barIndex = Math.floor(g / barSteps) % notes.length;
+          const room = notes.length * barSteps - (barIndex * barSteps + at);
+          this._instTone(inst, midi, time + (at - step) * stepSec, .2, Math.min(len, room) * stepSec);
+        }
+      }
+    }
+    /** Akkord einer Instrumentenspur: der Satz der Akkorde (Stimmführung), transponiert. */
+    _instChord(inst, h, time, duration, shift) {
+      const voicing = this._voicings()[h.index];
+      if (!voicing) return;
+      const level = inst.type === 'pad' ? .09 : .11;
+      for (const voice of SATB) this._instTone(inst, Math.max(24, voicing[voice] + shift), time, level, duration * .97);
+    }
+    /** Schritte eines Rhythmus (wie die Bass-Spielweisen des Loops): {Schritt: Stufe}. */
+    _rhythmLine(id) {
+      const pattern = this._pattern();
+      const key = `${this.state.patternIndex}|${id}`;
+      this._rhythmCache = this._rhythmCache || new Map();
+      if (!this._rhythmCache.has(key)) this._rhythmCache.set(key, bassVariant(pattern, id === 'held' ? 'whole' : id));
+      return this._rhythmCache.get(key);
+    }
+
     _playMelodyStep(g, h, time, stepSec, bars = this._melody().bars, ref = this._melody().ref, rec = false) {
       const s = this.state;
       const barSteps = this._barSteps();
@@ -8377,7 +8899,7 @@
         const [duration, velocity] = cell[cellIndex % cell.length];
         const now = this.engine.ctx.currentTime;
         if (track === 'bass') {
-          this.engine.playBass(now, this._bassMidi(this._currentHarmony(), notes[bassIndex % notes.length]), velocity, this._bassSound());
+          this._bassNote(now, this._bassMidi(this._currentHarmony(), notes[bassIndex % notes.length]), velocity);
           bassIndex++;
         } else {
           this.engine.hitTrack(track, now, velocity, this.state.kit, this._drumOpts());
@@ -8672,7 +9194,7 @@
     async _preview(track, value) {
       try { await this._ensureAudio(); } catch { return; }
       const now = this.engine.ctx.currentTime;
-      if (track === 'bass') this.engine.playBass(now, this._bassMidi(this._currentHarmony(), value), 1, this._bassSound());
+      if (track === 'bass') this._bassNote(now, this._bassMidi(this._currentHarmony(), value), 1);
       else this.engine.hitTrack(track, now, value, this.state.kit, this._drumOpts());
     }
 
@@ -10325,6 +10847,13 @@
     /* ---- Klang ---- */
 
     _renderSound() {
+      // Schloss und Automation gehören zum Melodie-Klang; für andere Spuren ausblenden.
+      const mel = this._soundFor() === 'melody';
+      const part = this.$('[data-part="sound"]');
+      if (part) {
+        part.querySelector('[data-lock="sound"]')?.toggleAttribute('hidden', !mel);
+        part.querySelector('.auto-box')?.toggleAttribute('hidden', !mel);
+      }
       this._renderLock('sound');
       this._renderSoundName();
       this._renderMacros();
@@ -10334,7 +10863,7 @@
     }
 
     _renderSoundName() {
-      const sound = this.state.sound;
+      const sound = this._editSound();
       this.$('[data-action="reset-sound"]').hidden = !sound.custom;
       this._renderPickerFor('sound');
     }
@@ -10395,7 +10924,7 @@
     /** Vier Makro-Regler für die schnelle Ansicht — jeder bewegt einen oder
      *  mehrere echte Parameter, die Expertenansicht zeigt sie sofort mit. */
     _renderMacros() {
-      const sound = this.state.sound;
+      const sound = this._editSound();
       const host = this.$('.macro-knobs');
       host.replaceChildren();
       const macros = [
@@ -10420,19 +10949,21 @@
 
     _onSoundEdit({ refreshKnobs = false } = {}) {
       this._wsChTouched();
-      const sound = this.state.sound;
-      this._autoCapture();
+      const sound = this._editSound();
+      if (this._soundFor() === 'melody') this._autoCapture();
       if (!sound.custom) {
         sound.custom = true;
       }
+      this._commitEditSound(sound);
       this._renderSoundName();
       this._applySound();
       if (refreshKnobs) this._refreshSoundControls();
       this._wsSchedule();
     }
 
-    /** Der eine Synth-Klang gilt für Melodie, Arp und Tasten. */
+    /** Der eine Synth-Klang gilt für Melodie, Arp und Tasten; die übrigen Instrumente über _applyLevels. */
     _applySound() {
+      if (this._soundFor() !== 'melody') { this._syncEngine(); this._renderSampleNote(); return; }
       for (const layer of SOUND_LAYERS) this.engine.setLayerSound(layer, this._heardSound());
       this._loadInstruments();
       this._renderSampleNote();
@@ -10442,7 +10973,7 @@
      *  Drive, Hall, Echo) — Wellenform, Decay/Sustain, Filter-Hüllkurve, LFO, Charakter,
      *  Vibrato und Gleiten gelten dort nicht (ausgeblendet, nicht nur ausgegraut). */
     _applySampleControls() {
-      const sampled = !!this.state.sound.sample;
+      const sampled = !!this._editSound().sample;
       for (const m of ['osc', 'lfo', 'char', 'vib', 'glide']) this.$(`[data-mod="${m}"]`).hidden = sampled;
       this.$all('[data-sound="decay"], [data-sound="sustain"]').forEach((input) => { input.closest('.slider-field').hidden = sampled; });
       this.$('.filter-type-chips').hidden = sampled;
@@ -10451,14 +10982,14 @@
     }
 
     _refreshSoundControls() {
-      const sound = this.state.sound;
+      const sound = this._editSound();
       for (const [key, knob] of Object.entries(this._soundKnobs)) knob.setValue(sound[key]);
       this.$all('[data-sound]').forEach((input) => { input.value = String(sound[input.dataset.sound]); });
       this._renderEnvelope(sound);
     }
 
     _renderSynthControls() {
-      const sound = this.state.sound;
+      const sound = this._editSound();
       this._soundKnobs = {};
 
       const waveHost = this.$('.wave-row');
@@ -10935,7 +11466,7 @@
       }
       return {
         title: 'lab.pickSound', action: 'pick-preset', catAction: 'preset-cat', cats: PRESET_CATS, cat: this.ui.presetCat,
-        current: s.sound.custom ? -1 : s.sound.presetIndex,
+        current: this._editSound().custom ? -1 : this._editSound().presetIndex,
         items: curated(SYNTH_PRESETS.map((p, i) => ({ i, name: p.name, visual: pictogramIcon(p.icon), cat: p.cat,
           inMeter: true, sub: t(presetDescKey(p)), short: t(presetDescKey(p)) })), PRESET_ORDER, presetIndexByName),
       };
@@ -10949,8 +11480,8 @@
         let name;
         let sub;
         let visual;
-        if (which === 'sound' && this.state.sound.custom) {
-          const base = SYNTH_PRESETS[this.state.sound.presetIndex];
+        if (which === 'sound' && this._editSound().custom) {
+          const base = SYNTH_PRESETS[this._editSound().presetIndex];
           name = t('lab.customSound');
           sub = tf('lab.basedOn', { name: base.name });
           visual = pictogramIcon(base.icon);
@@ -11092,8 +11623,8 @@
     /** ‹ › im Panel: nächster/voriger Eintrag (in der aktuellen Taktart). */
     _stepPicker(which, dir) {
       const def = this._pickerDef(which);
-      const list = def.items.filter((it) => it.inMeter && (!it.more || it.i === (which === 'sound' ? this.state.sound.presetIndex : def.current)));
-      const current = which === 'sound' ? this.state.sound.presetIndex
+      const list = def.items.filter((it) => it.inMeter && (!it.more || it.i === (which === 'sound' ? this._editSound().presetIndex : def.current)));
+      const current = which === 'sound' ? this._editSound().presetIndex
         : which === 'melody' && def.current === -1 ? this.state.melodyIndex
           : def.current === -1 ? def.fallback : def.current;
       const pos = list.findIndex((it) => it.i === current);
@@ -11653,12 +12184,16 @@
       const now = this.engine.ready ? this._recNow() : end;
       rec.open.forEach((open) => rec.notes.push({ ...open, t1: Math.min(now, end) }));
       rec.open.clear();
-      rec.take = rec.startTime ? this._recToBars() : null;
-      if (this.sfRec.phase !== 'idle' && this.sfRec.target === 'melody') {
-        // Aufnahme der Spielfläche: direkt in die Melodie, kein eigener Speicherschritt.
+      const intoTrack = this.sfRec.phase !== 'idle' && this.sfRec.notes && this.sfRec.target !== 'melody' ? this.sfRec.target : null;
+      // Instrumentenspuren rechnen Stufen immer ab Oktave 4 (ihre Oktave transponiert beim Spielen).
+      rec.take = rec.startTime ? this._recToBars(intoTrack ? { octave: 4 } : {}) : null;
+      if (this.sfRec.phase !== 'idle' && this.sfRec.notes) {
+        // Aufnahme der Spielfläche: direkt in die Spur, kein eigener Speicherschritt.
         const take = rec.take && rec.take.some((bar) => bar.length) ? rec.take : null;
         rec.phase = 'idle'; rec.take = null; rec.looping = false; rec.loopBars = null;
-        if (take) this._sfRecMelody(take); else { this.sfRec.phase = 'idle'; this._setStatus(t('lab.recEmpty')); this._renderSfRec(); }
+        if (take && intoTrack) this._sfRecInst(intoTrack, take);
+        else if (take) this._sfRecMelody(take);
+        else { this.sfRec.phase = 'idle'; this._setStatus(t('lab.recEmpty')); this._renderSfRec(); }
         this._renderRec();
         return;
       }
@@ -11738,12 +12273,12 @@
 
     /** Mitschrift → Takte aus [Schritt, Stufe, Länge, Vorzeichen?], in
      *  Aufnahme-Reihenfolge. `until`: noch gehaltene Töne bis hierhin. */
-    _recToBars({ until = null } = {}) {
+    _recToBars({ until = null, octave = this.state.melodyOctave } = {}) {
       const rec = this.rec;
       const all = until === null ? rec.notes : [...rec.notes, ...[...rec.open.values()].map((o) => ({ ...o, t1: until }))];
       return recNotesToBars(all, {
         startTime: rec.startTime, stepSec: rec.stepSec, bars: rec.bars, barSteps: rec.barSteps, meter: this._meter(),
-        keyRoot: this.state.keyRoot, modeSteps: this._mode().steps, melodyOctave: this.state.melodyOctave,
+        keyRoot: this.state.keyRoot, modeSteps: this._mode().steps, melodyOctave: octave,
       });
     }
 
@@ -11829,6 +12364,10 @@
         } else if (el.dataset.kit) {
           s.kit[el.dataset.kit] = Number(el.value);
           this._renderKit();
+        } else if (el.dataset.pan) {
+          s.pan[el.dataset.pan] = Number(el.value);
+          this.engine.setBusPan(el.dataset.pan, s.pan[el.dataset.pan]);
+          this.$all(`[data-out="pan-${el.dataset.pan}"]`).forEach((o) => { o.textContent = this._panLabel(s.pan[el.dataset.pan]); });
         } else if (el.dataset.mix) {
           s.mix[el.dataset.mix] = Number(el.value);
           if (el.dataset.mix === 'master') this.$all('[data-out="master"]').forEach((o) => { o.textContent = `${Math.round(s.mix.master * 100)} %`; });
@@ -11851,7 +12390,7 @@
           const name = el.value.trim().slice(0, 40);
           if (name && s.melodyOwnId) { s.melodyName = name; this._melCommit({ persist: false }); }
         } else if (el.dataset.sound) {
-          const sound = s.sound;
+          const sound = this._editSound();
           sound[el.dataset.sound] = Number(el.value);
           this._renderEnvelope(sound);
           this._onSoundEdit();
@@ -11873,7 +12412,7 @@
         else if (field === 'arpPattern') s[s.arpAuto ? 'arpAutoPattern' : 'arpPattern'] = el.value;
         else if (field === 'arpOctaves') s.arpOctaves = Number(el.value);
         else if (field === 'echoDiv') { s.fx.echoDiv = Number(el.value); this.engine.setFx(s.fx, this._stepSeconds()); }
-        else if (field === 'lfoSync') { s.sound.lfoSync = Number(el.value); this._onSoundEdit(); }
+        else if (field === 'lfoSync') { this._editSound().lfoSync = Number(el.value); this._onSoundEdit(); }
         else if (field === 'keyRoot') { s.keyRoot = Number(el.value); this._onHarmonyChange(); this._retuneDrone(); }
         else if (field === 'modeId') { s.modeId = el.value; this._onHarmonyChange(); }
         else if (el.dataset.choir === 'prog' && el.value) this._handleAction('pick-prog', el.value, el);
@@ -11926,7 +12465,7 @@
         return;
       }
       if (key === 'liveWrite') { this.sampler.live = on; return; }
-      if (key === 'mono') { s.sound.mono = on; this._onSoundEdit(); return; }
+      if (key === 'mono') { this._editSound().mono = on; this._onSoundEdit(); return; }
       if (key === 'autoOn') { if (s.automation) s.automation.on = on; this._renderAutomation(); return; }
       if (key === 'reverbOn' || key === 'echoOn' || key === 'chorusOn') {
         s.fx[key] = on;
@@ -12021,6 +12560,65 @@
           if (this.ui.track) this._showTrackTab(this.ui.trackTab);
           break;
         }
+        // Gemeinsame Oberfläche der Instrumentenspuren (Spur = ui.track).
+        case 'inst-play': if (this.ui.track) this._setInstPlay(this.ui.track, value); break;
+        case 'inst-rhythm': {
+          const inst = this.ui.track && this._instOf(this.ui.track);
+          if (!inst) break;
+          this._pushHistory();
+          if (inst.play === 'root' && ROOT_RHYTHMS.includes(value)) inst.cfg.rootRhythm = value;
+          if (inst.play === 'chords' && CHORD_RHYTHMS.includes(value)) inst.cfg.chordRhythm = value;
+          this._renderStudio(); this._showTrackTab('pattern');
+          this.$(`.inst-play [data-action="inst-rhythm"][data-value="${value}"]`)?.focus();
+          break;
+        }
+        case 'inst-oct': {
+          const inst = this.ui.track && this._instOf(this.ui.track);
+          if (!inst) break;
+          this._pushHistory();
+          inst.cfg.octave = clamp(inst.cfg.octave + Number(value), -3, 3);
+          this._renderStudio(); this._showTrackTab('pattern');
+          this.$(`.inst-oct [data-value="${value}"]`)?.focus();
+          if (!this.playing) this._auditionInst(this.ui.track);
+          break;
+        }
+        case 'inst-rec': { const id = this.ui.track; if (id) this._instRecord(id); break; }
+        case 'inst-clear': {
+          const inst = this.ui.track && this._instOf(this.ui.track);
+          if (!inst) break;
+          this._pushHistory();
+          inst.cfg.notes = null; inst.cfg.notesMeter = null;
+          this._renderStudio(); this._showTrackTab('pattern');
+          break;
+        }
+        case 'inst-bass': {
+          const id = this.ui.track;
+          const extra = s.instruments.find((tr) => tr.id === id);
+          if (!BASS_SOUNDS.some((b) => b.id === value)) break;
+          this._pushHistory();
+          if (extra) extra.bassId = value; else { s.bassSoundId = value; s.bassSynth = null; }
+          this._soundDraft = null;
+          this._syncEngine(); this._renderStudio(); this._showTrackTab('sound');
+          this.$(`.inst-sound [data-value="${value}"]`)?.focus();
+          if (!this.playing) this._auditionInst(id);
+          break;
+        }
+        case 'inst-pad':
+          if (!CHORD_PADS[value]) break;
+          this._pushHistory(); s.chordPad = value; s.padSynth = null; this._soundDraft = null;
+          this._syncEngine(); this._renderStudio(); this._showTrackTab('sound');
+          this.$(`.inst-sound [data-value="${value}"]`)?.focus();
+          if (!this.playing) this._auditionInst('pad');
+          break;
+        case 'track-arm':
+          // Scharf = Ziel der Spielfläche (Keyboard/Pads); aufgenommen wird erst mit „● Aufnehmen“ dort.
+          if (this._isTarget(value) && this.sfRec.phase === 'idle') {
+            this.ui.studioTarget = value;
+            this._renderStudio();
+            if (!this.$('.surface').hidden) this._renderSurface();
+            this.$(`.t-card[data-track="${value}"] [data-action="track-arm"]`)?.focus();
+          }
+          break;
         case 'track-solo': this.ui.solo = this.ui.solo === value ? null : value; this._syncEngine(); this._renderStudio(); if (this.ui.track) this._showTrackTab(this.ui.trackTab); break;
         case 'track-remove': this._removeTrack(value); break;
         case 'add-track': this._openPanelLayer(t('lab.studio.addTitle'), ['addTrack'], { after: () => this._renderAddTrack(value) }); break;
@@ -12028,6 +12626,7 @@
           this._closeLayer(this.$('.panel-layer'), { focus: false });
           if (value === 'drone') { this._setDrone(true); this._renderStudio(); this._openTrack('drone'); }
           else if (value === 'arp') { this._pushHistory(); s.arpOn = true; s.arpAuto = true; this._renderKeys(); this._renderStudio(); this._openTrack('arp'); }
+          else if (/^inst:/.test(value)) this._addInstrument(value.slice(5));
           else if (FIXED_TRACKS.includes(value)) {
             this._pushHistory();
             s.removed = s.removed.filter((id) => id !== value);
@@ -12064,7 +12663,12 @@
           this.$(`.cp-hit[data-value="${value}"]`)?.focus();
           break;
         }
-        case 'cs-sound': this._pushHistory(); s.chordSound = CHORD_SOUND_IDS.includes(value) ? value : 'synth'; s.chordsOn = true; this._syncEngine(); this._renderChordPart(); this._renderStudio(); this._renderChor(); this.$(`.cs-chips [data-value="${value}"]`)?.focus(); break;
+        case 'cs-sound':
+          this._pushHistory(); s.chordSound = CHORD_SOUND_IDS.includes(value) ? value : 'synth'; s.chordSynth = null; s.chordsOn = true; this._soundDraft = null;
+          this._syncEngine(); this._renderChordPart(); this._renderStudio(); this._renderChor();
+          if (this.ui.track === 'chords' && this.ui.trackTab === 'sound') { this._showTrackTab('sound'); this.$(`.inst-sound [data-value="${value}"]`)?.focus(); }
+          else this.$(`.cs-chips [data-value="${value}"]`)?.focus();
+          break;
         case 'cs-pad': this._pushHistory(); s.chordPad = CHORD_PADS[value] ? value : null; this._renderChordPart(); this._renderStudio(); this._renderChor(); this.$(`.cs-pad-chips [data-value="${value}"]`)?.focus(); break;
         case 'bass-play': this._pushHistory(); s.bassPlay = value; s.beat.bass = bassVariant(this._pattern(), value); s.trackOn.bass = true; this._renderTracks(); this._renderBassPart(); this._renderStudio(); this.$(`.bass-play-chips [data-value="${value}"]`)?.focus(); break;
         case 'lane-toggle': { const lane = s.sampleLanes[Number(value)]; if (lane) { this._pushHistory(); lane.on = !lane.on; this._renderTracks(); this._renderRecLanes(); this._renderStudio(); } break; }
@@ -12169,6 +12773,7 @@
         case 'dc-adopt': this._dcAdopt(); break;
         case 'toggle-transport': if (this.playing) this.stop(); else if (!this._starting) this.start(); break;
         case 'randomize': this._closeSheet({ focus: false }); this.randomize(); break;
+        case 'new-project': this._closeSheet({ focus: false }); this.newProject(); break;
         case 'undo': this.undo(); break;
         case 'tap-tempo': this._tapTempo(); break;
         case 'tab': this._setTab(target.dataset.tab); break;
@@ -12321,7 +12926,7 @@
         case 'chord-voicing': this._pushHistory(); s.chordVoicing = value === 'pop' ? 'pop' : 'satb'; this._renderHarmony(); this._renderSatb(); break;
         case 'chord-sound': this._pushHistory(); s.chordSound = value === 'choir' ? 'choir' : 'synth'; this._syncEngine(); this._renderHarmony(); break;
         case 'fills': this._pushHistory(); s.fills = FILL_LENGTHS.includes(Number(value)) ? Number(value) : 0; this._renderBeat(); break;
-        case 'bass-sound': s.bassSoundId = value; this._renderBeat(); if (!this.playing) this._preview('bass', 0); break;
+        case 'bass-sound': s.bassSoundId = value; s.bassSynth = null; this._renderBeat(); if (!this.playing) this._preview('bass', 0); break;
 
         // Harmonie
         case 'prog-cat': this.ui.progCat = value === this.ui.progCat ? 'all' : value; this._renderHarmony(); break;
@@ -12511,18 +13116,18 @@
           break;
         case 'preset-cat': this.ui.presetCat = value === this.ui.presetCat ? 'all' : value; this._renderSound(); break;
         case 'pick-preset':
-          s.sound = soundFromPreset(Number(value));
+          this._setEditSound(soundFromPreset(Number(value)));
           this._applySound();
           this._renderSound();
           this._auditionSound();
           break;
         case 'reset-sound':
-          s.sound = soundFromPreset(s.sound.presetIndex);
+          this._setEditSound(soundFromPreset(this._editSound().presetIndex));
           this._applySound();
           this._renderSound();
           break;
-        case 'wave': s.sound.wave = value; this._onSoundEdit(); this._renderSynthControls(); break;
-        case 'filter-type': s.sound.filterType = value; this._onSoundEdit(); this._renderSynthControls(); break;
+        case 'wave': this._editSound().wave = value; this._onSoundEdit(); this._renderSynthControls(); break;
+        case 'filter-type': this._editSound().filterType = value; this._onSoundEdit(); this._renderSynthControls(); break;
 
         // Keys
         case 'arp-clear': this.latchedNotes.clear(); this._paintHeld(); this._renderKeys(); break;
@@ -12581,8 +13186,61 @@
     async _auditionSound() {
       if (this.playing) return;
       try { await this._ensureAudio(); } catch { return; }
-      this.engine.playTone(this.state.sound, 60 + foldRoot(this.state.keyRoot), this.engine.ctx.currentTime, .22, .5,
-        { layer: 'melody', glide: 0, stepSeconds: this._stepSeconds() });
+      const id = this._soundFor();
+      if (id === 'melody') {
+        this.engine.playTone(this.state.sound, 60 + foldRoot(this.state.keyRoot), this.engine.ctx.currentTime, .22, .5,
+          { layer: 'melody', glide: 0, stepSeconds: this._stepSeconds() });
+        return;
+      }
+      this._syncEngine();
+      const inst = this._instOf(id);
+      if (inst) this._instTone(inst, (inst.type === 'bass' ? 36 : 60) + foldRoot(this.state.keyRoot), this.engine.ctx.currentTime, .22, .5);
+    }
+
+    /* ---- Klang-Editor für jede Instrumentenspur: bearbeitet wird der Klang von ui.soundFor
+       (Melodie = state.sound; Bass/Akkorde/Pad = bassSynth/chordSynth/padSynth; Zusatzspur =
+       ihr sound). Ohne eigenen Synth zeigt der Editor einen Entwurf aus dem jetzigen Klang;
+       erst eine Änderung macht ihn zum Klang der Spur. ---- */
+    _soundFor() {
+      const id = this.ui.soundFor;
+      return id && (PRIMARY_INST.includes(id) || this.state.instruments.some((tr) => tr.id === id)) ? id : 'melody';
+    }
+    _editSound() {
+      const s = this.state;
+      const id = this._soundFor();
+      if (id === 'melody') return s.sound;
+      const extra = s.instruments.find((tr) => tr.id === id);
+      if (extra) return extra.sound;
+      const own = id === 'bass' ? s.bassSynth : id === 'chords' ? s.chordSynth : s.padSynth;
+      if (own) return own;
+      if (this._soundDraft?.id !== id) {
+        const base = id === 'bass' ? soundFromPreset(presetIndexByName(INST_TYPES.bass.preset)) : id === 'chords' ? this._chordBaseSound() : this._padSound()[0];
+        this._soundDraft = { id, sound: JSON.parse(JSON.stringify(base)) };
+      }
+      return this._soundDraft.sound;
+    }
+    /** Nach einer Änderung im Editor: der Entwurf wird zum Klang der Spur. */
+    _commitEditSound(sound) {
+      const s = this.state;
+      const id = this._soundFor();
+      const extra = s.instruments.find((tr) => tr.id === id);
+      if (extra) { extra.bassId = null; return; }
+      if (id === 'bass' && !s.bassSynth) s.bassSynth = sound;
+      if (id === 'chords' && !s.chordSynth) s.chordSynth = sound;
+      if (id === 'pad' && !s.padSynth) s.padSynth = sound;
+      this._soundDraft = null;
+    }
+    _setEditSound(sound) {
+      const s = this.state;
+      const id = this._soundFor();
+      const extra = s.instruments.find((tr) => tr.id === id);
+      this._soundDraft = null;
+      if (id === 'melody') s.sound = sound;
+      else if (extra) { extra.sound = sound; extra.bassId = null; }
+      else if (id === 'bass') s.bassSynth = sound;
+      else if (id === 'chords') s.chordSynth = sound;
+      else s.padSynth = sound;
+      this._renderTrackHead?.();
     }
 
     _isTyping() {
@@ -13563,7 +14221,18 @@
   .mel-rec-link { display: none; }
   .track-body .mel-rec-link { display: inline-flex; align-items: center; gap: 8px; margin: 8px 0 0 16px; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: .76rem; font-weight: 800; color: var(--text); }
   .mel-rec-link i, .t-rec i { width: 12px; height: 12px; border-radius: 50%; background: var(--bad); display: block; }
+  .inst-play { display: grid; gap: 6px; }
+  .inst-play .seg { flex: none; }
+  .inst-play .sub-label { margin: 6px 0 0; }
+  .inst-rec { display: inline-flex; align-items: center; gap: 6px; }
+  .inst-rec i { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); display: block; }
+  .inst-oct { display: flex; align-items: center; gap: 8px; }
+  .inst-oct .sub-label { margin: 0; flex: 1; }
+  .inst-oct .chip { min-width: 44px; min-height: 40px; font-size: 1rem; }
+  .inst-oct output { min-width: 2ch; text-align: center; font-weight: 800; }
   .t-rec { display: grid; place-items: center; }
+  .t-ms.t-rec[aria-pressed="true"] { background: var(--bad); border-color: var(--bad); }
+  .t-ms.t-rec[aria-pressed="true"] i { background: #fff; }
   .mel-top { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
   .mel-bars { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; }
   .mel-bar-tab { min-width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--line); font-size: .74rem; font-weight: 800; color: var(--muted); background: var(--surface-2); }
@@ -13785,8 +14454,6 @@
   .t-del { width: 36px; height: 36px; margin-left: auto; display: inline-grid; place-items: center; color: var(--muted); }
   .t-del svg { width: 18px; height: 18px; }
   .add-track { min-height: 48px; border-radius: 16px; border: 2px dashed var(--line); font-size: .78rem; font-weight: 700; color: var(--text); }
-  .studio-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .studio-tools .chip { min-height: 40px; }
   .studio-fab-space { height: 84px; }
   .studio-fabs { position: sticky; bottom: 12px; justify-self: center; display: flex; gap: 8px; max-width: 100%; margin-top: -60px; z-index: 2; }
   .kbd-fab, .mic-fab {
@@ -14152,9 +14819,6 @@
     <button class="song-prog" type="button" data-action="prog-sheet" aria-haspopup="dialog"><span class="song-k">${t('lab.studio.prog')}</span><strong class="song-prog-list"></strong><span class="song-prog-edit">${t('lab.studio.edit')} ›</span></button>
     <div class="track-cards"></div>
     <button class="add-track" type="button" data-action="add-track" aria-haspopup="dialog">${t('lab.studio.addTrack')}</button>
-    <div class="studio-tools"><span class="sub-label">${t('lab.studio.more')}</span>
-      <button class="chip" type="button" data-action="my-sounds">${t('lab.menu.sounds')}</button>
-    </div>
     <div class="studio-fab-space" aria-hidden="true"></div>
     <div class="studio-fabs">
       <button class="kbd-fab" type="button" data-action="surface-open">${UI_ICON.piano}<span class="kbd-fab-text"></span></button>
@@ -14705,6 +15369,7 @@
       <button class="icon-btn" type="button" data-action="close-sheet" aria-label="${t('lab.menuClose')}" title="${t('lab.menuClose')}">${UI_ICON.close}</button>
     </div>
     <section class="menu-sec menu-actions menu-main">
+      <button class="menu-item" type="button" data-action="new-project">${UI_ICON.newPage}<span>${t('lab.menu.newProject')}</span></button>
       <button class="menu-item" type="button" data-action="menu-page" data-value="file">${UI_ICON.folder}<span>${t('lab.menu.file')}</span><span class="menu-go menu-file-sub">›</span></button>
       <button class="menu-item" type="button" data-action="my-sounds">${UI_ICON.waves}<span>${t('lab.menu.sounds')}</span></button>
       <button class="menu-item menu-random" type="button" data-action="randomize">${UI_ICON.dice}<span>${t('lab.menu.random')}</span></button>
@@ -15070,7 +15735,7 @@
     if (!shown('.chor-view') || shown('.tab-bar') || v.state.view !== 'choir') fail('Chor zeigt nicht die Chor-Ansicht');
     if (v.$('.view-btn').getAttribute('aria-haspopup') !== 'menu' || v.$all('.view-opt[aria-checked="true"]').length !== 1) fail('Ansichts-Auswahl');
     v._applyView('studio');
-    if (shown('.tab-bar') || !shown('.studio-view') || v.$all('.t-card').length !== 4 || shown('.chor-view')) fail('Studio zeigt die Spuren nicht');
+    if (shown('.tab-bar') || !shown('.studio-view') || v.$all('.t-card').length !== 4 + (v.state.chordPad ? 1 : 0) || shown('.chor-view')) fail('Studio zeigt die Spuren nicht');
     // Spur-Blatt: Bedienfelder hängen um und kehren beim Schließen zurück (Workshop braucht sie in den Reitern).
     const gridHome = () => v.$('[data-part="grid"]').closest('.tab-panel')?.dataset.tabPanel;
     v._openTrack('drums');
@@ -15101,7 +15766,7 @@
     v._handleAction('track-remove', 'chords', null);
     if (v.$('.t-card[data-track="chords"]') || !v.state.removed.includes('chords') || v._busLevel('chords') !== 0) fail('Spur löschen');
     v._handleAction('add-track', 'inst', null);
-    if (!v.$('.panel-layer-body [data-action="add-track-pick"][data-value="chords"]')) fail('+ Spur: gelöschte Spur fehlt');
+    if (!v.$('.panel-layer-body [data-action="add-track-pick"][data-value="inst:chords"]')) fail('+ Spur: Akkorde fehlt');
     v._handleAction('add-track-pick', 'chords', null);
     if (!v.$('.t-card[data-track="chords"]') || v.state.removed.length || v.state.mute.chords) fail('Gelöschte Spur wieder hinzufügen');
     v._closeAllLayers();
@@ -15110,6 +15775,58 @@
     v.undo();
     if (!v.state.arpOn) fail('Löschen rückgängig');
     v.state.arpOn = false; v._renderAll();
+    // Instrumentenspuren: gemeinsame Oberfläche, beliebig viele Zusatzspuren mit eigener Ebene.
+    {
+      const hadPad = !!v.state.chordPad;
+      if (!hadPad) v._addInstrument('pad');
+      if (!v.state.chordPad || !v.$('.t-group[data-group="inst"] .t-card[data-track="pad"]')) fail('Pad als eigene Spur');
+      v._closeAllLayers();
+      v._addInstrument('pad');
+      const extra = v.state.instruments[0];
+      if (!extra || extra.type !== 'pad' || !v.$(`.t-group[data-group="inst"] .t-card[data-track="${extra.id}"]`) || v._trackName(extra.id) !== `${t('lab.track.pad')} 2`) fail('Zusatzspur Pad');
+      if (v.ui.track !== extra.id || !v.$('.track-body .inst-play-seg')) fail('Spielt-Blatt der Zusatzspur');
+      v._showTrackTab('sound');
+      if (!v.$('.track-body [data-part="sound"]') || v._editSound() !== extra.sound) fail('Klang-Editor bearbeitet die Zusatzspur');
+      v._closeAllLayers();
+      if (v._editSound() !== v.state.sound) fail('Klang-Editor gehört nach dem Schließen wieder der Melodie');
+      // Grundton im Achtel-Rhythmus: acht Töne pro 4/4-Takt, um die Oktave versetzt.
+      v.ui.track = extra.id;
+      v._setInstPlay(extra.id, 'root');
+      extra.rootRhythm = 'eighths';
+      const tones = [];
+      const keep = v._instTone;
+      v._instTone = (inst, midi) => tones.push(midi);
+      const barSteps = v._barSteps();
+      for (let g = 0; g < barSteps; g++) v._playInstStep(v._instOf(extra.id), g, g, 0, .1, barSteps, v._harmonyAt(g));
+      const count = Object.keys(bassVariant(v._pattern(), 'eighths')).length;
+      if (tones.length !== count) fail(`Grundton-Rhythmus: ${tones.length} statt ${count} Töne`);
+      extra.octave += 1; tones.length = 0;
+      v._playInstStep(v._instOf(extra.id), 0, 0, 0, .1, barSteps, v._harmonyAt(0));
+      const up = tones[0];
+      extra.octave -= 1; tones.length = 0;
+      v._playInstStep(v._instOf(extra.id), 0, 0, 0, .1, barSteps, v._harmonyAt(0));
+      if (up - tones[0] !== 12) fail('Oktave transponiert nicht');
+      // Eigene Töne: was eingespielt ist, klingt (Tonart-Bezug, ab Oktave 4).
+      v._setInstPlay(extra.id, 'own');
+      extra.notes = [[[0, 0, 4]]]; extra.notesMeter = v._meter(); tones.length = 0;
+      v._playInstStep(v._instOf(extra.id), 0, 0, 0, .1, barSteps, v._harmonyAt(0));
+      if (tones[0] !== 60 + foldRoot(v.state.keyRoot) + 12 * extra.octave) fail('Eigene Töne einer Zusatzspur');
+      v._instTone = keep;
+      // Grundspur Akkorde: andere Spielweise über trackAlt, zurück = bisheriger Zustand.
+      v._setInstPlay('chords', 'own');
+      if (v.state.trackPlay.chords !== 'own' || !v._recIntoNotes('chords')) fail('Akkorde spielen eigene Melodie');
+      v._setInstPlay('chords', 'chords');
+      if (v.state.trackPlay.chords !== 'native') fail('Akkorde zurück auf die Folge');
+      // Speichern/Teilen behält die Zusatzspuren samt Pegel.
+      v.state.mix[extra.id] = .33;
+      const back = sanitizeState(JSON.parse(JSON.stringify(v.state)));
+      if (back.instruments.length !== 1 || back.instruments[0].play !== 'own' || back.mix[extra.id] !== .33 || !back.instruments[0].notes) fail('Zusatzspur geht beim Speichern verloren');
+      v._closeAllLayers();
+      v._removeTrack(extra.id);
+      if (v.state.instruments.length || extra.id in v.state.mix || v.$(`.t-card[data-track="${extra.id}"]`)) fail('Zusatzspur löschen');
+      if (!hadPad) v._removeTrack('pad');
+      v._closeAllLayers();
+    }
     const keyBefore = v.state.keyRoot; const tempoBefore = v.state.eighths;
     v.randomize();
     if (v.state.keyRoot !== keyBefore || v.state.eighths !== tempoBefore) fail('Zufällig ändert Tonart oder Tempo');
