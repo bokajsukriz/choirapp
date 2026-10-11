@@ -5959,7 +5959,7 @@
       check('.cp-voicing', s.chordVoicing);
       check('.cp-oct', s.chordOctave || 0);
       const n = this._barSteps();
-      const hits = new Map((s.chordHits || []).map((h) => [h[0], h]));
+      const hits = new Map(this._chordGridHits().map((h) => [h[0], h]));
       const box = this.$('.cp-hits');
       box.style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr))`;
       box.replaceChildren(...Array.from({ length: n }, (_, st) => {
@@ -5972,14 +5972,23 @@
         b.setAttribute('aria-label', tf('lab.studio.hitAria', { n: st + 1 }));
         return b;
       }));
-      // Anschläge gehören zum Stil-Rhythmus; im Generator gilt dessen Rhythmus.
-      this.$('.cp-hits-box').hidden = s.chordPlay !== 'rhythm' || s.trackPlay.chords !== 'native';
+      // „Eigenes Raster“: die Anschläge (vorbelegt vom Stil) sind immer sichtbar; im Generator gilt dessen Rhythmus.
+      this.$('.cp-hits-box').hidden = s.trackPlay.chords !== 'native';
       const cs = this.$('.cs-chips');
       if (cs) {
         cs.replaceChildren(...CHORD_SOUND_IDS.map((id) => this._radioChip('cs-sound', id, t(`lab.chordSound.${id}`), s.chordSound === id)));
         this.$('.cs-pad-chips').replaceChildren(...[['', 'lab.studio.padNone'], ['airy', 'lab.studio.padAiry'], ['moon', 'lab.studio.padMoon']]
           .map(([id, key]) => this._radioChip('cs-pad', id, t(key), (s.chordPad || '') === id)));
       }
+    }
+    /** Anschläge des Rasters, wie die Akkorde gerade spielen: eigene/Stil-Anschläge, gehalten =
+     *  ein Anschlag auf der 1, Arpeggio = alle zwei Schritte. [Schritt, Länge, Faktor]. */
+    _chordGridHits() {
+      const s = this.state;
+      const n = this._barSteps();
+      if (s.chordPlay === 'rhythm' && s.chordHits) return s.chordHits;
+      if (s.chordPlay === 'arp') return Array.from({ length: Math.ceil(n / CHORD_ARP.every) }, (_, i) => [i * CHORD_ARP.every, CHORD_ARP.every, i ? .75 : 1]);
+      return [[0, n, 1]];
     }
     _renderBassPart() {
       const s = this.state;
@@ -11331,9 +11340,14 @@
 
     /** Energie wählen: im Stillstand sofort, beim Spielen an der nächsten Grenze von
      *  zwei Takten (_commitEnergy im Scheduler). Ein Undo-Schritt. */
-    _setEnergy(energy) {
+    _setEnergy(energy, { confirmed = false } = {}) {
       if (!ENERGY_IDS.includes(energy) || !this.state.styleId) return;
       const custom = styleDiff(this.state).rhythm || styleDiff(this.state).bass;
+      // Eigene Anschläge/Linien (z. B. im Studio-Raster gesetzt) nicht still überschreiben.
+      if (custom && !confirmed && energy !== this.state.energy) {
+        this._confirm({ text: t('lab.chor.energyConfirm'), ok: t('lab.chor.energyConfirmOk'), onOk: () => { this._setEnergy(energy, { confirmed: true }); this._renderChor(); } });
+        return;
+      }
       this._pushHistory();
       if (custom) this._setStatus(t('lab.chor.resetHint'));
       if (!this.playing) { this._applyEnergyNow(energy); return; }
@@ -12812,12 +12826,14 @@
         case 'cp-hit': {
           this._pushHistory();
           const st = Number(value);
-          const hits = (s.chordHits || []).filter((h) => h[0] !== st);
-          if (hits.length === (s.chordHits || []).length) hits.push([st, 2, .85]);
+          // Ausgangspunkt ist, was gerade klingt (auch gehalten oder Arpeggio des Stils).
+          const base = this._chordGridHits().map((h) => [...h]);
+          const hits = base.filter((h) => h[0] !== st);
+          if (hits.length === base.length) hits.push([st, 2, .85]);
           // Länge je Anschlag: bis zum nächsten Anschlag (höchstens bis Taktende).
           hits.sort((x, y) => x[0] - y[0]).forEach((h, i) => { h[1] = (hits[i + 1]?.[0] ?? this._barSteps()) - h[0]; });
           s.chordHits = hits.length ? hits : null;
-          if (!s.chordHits) s.chordPlay = 'held';
+          s.chordPlay = s.chordHits ? 'rhythm' : 'held';
           this._renderChordPart(); this._renderStudio();
           this.$(`.cp-hit[data-value="${value}"]`)?.focus();
           break;
