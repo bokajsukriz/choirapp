@@ -2418,6 +2418,10 @@ function renderMarks(has) {
   return marks;
 }
 
+// Ab so vielen Songs in der Bibliothek wird die Songliste nach
+// Anfangsbuchstaben unterteilt (siehe renderSongs).
+const SONG_AZ_MIN = 12;
+
 // Suchbegriff und gewählter Sammelordner-Filter der Bibliothek
 let songQuery = '';
 let songFilter = null;   // null = „Alle"
@@ -2582,11 +2586,16 @@ async function renderSongs() {
   // Nach Anfangsbuchstaben gruppiert: je Buchstabe eine Überschrift (klebt
   // beim Scrollen oben) und eine gemeinsame Karte. Die Liste ist schon nach
   // Titel sortiert, deshalb reicht es, bei jedem neuen Buchstaben eine neue
-  // Gruppe zu beginnen.
-  let list = null;
+  // Gruppe zu beginnen. Erst ab SONG_AZ_MIN Songs in der Bibliothek — bei
+  // wenigen wirkt die Liste sonst zerstückelt. Gemessen an der ganzen
+  // Bibliothek, nicht an den Treffern, damit die Liste beim Tippen in der
+  // Suche nicht zwischen beiden Darstellungen hin- und herspringt.
+  const grouped = songs.length >= SONG_AZ_MIN;
+  let list = grouped ? null : el('ul', { class: 'list' });
+  if (!grouped) host.append(list);
   let groupKey = null;
   for (const song of visible) {
-    const key = songInitial(song.title);
+    const key = grouped ? songInitial(song.title) : null;
     if (key !== groupKey) {
       groupKey = key;
       const headId = `song-az-${host.childElementCount}`;
