@@ -283,11 +283,13 @@ Lernen/Kurs; `deconstruct` → Lernen/de:construct.
 **Kopfleiste** (einzeilig, alle Ansichten): ▶/⏸ · Taktpunkte + aktueller Akkord ·
 Ansicht ▾ · „Audio & Leistung“ · ↶ · ☰. In de:construct kommen „Prüfen“ und A/B dazu.
 Unter 400 px fällt die Statuszeile weg (wichtige Meldungen als Toast), unter 360 px
-der Akkordname — nie Play, Ansicht, Menü. **Menü** (Schublade): Speichern & Öffnen
-(vier Plätze, `.groove`-Datei mit dem `GL1.`-Code, Code teilen), Wiedergabe
-(Gesamtlautstärke, Einzählen vor dem Start — Standard an, 1 Takt, nicht in Kurs und
-de:construct), Meine Sounds, Zufällig (nur Studio; beachtet die Schlösser, ändert nie
-Tonart, Tempo, Taktart oder Swing), Audio & Leistung, Schließen.
+der Akkordname — nie Play, Ansicht, Menü. **Menü** (Schublade, eine kurze Liste):
+Speichern & Öffnen › (Unterseite: vier Plätze, `.groove`-Datei mit dem `GL1.`-Code,
+Code teilen), Meine Sounds, Zufällig (nur Studio; beachtet die Schlösser, ändert nie
+Tonart, Tempo, Taktart oder Swing), Audio & Leistung, Einstellungen › (Unterseite:
+Einzählen vor dem Start — Standard aus, 1 Takt, nicht in Kurs und de:construct; eine
+Geräte-Einstellung in der Ablage, nicht Teil von Stand/Code), Schließen. Die
+Gesamtlautstärke steht nur noch im Mixer („Master“).
 
 **Chor** (Standard über Tools): Tonart ± (Halbtöne; Antippen öffnet Grundton/Modus)
 und „Anfangstöne geben“ (Tonika-Dreiklang, dann B → T → A → S des ersten Akkords am
