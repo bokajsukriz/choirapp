@@ -2579,8 +2579,22 @@ async function renderSongs() {
   // seine Liste noch zusätzlich anhängen.
   if (run.stale) return;
 
-  const list = el('ul', { class: 'list' });
+  // Nach Anfangsbuchstaben gruppiert: je Buchstabe eine Überschrift (klebt
+  // beim Scrollen oben) und eine gemeinsame Karte. Die Liste ist schon nach
+  // Titel sortiert, deshalb reicht es, bei jedem neuen Buchstaben eine neue
+  // Gruppe zu beginnen.
+  let list = null;
+  let groupKey = null;
   for (const song of visible) {
+    const key = songInitial(song.title);
+    if (key !== groupKey) {
+      groupKey = key;
+      const headId = `song-az-${host.childElementCount}`;
+      list = el('ul', { class: 'list', 'aria-labelledby': headId });
+      host.append(el('section', { class: 'song-az-group' },
+        el('h2', { class: 'song-az-head', id: headId }, el('span', { text: key })),
+        list));
+    }
     const marks = renderMarks({
       lyrics: !!song.lyrics || lyricsNotedSongs.has(song.id),
       score: (song.scores || []).length > 0,
@@ -2608,7 +2622,15 @@ async function renderSongs() {
       )
     ));
   }
-  host.append(list);
+}
+
+// Gruppenbuchstabe der Songliste: Umlaute und Akzente zählen zum
+// Grundbuchstaben (Ä → A), alles ohne Buchstaben am Anfang (Ziffern,
+// Satzzeichen, leerer Titel) landet unter „#“ — das sortiert der Collator
+// ohnehin vor die Buchstaben, die Gruppe bleibt also zusammenhängend.
+function songInitial(title) {
+  const ch = (title || '').trim().normalize('NFD').replace(/\p{M}/gu, '').charAt(0);
+  return /\p{L}/u.test(ch) ? ch.toLocaleUpperCase('de').charAt(0) : '#';
 }
 
 // Entprellt: ein schnell getippter Suchbegriff soll die Liste einmal neu
