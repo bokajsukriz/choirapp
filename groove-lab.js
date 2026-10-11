@@ -7278,12 +7278,20 @@
     }
 
     async start() {
+      // Zweiter Klick, während das Audio noch anläuft: nicht ein zweites Mal starten
+      // (sonst liefen zwei Scheduler, von denen stop() nur einen anhält).
+      if (this.playing || this._starting) return;
+      this._starting = true;
       try {
         await this._ensureAudio();
       } catch {
         this._setStatus(t('lab.statusNoAudioDevice'));
         return;
+      } finally {
+        this._starting = false;
       }
+      if (this.playing) return;
+      clearTimeout(this.schedulerTimer);
       this.playing = true;
       this._stopArpClock(); // ab jetzt spielt der Arp im Groove-Scheduler
       // Einzähler (ein Takt Klick, nur aus dem Stillstand; nicht in Workshop und de:construct,
@@ -8252,8 +8260,13 @@
        solange der Pad-Knopf gedrückt ist (siehe DRUM_PATTERNS.roll). ---- */
 
     async _startRoll(track) {
-      if (this.rollTimers[track]) return;
-      try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
+      if (track in this.rollTimers) return;
+      // Platzhalter vor dem await: Wird der Knopf losgelassen, während das Audio noch
+      // anläuft, löscht _stopRoll ihn — dann startet die Roll gar nicht erst.
+      const token = {};
+      this.rollTimers[track] = token;
+      try { await this._ensureAudio(); } catch { if (this.rollTimers[track] === token) delete this.rollTimers[track]; this._setStatus(t('lab.statusNoAudioHere')); return; }
+      if (this.rollTimers[track] !== token) return;
       const pattern = this._pattern();
       const cell = pattern.roll?.length ? pattern.roll : [[1, 1]];
       const bassSteps = Object.values(this.state.beat.bass);
@@ -8276,7 +8289,7 @@
     }
 
     _stopRoll(track) {
-      global.clearTimeout(this.rollTimers[track]);
+      if (typeof this.rollTimers[track] === 'number') global.clearTimeout(this.rollTimers[track]);
       delete this.rollTimers[track];
     }
 
@@ -8291,7 +8304,8 @@
       this.state.droneOn = on;
       if (on) {
         try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); this.state.droneOn = false; this._renderHarmony(); return; }
-        this._startDrone();
+        // Inzwischen wieder ausgeschaltet (schneller Doppeltipp): nicht mehr starten.
+        if (this.state.droneOn) this._startDrone();
       } else {
         this._stopDrone();
       }
@@ -8542,6 +8556,7 @@
     _toggleCell(track, step) {
       this._wsChTouched();
       const s = this.state;
+      this._pushHistory();
       const cycle = CELL_CYCLE[track];
       const current = s.beat[track][step];
       const index = current === undefined ? -1 : cycle.indexOf(current);
@@ -8901,7 +8916,6 @@
           const meta = this._sampleMeta(id);
           if (meta && !meta.factory) { this.sampler.sel = index; this._openEditor(id); }
         }, 500);
-        this._padHoldFired = false;
         this._tapPad(index);
       });
       btn.addEventListener('click', (event) => {
@@ -9072,13 +9086,25 @@
     async _smpRecStart() {
       const smp = this.sampler;
       const rec = smp.rec;
-      if (!rec || rec.phase !== 'idle') return;
+      // starting: zweiter Tipp, während Audio und Mikrofon noch anlaufen, startet nicht doppelt.
+      if (!rec || rec.phase !== 'idle' || rec.starting) return;
       if (smp.meta.size >= SAMPLER_MAX_SAMPLES) { this._setStatus(tf('lab.sampler.full', { n: SAMPLER_MAX_SAMPLES })); return; }
       if (!this._mic || !global.MediaRecorder) { this._setStatus(t('lab.sampler.noMic')); return; }
-      try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
+      rec.starting = true;
       let stream;
-      try { stream = await this._mic.open(); } catch (err) { console.warn('[groove-lab] Mikrofon', err); this._setStatus(t('lab.sampler.micFailed')); return; }
-      if (smp.view !== 'record' || smp.rec !== rec) { this._mic.close?.(stream); return; }
+      try {
+        try { await this._ensureAudio(); } catch { this._setStatus(t('lab.statusNoAudioHere')); return; }
+        try { stream = await this._mic.open(); } catch (err) { console.warn('[groove-lab] Mikrofon', err); this._setStatus(t('lab.sampler.micFailed')); return; }
+      } finally {
+        rec.starting = false;
+      }
+      // Ansicht verlassen oder Audio inzwischen neu aufgebaut (Pufferwechsel im Mikrofon-Dialog):
+      // Mikrofon wieder freigeben, nicht mit einem geschlossenen Kontext weitermachen.
+      if (smp.view !== 'record' || smp.rec !== rec || !this.engine.ctx || this.engine.ctx.state === 'closed') {
+        this._mic.close?.(stream);
+        if (smp.rec === rec && smp.view === 'record') this._setStatus(t('lab.sampler.micFailed'));
+        return;
+      }
       const ctx = this.engine.ctx;
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
@@ -9092,6 +9118,14 @@
       }
       const chunks = [];
       recorder.ondataavailable = (event) => { if (event.data?.size) chunks.push(event.data); };
+      // Endet der Recorder von selbst (Mikrofon getrennt, Bluetooth-Headset weg), sauber
+      // abschließen statt in „Aufnahme läuft“ hängen zu bleiben.
+      recorder.onstop = () => {
+        if (rec.stopping) return;
+        rec.stopping = true;
+        (rec.timers || []).forEach(clearTimeout);
+        this._smpRecFinish(rec);
+      };
       Object.assign(rec, { stream, source, analyser, recorder, chunks, mimeType: recorder.mimeType || mimeType || 'audio/webm' });
       // Zeitplan: Einzählen (ein Takt Klicks), dann Aufnahme; bei Loops fester Takt.
       const stepSec = this._stepSeconds();
@@ -9127,9 +9161,10 @@
       if (!rec || !rec.recorder || rec.phase === 'idle' || rec.stopping) return;
       rec.stopping = true;
       (rec.timers || []).forEach(clearTimeout);
-      const done = new Promise((resolve) => { rec.recorder.onstop = resolve; });
-      try { rec.recorder.stop(); } catch { /* schon gestoppt */ }
-      done.then(() => this._smpRecFinish(rec));
+      // Schon beendet: kein stop-Ereignis mehr zu erwarten — gleich abschließen.
+      if (rec.recorder.state === 'inactive') { this._smpRecFinish(rec); return; }
+      rec.recorder.onstop = () => this._smpRecFinish(rec);
+      try { rec.recorder.stop(); } catch { this._smpRecFinish(rec); }
     }
 
     /** Aufnahme abbrechen (Ansicht verlassen): Mikrofon frei, nichts speichern. */
@@ -9676,6 +9711,7 @@
       const s = this.state;
       const lane = s.sampleLanes[laneIndex];
       if (!lane) return;
+      this._pushHistory();
       const cycle = [1, .6];
       const current = lane.steps[step];
       const index = current === undefined ? -1 : cycle.indexOf(current);
@@ -12006,7 +12042,7 @@
         case 'beat-zoom-close': this._setBeatZoom(false); break;
         case 'dc-reveal': this._dcReveal(); break;
         case 'dc-adopt': this._dcAdopt(); break;
-        case 'toggle-transport': if (this.playing) this.stop(); else this.start(); break;
+        case 'toggle-transport': if (this.playing) this.stop(); else if (!this._starting) this.start(); break;
         case 'randomize': this._closeSheet({ focus: false }); this.randomize(); break;
         case 'undo': this.undo(); break;
         case 'tap-tempo': this._tapTempo(); break;
@@ -12051,11 +12087,21 @@
         }
         case 'beat-cat': this.ui.beatCat = value === this.ui.beatCat ? 'all' : value; this._renderBeat(); break;
         case 'pick-pattern': {
+          // Ein Undo-Schritt je Wahl: der Tausch verwirft sonst eigene Zellen unwiderruflich.
+          if (Number(value) !== s.patternIndex || s.beatEdited) this._pushHistory();
           const meterBefore = this._meter();
           s.patternIndex = Number(value);
           s.beat = beatFromPattern(this._pattern());
+          // Die Bass-Spielweise bleibt (wie in Chor), abgeleitet aus der Linie des neuen Loops.
+          if (s.bassPlay) s.beat.bass = bassVariant(this._pattern(), s.bassPlay);
           s.percSound = percOf(this._pattern());
           s.beatEdited = false;
+          if (this._meter() !== meterBefore) {
+            // Wie bei 'meter': Anschläge der Akkorde an den neuen Takt, ohne 4/4 kein Swing.
+            s.chordHits = sanitizeHits(s.chordHits, this._barSteps());
+            if (!s.chordHits && s.chordPlay === 'rhythm') s.chordPlay = 'held';
+            if (!swingOffered(this._meter())) s.swing = 0;
+          }
           if (this._meter() !== meterBefore) { this._convertTempo(); this._onTempoChange(); if (styleOf(s.styleId)?.meter !== this._meter()) s.styleId = null; this._renderStudio(); this._renderChor(); }
           // Loops mit eigener Swing-Vorgabe (Swing Soul) bringen sie mit.
           if (typeof this._pattern().swing === 'number') { s.swing = this._pattern().swing; }
@@ -12144,7 +12190,6 @@
         case 'snd-after': this.ui.smpUse = value; this.$all('.snd-after [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.value === value))); break;
         case 'smp-lib-use': this._assignPad(this.sampler.sel, value); this._primeSamples(); this._samplerGo('pads'); this._renderLive(); break;
         case 'lane-cell': this._toggleLaneCell(Number(target.dataset.lane), Number(target.dataset.step)); break;
-        case 'lane-toggle': { const lane = s.sampleLanes[Number(value)]; if (lane) { lane.on = !lane.on; this._renderTracks(); } break; }
         case 'lane-preview': this._auditionPad(s.sampleLanes[Number(value)]?.padId); break;
         case 'drum-kit': this._pushHistory(); s.drumKit = DRUM_KITS.includes(value) ? value : 'auto'; this._renderBeat(); if (!this.playing) this._preview('snare', 1); break;
         case 'chord-voicing': this._pushHistory(); s.chordVoicing = value === 'pop' ? 'pop' : 'satb'; this._renderHarmony(); this._renderSatb(); break;
