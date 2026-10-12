@@ -5721,6 +5721,7 @@
       const layer = this.$('.track-layer');
       if (this._isTarget(id)) this.ui.studioTarget = id;
       this.ui.track = id;
+      this.ui.instRhScroll = null;
       layer.dataset.track = id;
       this._showTrackTab(tab);
       this._renderStudio();
@@ -5832,74 +5833,96 @@
       const at = [...new Set(hits.map(([pos]) => Math.floor(pos)))].filter((st) => st < n);
       return spaced(at, (st) => hits.find(([pos]) => Math.floor(pos) === st)[2] || 0);
     }
-    /** Ein Ablauf für jede Instrumentenspur: 1 Was (Grundton · Akkorde · Eigene Melodie, dazu
-     *  Töne bzw. Satz), 2 Wie (zusammen oder Arpeggio mit Muster/Umfang), 3 Rhythmus (Gruppen,
-     *  darunter das Raster: zeigt die Anschläge, ein Tipp macht daraus eigene), 4 Länge und Lage. */
+    /** Generator einer Instrumentenspur, kompakt: oben zwei Auswahlen — „Spielt“ (Grundton mit
+     *  seinen Tönen, Akkorde mit Satz, eigene Melodie) und „Anschlag“ (zusammen oder Arpeggio mit
+     *  Muster und Umfang) —, darunter die Rhythmen als Karten mit Mini-Raster zum Wischen, dann
+     *  das Raster (ein Tipp macht daraus eigene Anschläge), eine Zeile, was gerade klingt, und
+     *  eingeklappt Länge und Lage. */
     _instPlayBlock(id) {
       const s = this.state;
       const inst = this._instOf(id);
       const cfg = inst.cfg;
       const v = this._instView(id);
       const meter = this._meter();
+      const n = this._barSteps();
       const box = document.createElement('section');
       box.className = 'panel inst-play';
-      const radio = (action, value, label, on, extra = '') => `<button class="chip" type="button" role="radio" data-action="${action}" data-value="${value}" aria-checked="${on}"${extra}>${label}</button>`;
-      const seg = (action, items, cur, labelId) => `<div class="seg" role="radiogroup" aria-labelledby="${labelId}">${items.map(([val, label]) => `<button type="button" role="radio" data-action="${action}" data-value="${val}" aria-checked="${String(val) === String(cur)}">${label}</button>`).join('')}</div>`;
-      const step = (n, key, body, hid = '') => `<div class="inst-step"><h4 class="inst-step-head"${hid ? ` id="${hid}"` : ''}><span aria-hidden="true">${n}</span>${t(key)}</h4>${body}</div>`;
+      const opt = (val, label, cur) => `<option value="${val}"${val === cur ? ' selected' : ''}>${label}</option>`;
+      const pick = (field, key, body) => `<label class="inst-pick"><span class="sub-label">${t(key)}</span><select data-field="${field}">${body}</select></label>`;
       const hasNotes = !!(cfg.notes && cfg.notesMeter === meter);
-      // 1 — Was
-      let what = `<div class="seg inst-play-seg" role="radiogroup" aria-label="${t('lab.inst.stepWhat')}">${INST_PLAYS.map((p) => `<button type="button" role="radio" data-action="inst-play" data-value="${p}" aria-checked="${v.play === p}">${t(`lab.inst.play.${p}`)}</button>`).join('')}</div>`;
-      if (v.play === 'root') what += `<span class="sub-label" id="inst-tones">${t('lab.inst.tones')}</span>${seg('inst-tones', ROOT_TONES.map((x) => [x, t(`lab.inst.tones.${x}`)]), v.tones, 'inst-tones')}`;
-      if (v.play === 'chords') what += `<span class="sub-label" id="inst-voicing">${t('lab.studio.voicing')}</span>${seg('inst-voicing', ['satb', 'pop'].map((x) => [x, t(`lab.studio.voicing.${x}`)]), s.chordVoicing, 'inst-voicing')}`;
-      what += `<p class="foot-note">${t(`lab.inst.hint.${v.play}`)}</p>`;
+      // Spielt: Grundton (allein, + Quinte, + Oktave) · Akkorde (Chorsatz, Pop) · Eigene Melodie.
+      const whatOf = (play, x) => play === 'root' ? `${t('lab.inst.play.root')}${x === 'root' ? '' : ` ${t(`lab.inst.tones.${x}`)}`}`
+        : play === 'chords' ? `${t('lab.inst.play.chords')} · ${t(`lab.studio.voicing.${x}`)}` : t('lab.inst.play.own');
+      const whatCur = v.play === 'root' ? `root:${v.tones}` : v.play === 'chords' ? `chords:${s.chordVoicing}` : 'own';
+      const whatOpts = [...ROOT_TONES.map((x) => opt(`root:${x}`, whatOf('root', x), whatCur)), ...['satb', 'pop'].map((x) => opt(`chords:${x}`, whatOf('chords', x), whatCur)), opt('own', whatOf('own'), whatCur)].join('');
+      // Anschlag: zusammen · Arpeggio (Richtung × Umfang) · Figuren (Alberti, weit — ohne Umfang).
+      const ranged = (d) => d !== 'alberti' && d !== 'spread';
+      const howOf = (val) => {
+        if (val === 'together') return t('lab.inst.how.together');
+        const [d, r] = val.split(':');
+        return ranged(d) ? `${t(`lab.inst.arpOpt.${d}`)}${r === '2' ? ` · ${t('lab.inst.arpRange2Short')}` : ''}` : t(`lab.inst.arpDir.${d}`);
+      };
+      const howCur = v.arp.on ? (ranged(v.arp.dir) ? `${v.arp.dir}:${v.arp.range}` : v.arp.dir) : 'together';
+      const arpVals = (r) => ARP_DIRS.filter(ranged).map((d) => `${d}:${r}`);
+      const howOpts = opt('together', howOf('together'), howCur)
+        + `<optgroup label="${t('lab.inst.arp')} · ${t('lab.inst.arpRange1')}">${arpVals(1).map((x) => opt(x, howOf(x), howCur)).join('')}</optgroup>`
+        + `<optgroup label="${t('lab.inst.arp')} · ${t('lab.inst.arpRange2')}">${arpVals(2).map((x) => opt(x, howOf(x), howCur)).join('')}</optgroup>`
+        + `<optgroup label="${t('lab.inst.howFigures')}">${ARP_DIRS.filter((d) => !ranged(d)).map((d) => opt(d, howOf(d), howCur)).join('')}</optgroup>`;
+      let html = `<div class="inst-picks">${pick('instWhat', 'lab.inst.pickWhat', whatOpts)}${v.play !== 'own' ? pick('instHow', 'lab.inst.pickHow', howOpts) : ''}</div>`;
       if (v.play === 'own') {
-        if (!v.native) what += `<p class="foot-note">${t(hasNotes ? 'lab.inst.ownHas' : 'lab.inst.ownEmpty')}</p>`;
-        what += `<div class="chip-row"><button class="chip inst-rec" type="button" data-action="inst-rec"><i aria-hidden="true"></i>${t('lab.inst.record')}</button>${!v.native && hasNotes ? `<button class="chip" type="button" data-action="inst-clear">${t('lab.inst.clear')}</button>` : ''}</div>`;
-      }
-      let html = step(1, 'lab.inst.stepWhat', what);
-      let n = 1;
-      if (v.play !== 'own') {
-        // 2 — Wie: zusammen angeschlagen oder nacheinander (Arpeggio)
-        let how = seg('inst-how', [['together', t('lab.inst.how.together')], ['arp', t('lab.inst.arp')]], v.arp.on ? 'arp' : 'together', 'inst-how-l');
-        if (v.arp.on) {
-          how += `<span class="sub-label" id="inst-arp-dir">${t('lab.inst.arpDir')}</span>
-            <div class="chip-row" role="radiogroup" aria-labelledby="inst-arp-dir">${ARP_DIRS.map((d) => radio('inst-arp-dir', d, t(`lab.inst.arpDir.${d}`), v.arp.dir === d)).join('')}</div>`;
-          if (v.arp.dir !== 'alberti' && v.arp.dir !== 'spread') how += `<span class="sub-label" id="inst-arp-range">${t('lab.inst.arpRange')}</span>${seg('inst-arp-range', [[1, t('lab.inst.arpRange1')], [2, t('lab.inst.arpRange2')]], v.arp.range, 'inst-arp-range')}`;
-        }
-        how += `<p class="foot-note">${t(v.arp.on ? (v.play === 'root' ? 'lab.inst.arpHintRoot' : 'lab.inst.arpHint') : 'lab.inst.how.hint')}</p>`;
-        html += step(++n, 'lab.inst.stepHow', how, 'inst-how-l');
-        // 3 — Rhythmus: Gruppen; ältere Werte (Ganze, Oktaven, Linie auf der Eins) nur, solange gewählt.
+        html += `<p class="foot-note">${t('lab.inst.hint.own')}</p>`;
+        if (!v.native) html += `<p class="foot-note">${t(hasNotes ? 'lab.inst.ownHas' : 'lab.inst.ownEmpty')}</p>`;
+        html += `<div class="chip-row"><button class="chip inst-rec" type="button" data-action="inst-rec"><i aria-hidden="true"></i>${t('lab.inst.record')}</button>${!v.native && hasNotes ? `<button class="chip" type="button" data-action="inst-clear">${t('lab.inst.clear')}</button>` : ''}</div>`;
+      } else {
+        // Rhythmus: Karten mit Mini-Raster (Länge der Anschläge maßstäblich, Triolen gebrochen);
+        // ältere Werte (Ganze, Oktaven, Linie auf der Eins) nur, solange gewählt.
+        const hitsOf = (r) => r === 'held' ? [[0, n]] : r === 'custom' && v.rhythm === 'custom' ? this._instGridHits(id) : this._instHits(cfg, r);
+        const mini = (r) => `<span class="rh-mini" aria-hidden="true">${hitsOf(r).filter(([pos]) => pos < n).map(([pos, len]) => `<i style="left:${(pos / n) * 100}%;width:${(Math.min(len, n - pos) / n) * 100}%"></i>`).join('')}</span>`;
+        const card = (r, g) => `<button class="rh-card" type="button" role="radio" data-action="inst-rhythm" data-value="${r}" aria-checked="${v.rhythm === r}"${r === 'held' && v.arp.on ? ' disabled' : ''}><small>${g ? t(`lab.inst.rhythmGroup.${g}`) : '&nbsp;'}</small>${mini(r)}<b>${rhythmLabel(r)}</b></button>`;
         const offered = RHYTHM_GROUPS.flatMap(([, ids]) => ids);
-        const legacy = offered.includes(v.rhythm) ? '' : `<div class="rh-group">${radio('inst-rhythm', v.rhythm, rhythmLabel(v.rhythm), true)}</div>`;
-        const groups = RHYTHM_GROUPS.map(([g, ids]) => {
-          const chips = ids.filter((r) => rhythmOffered(r, meter)).map((r) => radio('inst-rhythm', r, rhythmLabel(r), v.rhythm === r, r === 'held' && v.arp.on ? ' disabled' : ''));
-          return chips.length ? `<div class="rh-group"><span class="rh-group-label">${t(`lab.inst.rhythmGroup.${g}`)}</span>${chips.join('')}</div>` : '';
-        }).join('');
-        let rh = `<div class="inst-rhythms" role="radiogroup" aria-labelledby="inst-rh">${legacy}${groups}</div>`;
+        const cards = (offered.includes(v.rhythm) ? '' : card(v.rhythm, null))
+          + RHYTHM_GROUPS.flatMap(([g, ids]) => ids.filter((r) => rhythmOffered(r, meter)).map((r) => card(r, g))).join('');
+        html += `<div class="inst-rh"><span class="sub-label" id="inst-rh">${t('lab.inst.rhythm')}</span><div class="rh-cards" role="radiogroup" aria-labelledby="inst-rh">${cards}</div></div>`;
         if (v.native && id === 'bass') {
-          rh += `<p class="foot-note">${t('lab.inst.gridBass')}</p>
+          html += `<p class="foot-note">${t('lab.inst.gridBass')}</p>
             <div class="switch-row"><label class="switch"><input type="checkbox" role="switch" data-switch="bassHold"${s.bassHold ? ' checked' : ''}><span class="switch-track" aria-hidden="true"></span><span>${t('lab.studio.bassHold')}</span></label></div>`;
         } else {
-          const steps = this._barSteps();
           const on = new Set(this._instGridHits(id).map(([st]) => st));
           const group = METERS[meter].group;
-          const cells = Array.from({ length: steps }, (_, st) => `<button type="button" class="cp-hit${on.has(st) ? ' on' : ''}${Math.floor(st / group) % 2 ? ' alt' : ''}" data-action="inst-hit" data-value="${st}" aria-pressed="${on.has(st)}" aria-label="${tf('lab.studio.hitAria', { n: st + 1 })}"></button>`).join('');
-          rh += `<span class="sub-label" id="inst-hits-l">${t('lab.studio.hits')}</span>
-            <div class="cp-hits inst-hits" role="group" aria-labelledby="inst-hits-l" style="grid-template-columns: repeat(${steps}, minmax(0, 1fr))">${cells}</div>
-            <p class="foot-note">${t('lab.inst.gridHint')}</p>`;
+          const cells = Array.from({ length: n }, (_, st) => `<button type="button" class="cp-hit${on.has(st) ? ' on' : ''}${Math.floor(st / group) % 2 ? ' alt' : ''}" data-action="inst-hit" data-value="${st}" aria-pressed="${on.has(st)}" aria-label="${tf('lab.studio.hitAria', { n: st + 1 })}"></button>`).join('');
+          html += `<div class="inst-rh"><span class="sub-label" id="inst-hits-l">${t('lab.studio.hits')} · ${t('lab.inst.hitsTap')}</span>
+            <div class="cp-hits inst-hits" role="group" aria-labelledby="inst-hits-l" style="grid-template-columns: repeat(${n}, minmax(0, 1fr))">${cells}</div></div>`;
         }
-        html += step(++n, 'lab.inst.rhythm', rh, 'inst-rh');
+        // Eine Zeile statt der Hinweise je Schritt: was gerade klingt.
+        html += `<p class="foot-note inst-sum">${[whatOf(v.play, v.play === 'root' ? v.tones : s.chordVoicing), howOf(howCur), rhythmLabel(v.rhythm)].join(' · ')}</p>`;
       }
-      // 4 — Länge und Lage
+      // Länge und Lage — eingeklappt, die Zusammenfassung zeigt die Werte.
       let tone = '';
-      if (v.play !== 'own') tone += `<span class="sub-label" id="inst-len">${t('lab.inst.len')}</span>${seg('inst-len', Object.keys(INST_LENS).map((x) => [x, t(`lab.inst.len.${x}`)]), cfg.len, 'inst-len')}`;
+      const sum = [];
+      if (v.play !== 'own') {
+        tone += `<span class="sub-label" id="inst-len">${t('lab.inst.len')}</span><div class="seg" role="radiogroup" aria-labelledby="inst-len">${Object.keys(INST_LENS).map((x) => `<button type="button" role="radio" data-action="inst-len" data-value="${x}" aria-checked="${x === cfg.len}">${t(`lab.inst.len.${x}`)}</button>`).join('')}</div>`;
+        sum.push(t(`lab.inst.len.${cfg.len}`));
+      }
       if (!(v.native && v.play === 'own')) {
         // Lage relativ zur Vorgabe des Spurtyps (Bass: 0 = wie bisher, intern Oktave −1).
         const lage = inst.octave - (id === 'chords' && inst.primary ? 0 : INST_TYPES[inst.type]?.octave || 0);
-        tone += `<div class="inst-oct"><span class="sub-label">${t('lab.inst.octave')}</span><button class="chip" type="button" data-action="inst-oct" data-value="-1" aria-label="${t('lab.inst.octDown')}">−</button><output>${lage > 0 ? '+' : ''}${lage}</output><button class="chip" type="button" data-action="inst-oct" data-value="1" aria-label="${t('lab.inst.octUp')}">+</button></div>`;
+        const lageText = `${lage > 0 ? '+' : ''}${lage}`;
+        tone += `<div class="inst-oct"><span class="sub-label">${t('lab.inst.octave')}</span><button class="chip" type="button" data-action="inst-oct" data-value="-1" aria-label="${t('lab.inst.octDown')}">−</button><output>${lageText}</output><button class="chip" type="button" data-action="inst-oct" data-value="1" aria-label="${t('lab.inst.octUp')}">+</button></div>`;
+        sum.push(`${t('lab.inst.octave')} ${lageText}`);
       }
-      if (tone) html += step(++n, 'lab.inst.stepSound', tone);
+      if (tone) html += `<details class="inst-fine"${this.ui.instFine ? ' open' : ''}><summary><span>${t('lab.inst.stepSound')}</span><span class="inst-fine-sum">${sum.join(' · ')}</span></summary><div class="inst-fine-body">${tone}</div></details>`;
       box.innerHTML = html;
+      box.querySelector('.inst-fine')?.addEventListener('toggle', (e) => { this.ui.instFine = e.target.open; });
+      // Rhythmus-Karten: Scrollstand über das Neuzeichnen halten, die gewählte Karte sichtbar machen.
+      const keep = this.ui.instRhScroll;
+      requestAnimationFrame(() => {
+        const row = box.querySelector('.rh-cards');
+        if (!row || !box.isConnected) return;
+        if (keep != null) row.scrollLeft = keep;
+        const cur = row.querySelector('[aria-checked="true"]');
+        if (cur && (cur.offsetLeft < row.scrollLeft || cur.offsetLeft + cur.offsetWidth > row.scrollLeft + row.clientWidth)) row.scrollLeft = cur.offsetLeft - 6;
+        row.addEventListener('scroll', () => { this.ui.instRhScroll = row.scrollLeft; }, { passive: true });
+      });
       return box;
     }
     /** Eine Einstellung des Ablaufs ändern (ein Undo-Schritt). Grundspuren bleiben in ihrem
@@ -6020,7 +6043,7 @@
     /** Spielweise wählen (Schritt 1 „Was“). Grundspuren: was ihr bisheriger Zustand kann, bleibt dort ('native'). */
     _setInstPlay(id, play) {
       if (!INST_PLAYS.includes(play) || !this._instOf(id) || this._instOf(id).play === play) return; // schon gewählt: Einstellungen bleiben
-      this._instSet(id, { play }, `.inst-play-seg [data-value="${play}"]`);
+      this._instSet(id, { play }, '.inst-play [data-field="instWhat"]');
     }
     /** Mix der Spur: Lautstärke und Panorama (Stumm/Solo/Löschen sitzen auf der Karte). */
     _trackMixBlock(id) {
@@ -12844,6 +12867,7 @@
         const field = el.dataset.field;
         if (field === 'chordBars') { s.chordBars = Number(el.value); s.chordLen = null; this._renderNow(); }
         else if (field === 'meter') this._handleAction('meter', el.value, el);
+        else if (field === 'instWhat' || field === 'instHow') this._handleAction(field === 'instWhat' ? 'inst-what' : 'inst-arp', el.value, el);
         else if (field === 'sfSound') { this.ui.sf.preset = SURFACE_SOUNDS.includes(el.value) ? el.value : 'Klavier'; }
         else if (field === 'sfTarget') { this._releasePressedKeys(); this.ui.studioTarget = el.value; this._renderSurface(); this._renderStudio(); }
         else if (field === 'arpMode') s.arpMode = el.value;
@@ -13016,6 +13040,26 @@
             // Arpeggio braucht Anschläge: aus „Gehalten“ werden Achtel.
             : value === 'arp' ? { arp: { on: true }, ...(view.rhythm === 'held' ? { rhythm: 'eighths' } : {}) } : { arp: { on: false } };
           this._instSet(id, patch, `.inst-play [data-action="${action}"][data-value="${value}"]`);
+          break;
+        }
+        case 'inst-what': {
+          // „Spielt“: Spielweise samt Tönen (Grundton) bzw. Satz (Akkorde) in einem Schritt.
+          const id = this.ui.track;
+          if (!id || !this._instOf(id)) break;
+          const [play, x] = value.split(':');
+          if (!INST_PLAYS.includes(play)) break;
+          const patch = { play, ...(play === 'root' ? { tones: x } : play === 'chords' ? { voicing: x } : {}) };
+          this._instSet(id, patch, '.inst-play [data-field="instWhat"]');
+          break;
+        }
+        case 'inst-arp': {
+          // „Anschlag“: zusammen oder Arpeggio mit Muster und Umfang; Arpeggio braucht Anschläge (aus „Gehalten“ werden Achtel).
+          const id = this.ui.track;
+          if (!id || !this._instOf(id)) break;
+          const [dir, range] = value.split(':');
+          const patch = dir === 'together' ? { arp: { on: false } }
+            : { arp: { on: true, dir, range: Number(range) === 2 ? 2 : 1 }, ...(this._instView(id).rhythm === 'held' ? { rhythm: 'eighths' } : {}) };
+          this._instSet(id, patch, '.inst-play [data-field="instHow"]');
           break;
         }
         case 'inst-hit': {
@@ -14726,16 +14770,30 @@
   .track-body .mel-rec-link { display: inline-flex; align-items: center; gap: 8px; margin: 8px 0 0 16px; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: .76rem; font-weight: 800; color: var(--text); }
   .mel-rec-link i, .t-rec i { width: 12px; height: 12px; border-radius: 50%; background: var(--bad); display: block; }
   .inst-play { display: grid; gap: 14px; }
-  .inst-step { display: grid; gap: 6px; }
-  .inst-step + .inst-step { padding-top: 12px; border-top: 1px solid var(--line); }
-  .inst-step-head { display: flex; align-items: center; gap: 8px; margin: 0; font-size: .82rem; font-weight: 800; }
-  .inst-step-head span { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: .72rem; }
   .inst-play .seg { flex: none; }
-  .inst-play .sub-label { margin: 6px 0 0; }
-  .inst-rhythms { display: grid; gap: 6px; }
-  .rh-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-  .rh-group-label { flex: 0 0 76px; font-size: .68rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  .rh-group .chip:disabled { opacity: .45; }
+  .inst-play .sub-label { margin: 0; }
+  .inst-picks { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+  .inst-pick { position: relative; display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); min-width: 0; cursor: pointer; }
+  .inst-pick:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .inst-pick select { appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; border: 0; background: none; padding: 0 18px 0 0; font: inherit; font-size: .92rem; font-weight: 800; color: var(--text); cursor: pointer; text-overflow: ellipsis; }
+  .inst-pick select:focus-visible { outline: none; }
+  .inst-pick::after { content: ""; position: absolute; right: 12px; bottom: 14px; width: 6px; height: 6px; border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(45deg); pointer-events: none; }
+  .inst-rh { display: grid; gap: 6px; min-width: 0; }
+  .rh-cards { position: relative; display: flex; gap: 8px; overflow-x: auto; padding: 6px 6px 8px; scroll-padding-inline: 6px; scroll-snap-type: x proximity; scrollbar-width: thin; }
+  .rh-card { flex: none; width: 96px; display: grid; gap: 6px; align-content: start; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; scroll-snap-align: start; }
+  .rh-card[aria-checked="true"] { border: 2px solid var(--accent); padding: 7px; background: rgba(var(--accent-rgb), .08); }
+  .rh-card:disabled { opacity: .45; cursor: not-allowed; }
+  .rh-card small { font-size: .62rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  .rh-card b { font-size: .78rem; line-height: 1.2; }
+  .rh-mini { position: relative; display: block; height: 12px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+  .rh-mini i { position: absolute; top: 0; bottom: 0; border-right: 2px solid var(--surface); background: var(--accent); }
+  .inst-sum { margin: 0; text-align: left; }
+  .inst-fine { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+  .inst-fine summary { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; font-weight: 800; font-size: .86rem; cursor: pointer; list-style: none; }
+  .inst-fine summary::-webkit-details-marker { display: none; }
+  .inst-fine-sum { color: var(--muted); font-weight: 600; text-align: right; }
+  .inst-fine[open] summary { border-bottom: 1px solid var(--line); }
+  .inst-fine-body { display: grid; gap: 8px; padding: 10px 12px 12px; }
   .inst-rec { display: inline-flex; align-items: center; gap: 6px; }
   .inst-rec i { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); display: block; }
   .inst-oct { display: flex; align-items: center; gap: 8px; }
@@ -16323,7 +16381,7 @@
       v._addInstrument('pad');
       const extra = v.state.instruments[0];
       if (!extra || extra.type !== 'pad' || !v.$(`.t-group[data-group="inst"] .t-card[data-track="${extra.id}"]`) || v._trackName(extra.id) !== `${t('lab.track.pad')} 2`) fail('Zusatzspur Pad');
-      if (v.ui.track !== extra.id || !v.$('.track-body .inst-play-seg')) fail('Spielt-Blatt der Zusatzspur');
+      if (v.ui.track !== extra.id || !v.$('.track-body [data-field="instWhat"]')) fail('Spielt-Blatt der Zusatzspur');
       v._showTrackTab('sound');
       if (!v.$('.track-body [data-part="sound"]') || v._editSound() !== extra.sound) fail('Klang-Editor bearbeitet die Zusatzspur');
       v._closeAllLayers();
