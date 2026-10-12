@@ -21935,13 +21935,16 @@ async function runMusicSelfTests({ log = true } = {}) {
       }
       // 7c: Sample-Klänge.
       const sampled = T.SYNTH_PRESETS.filter((p) => p.sample);
-      if (sampled.map((p) => `${p.name}:${p.sample}`).join() !== 'Klavier:piano,E-Gitarre:guitar,Chor Ooh:choir,Streicher:strings,Brass Stab:brass') failed.push('Groove Lab: Sample-Presets');
+      if (sampled.map((p) => `${p.name}:${p.sample}`).join() !== 'Klavier:piano,E-Gitarre:guitar,Chor Ooh:choir,Streicher:strings,Brass Stab:brass,Finger Bass:bass') failed.push('Groove Lab: Sample-Presets');
       for (const [inst, name] of Object.entries(T.SAMPLE_FALLBACK)) if (T.presetIndexByName(name) < 0 || T.SYNTH_PRESETS[T.presetIndexByName(name)].name !== name || T.SYNTH_PRESETS[T.presetIndexByName(name)].sample) failed.push(`Groove Lab: Ersatzklang für ${inst}`);
       const piano = T.soundFromPreset(T.presetIndexByName('Klavier'));
       if (T.sanitizeSound(clone(piano), piano).sample !== 'piano') failed.push('Groove Lab: sample geht beim Laden verloren');
       if (T.sanitizeSound({ ...clone(piano), sample: '../x' }, piano).sample !== undefined) failed.push('Groove Lab: ungültiges sample wird übernommen');
       if ('sample' in T.sanitizeSound(clone(T.soundFromPreset(0)), piano)) failed.push('Groove Lab: Synth-Klang bekommt ein sample');
       for (const [inst, cfg] of Object.entries(T.LAB_INST)) if (!T.SAMPLE_INSTRUMENTS.includes(inst) || !cfg.notes.length) failed.push(`Groove Lab: LAB_INST ${inst}`);
+      // Getauschte Drum-Sounds: nur Drum-Spuren, nur Synth/Akustik oder gültige Sample-IDs.
+      const voices = T.sanitizeState({ ...clone(T.baseState()), drumVoice: { kick: 'synth', snare: 'pad:f:rim', clap: 'pad:../x', hat: 'laut', bass: 'synth', open: 'acoustic' } }).drumVoice;
+      if (JSON.stringify(voices) !== '{"kick":"synth","snare":"pad:f:rim","open":"acoustic"}') failed.push(`Groove Lab: drumVoice ${JSON.stringify(voices)}`);
       // 7a/7c/7d: Standard für neue Stände, alte Stände unverändert, Aufgaben/Workshop gepinnt.
       // Redesign: neue Stände sind der Grundstand mit Stil Pop (siehe redesignSelfTest);
       // der Grundstand selbst ist der bisherige Studio-Standard.
