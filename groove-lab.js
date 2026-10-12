@@ -14806,8 +14806,10 @@
   .track-tabs > button[hidden] { display: none; }
   .track-body { display: grid; gap: 10px; }
   .track-body > .panel, .panel-layer-body > .panel { margin: 0; }
-  /* Blätter so hoch wie ihr Inhalt (höchstens 92 %, dann scrollt die Karte); die Reiterleiste wächst nicht mit (.seg hat flex: 1). */
+  /* Spur-Blätter immer volle Höhe, damit Muster · Klang · Mix beim Umschalten nicht springen; die Reiterleiste wächst nicht mit (.seg hat flex: 1). */
+  .track-layer .layer-card { height: 92%; }
   .track-tabs { flex: none; }
+  .track-body { flex: 1 0 auto; align-content: start; }
   /* Ein Raster, zwei Blätter: Drums ohne Bass-Zeile, Bass nur mit ihr. */
   .track-layer[data-track="drums"] .track-row[data-track="bass"], .track-layer[data-track="drums"] .track-row[data-group="bass"] { display: none; }
   .track-layer[data-track="bass"] .track-row:not([data-track="bass"]):not([data-group="bass"]) { display: none; }
