@@ -239,7 +239,7 @@
   const pinLegacyVoice = (s) => { s.sound = soundFromPreset(presetIndexByName('Velvet Choir')); return s; };
   /** Chor-Aufgaben, Workshop und de:construct klingen wie vor dem Sample-Kit. */
   function pinLegacySound(s) {
-    s.drumKit = 'synth'; s.feel = false; s.fills = 0; s.trackOn.perc = false; s.bassSoundId = 'pluck';
+    s.drumKit = 'synth'; s.drumVoice = {}; s.feel = false; s.fills = 0; s.trackOn.perc = false; s.bassSoundId = 'pluck';
     s.chordVoicing = 'satb'; s.chordAdd9 = false; s.chordSound = 'synth'; s.mix.chords = .55;
     // Ohne Stil, Raum-Makro, Vorziehen und Anschläge (Redesign) — wie früher.
     s.styleId = null; s.energy = null; s.room = null; s.pump = 0; s.chordPush = null; s.chordLen = null;
@@ -458,7 +458,7 @@
     // Bass-Klänge der Bass-Spur als Presets (bassId → GrooveEngine.playBass: schlanke, trockene
     // Bass-Stimme bzw. Finger-Bass-Samples). Die Synth-Werte sind die Annäherung, mit der der
     // Klang-Editor weitermacht, sobald man daran dreht (dann fällt bassId weg).
-    { name: 'Finger Bass', icon: 'bassStrings', cat: 'bass', bassId: 'finger', wave: 'triangle', attack: .005, decay: .3, sustain: .8, release: .12, cutoff: 1200, resonance: 1, filterEnvAmount: 300, reverbWet: .05, echoWet: 0, mono: true },
+    { name: 'Finger Bass', icon: 'bassStrings', cat: 'bass', bassId: 'finger', sample: 'bass', wave: 'triangle', attack: .005, decay: .3, sustain: .8, release: .12, cutoff: 9000, resonance: 0, filterEnvAmount: 0, reverbWet: .05, echoWet: 0, mono: true },
     { name: 'Round Finger', icon: 'bassClef', cat: 'bass', bassId: 'round', wave: 'triangle', attack: .005, decay: .26, sustain: .7, release: .1, cutoff: 900, resonance: 1, filterEnvAmount: 300, reverbWet: .05, echoWet: 0, mono: true },
     { name: 'Sub Sine', icon: 'sineLow', cat: 'bass', bassId: 'sub', wave: 'sine', attack: .005, decay: .32, sustain: .8, release: .1, cutoff: 2000, resonance: 0, filterEnvAmount: 0, reverbWet: 0, echoWet: 0, mono: true },
     { name: 'Square Pluck', icon: 'squareLow', cat: 'bass', bassId: 'pluck', wave: 'square', attack: .004, decay: .14, sustain: 0, release: .08, cutoff: 480, resonance: 8, filterEnvAmount: 0, reverbWet: 0, echoWet: 0, mono: true },
@@ -466,9 +466,9 @@
   ];
 
   /** Sample-Instrumente der Klang-Presets. */
-  const SAMPLE_INSTRUMENTS = ['piano', 'guitar', 'choir', 'strings', 'brass'];
+  const SAMPLE_INSTRUMENTS = ['piano', 'guitar', 'choir', 'strings', 'brass', 'bass'];
   /** Ersatzklang je Instrument, solange die Samples fehlen (offline, Ladefehler, noch beim Laden). */
-  const SAMPLE_FALLBACK = { piano: 'Tape Keys', guitar: 'Tape Keys', choir: 'Airy Choir', strings: 'Moon Pad', brass: 'Soft Brass' };
+  const SAMPLE_FALLBACK = { piano: 'Tape Keys', guitar: 'Tape Keys', choir: 'Airy Choir', strings: 'Moon Pad', brass: 'Soft Brass', bass: 'Round Finger' };
   // Dateien und Töne je Instrument (samples/<Ordner>, MIDI-Nummer als Name, ein Ton alle drei Halbtöne —
   // dieselben Listen wie SAMPLE_INST in uebe-lab.html); `long`: Überblend-Loop für lange Töne
   // (Vorbild SAMPLE_LONG/sampleNote dort); `level`: Pegel gegenüber den Synth-Klängen.
@@ -480,6 +480,8 @@
     strings: { folder: 'strings', notes: noteRange(39, 81), long: SAMPLE_LONG, level: .55 },
     brass: { folder: 'brass', notes: noteRange(51, 75), level: 1.4 },
     piano: { level: 4.8, notes: noteRange(48, 84) },
+    // Finger Bass (samples/bass, wie BASS_SAMPLE_NOTES) — bearbeitet spielt er hier statt über playBass.
+    bass: { folder: 'bass', notes: noteRange(30, 66), level: 2.5 },
   };
 
   // Wertebereiche für Regler UND fürs Einlesen gespeicherter/geteilter
@@ -2245,7 +2247,7 @@
    *  Bereich des Blatts. Feste Spurtypen über dem bestehenden Zustand: Liegeton =
    *  droneOn, 2. Akkorde-Spur = Arp-Ebene, Aufnahme = Sample-Spuren (Phrasen). */
   const STUDIO_TRACKS = {
-    drums: { bus: 'drums', lock: 'beat', color: 'var(--accent)', pattern: ['loop', 'grid'], sound: ['kit'], mix: ['groove'] },
+    drums: { bus: 'drums', lock: 'beat', color: 'var(--accent)', pattern: ['loop', 'loopCtl', 'grid'], sound: ['kit', 'drumPads', 'fills'], mix: ['groove'] },
     bass: { bus: 'bass', lock: 'beat', color: SATB_COLOR.B, pattern: ['grid'], sound: ['sound'], mix: [] },
     chords: { bus: 'chords', lock: 'harmony', color: '#2f6fd6', pattern: ['satb'], sound: ['sound'], mix: [] },
     melody: { bus: 'melody', lock: 'melody', color: '#0f7c6e', pattern: ['melody'], sound: ['sound'], mix: [] },
@@ -2612,6 +2614,9 @@
       // feel: Akzente/Mikro-Timing nur bei der Wiedergabe; percSound: Klang der
       // Percussion-Spur (übernimmt beim Loop-Wählen den Wert des Loops).
       drumKit: 'auto', feel: true, percSound: percOf(pattern),
+      // Einzelne Drum-Sounds tauschen (Klang-Reiter, Pads): je Spur 'synth' | 'acoustic' (statt
+      // des Kits) oder 'pad:<Sample-ID>' (Werks- oder eigener Schlag); fehlt = wie das Kit.
+      drumVoice: {},
       // Fill im letzten Takt jedes Blocks: 0 (aus) | 4 | 8 Takte.
       fills: 8,
       // Sampler (Paket 9): Kits mit acht Pads (Verweise auf Samples) und Sample-Spuren im Raster.
@@ -2863,6 +2868,10 @@
     s.sampler = sanitizeSampler(raw.sampler);
     s.sampleLanes = sanitizeSampleLanes(raw.sampleLanes, METERS[pattern.meter].steps);
     s.percSound = oneOf(raw.percSound, PERC_SOUNDS, percOf(pattern));
+    s.drumVoice = {};
+    for (const [track, v] of Object.entries(obj(raw.drumVoice))) {
+      if (TRACK_IDS.includes(track) && track !== 'bass' && (v === 'synth' || v === 'acoustic' || (typeof v === 'string' && /^pad:(f:[a-z-]{1,12}|[A-Za-z0-9_-]{1,24})$/.test(v)))) s.drumVoice[track] = v;
+    }
     s.keyRoot = int(raw.keyRoot, 0, 11, 0);
     s.modeId = oneOf(raw.modeId, MODES.map((m) => m.id), s.modeId);
     s.progId = oneOf(raw.progId, PROGRESSIONS.map((p) => p.id), s.progId);
@@ -4056,7 +4065,7 @@
       source.start(time); source.stop(stop);
     }
 
-    /* ---- Sample-Instrumente (Klavier, Gitarre, Chor, Streicher, Brass) ---- */
+    /* ---- Sample-Instrumente (Klavier, Gitarre, Chor, Streicher, Brass, Bass) ---- */
 
     /** Instrument im Hintergrund laden (einmal je Kontext). Liefert ein Promise
      *  auf true/false; bis es fertig ist, klingt der Ersatzklang (SAMPLE_FALLBACK). */
@@ -7881,6 +7890,7 @@
       const note = this.$('.sample-note');
       const sound = this._editSound();
       if (note) note.hidden = !(sound.sample && !this.engine.instrumentReady(sound.sample));
+      if (sound.sample && this.engine.ready && !this.engine.instrumentReady(sound.sample)) this.engine.ensureInstrument(sound.sample).then((ok) => { if (ok) this._renderSampleNote(); });
     }
     _bassSound() { return BASS_SOUNDS.find((b) => b.id === this.state.bassSoundId) || BASS_SOUNDS[0]; }
     /** Ein Basston der Bass-Spur: Sample-/Preset-Bass oder (bassSynth) der Synth im Bass-Bus. */
@@ -8568,6 +8578,19 @@
       return { mode: resolveKit(this.state.drumKit, pattern), hat: pattern.hatSound, perc: this.state.percSound };
     }
 
+    /** Ein Schlag der Drum-Spur `track` mit getauschtem Klang (drumVoice): Synth/Akustik statt
+     *  des Kits oder ein Sample-Pad; ein noch nicht geladenes Sample klingt solange wie das Kit. */
+    _hitDrum(track, time, value, opts = this._drumOpts()) {
+      const v = this.state.drumVoice?.[track];
+      if (v?.startsWith('pad:')) {
+        const id = v.slice(4);
+        const meta = this._sampleMeta(id);
+        const buffer = meta && this._bufferNow(id);
+        if (buffer) { this.engine.playPad(buffer, meta, time, this._padLevel(meta, buffer) * value, {}); return; }
+      } else if (v) opts = { ...opts, mode: v };
+      this.engine.hitTrack(track, time, value, this.state.kit, opts);
+    }
+
     _swingOffset(step, stepSec) {
       const swing = this.state.swing;
       if (!swing) return 0;
@@ -8618,7 +8641,7 @@
           }
           value = Math.min(1, value);
         }
-        this.engine.hitTrack(track, when, value, this.state.kit, opts);
+        this._hitDrum(track, when, value, opts);
         if (track === 'kick' && s.pump > 0) this.engine.duckAt(swung, s.pump, stepSec * 4);
       }
       if (hearBeat && s.sampleLanes.length) this._playLanes(g, step, swung, stepSec, h);
@@ -9196,7 +9219,7 @@
           this._bassNote(now, this._bassMidi(this._currentHarmony(), notes[bassIndex % notes.length]), velocity);
           bassIndex++;
         } else {
-          this.engine.hitTrack(track, now, velocity, this.state.kit, this._drumOpts());
+          this._hitDrum(track, now, velocity);
         }
         cellIndex++;
         this.rollTimers[track] = global.setTimeout(tick, Math.max(30, duration * this._stepSeconds() * 1000));
@@ -9327,10 +9350,100 @@
       this.$('.dc-meter').value = this._meter();
       this._chips(this.$('.bass-chips'), BASS_SOUNDS.map((b) => ({ value: b.id, label: b.name })), s.bassSoundId, 'bass-sound');
       this.$('.kit-panel').hidden = uiModeOf(s) === 'workshop';
+      this.$('.fills-panel').hidden = uiModeOf(s) === 'workshop';
       this.$('.live-panel').hidden = uiModeOf(s) === 'workshop';
       this._chips(this.$('.kit-chips'), DRUM_KITS.map((id) => ({ value: id, label: t(`lab.kit.${id}`) })), s.drumKit, 'drum-kit');
       this._chips(this.$('.fill-chips'), FILL_LENGTHS.map((n) => ({ value: n, label: t(`lab.fill.${n}`) })), s.fills, 'fills');
+      this._renderLoopCtl();
+      this._renderDrumPads();
       this._renderKit();
+    }
+
+    /** Unter dem Drumloop (Studio, Drums · Muster): Swing und die Basslinie — beides ändert ein
+     *  Loopwechsel mit, hier sieht und regelt man es. */
+    _renderLoopCtl() {
+      const s = this.state;
+      const part = this.$('[data-part="loopCtl"]');
+      if (!part) return;
+      const meter = this._meter();
+      const swingOk = swingOffered(meter);
+      part.querySelector('.loop-swing').hidden = !swingOk;
+      part.querySelector('.loop-swing-note').textContent = t(!swingOk ? 'lab.loopCtl.swingNone' : this._pattern().swingUnit === 8 ? 'lab.loopCtl.swing8' : 'lab.loopCtl.swing16');
+      const v = this._instView('bass');
+      let cur = null;
+      if (!s.trackOn.bass) cur = 'off';
+      else if (v.native && v.play === 'root') {
+        cur = s.bassPlay || (JSON.stringify(s.beat.bass || {}) === JSON.stringify(bassVariant(this._pattern(), 'line')) ? 'line' : null);
+      }
+      const plays = ['line', 'line1', 'whole', 'half', 'quarter', 'eighths', 'offbeat', 'octaves', 'off'].filter((p) => p !== 'offbeat' || meter === '4/4');
+      part.querySelector('.loop-bass').innerHTML = plays.map((p) => `<button class="chip" type="button" role="radio" data-action="loop-bass" data-value="${p}" aria-checked="${cur === p}">${t(`lab.bassPlay.${p}`)}</button>`).join('');
+      const note = part.querySelector('.loop-bass-note');
+      note.hidden = cur !== null;
+      note.textContent = t('lab.loopCtl.bassOwn');
+    }
+    /** Basslinie aus dem Loop wählen: der Bass spielt den Grundton in dieser Linie (wie im
+     *  Bass-Blatt „Grundton“ mit diesem Rhythmus); 'off' schaltet die Bass-Spur stumm. */
+    _setLoopBass(play) {
+      const s = this.state;
+      if (play === 'off') { this._pushHistory(); s.trackOn.bass = false; this._syncEngine(); this._renderAll(); return; }
+      if (!BASS_PLAYS.includes(play)) return;
+      this._instSet('bass', { play: 'root', tones: 'root', arp: { on: false }, rhythm: play === 'whole' ? 'held' : play });
+      if (!this.playing) this._preview('bass', 0);
+    }
+
+    /** Drum-Pads im Klang-Reiter: je Spur ein Pad (Antippen = hören und wählen), darunter der
+     *  Klang des gewählten Pads — wie das Kit, Synth, Akustik oder ein Sample (Werk/eigene). */
+    _renderDrumPads() {
+      const s = this.state;
+      const part = this.$('[data-part="drumPads"]');
+      if (!part) return;
+      const tracks = DRUM_TRACKS;
+      const sel = tracks.includes(this.ui.drumPad) ? this.ui.drumPad : 'kick';
+      const kitMode = resolveKit(s.drumKit, this._pattern());
+      const srcLabel = (track) => {
+        const v = s.drumVoice[track];
+        if (v?.startsWith('pad:')) { const meta = this._sampleMeta(v.slice(4)); return meta ? this._padName(meta) : t('lab.sampler.missing'); }
+        if (v) return t(`lab.kit.${v}`);
+        return tf('lab.drumPads.likeKit', { kit: t(`lab.kit.${kitMode}`) });
+      };
+      part.querySelector('.drum-pad-grid').innerHTML = tracks.map((track) => `<button type="button" class="drum-pad${s.drumVoice[track] ? ' is-swapped' : ''}" data-action="drum-pad" data-value="${track}" aria-pressed="${track === sel}"><strong>${trackLabel(track)}</strong><span>${srcLabel(track)}</span></button>`).join('');
+      const v = s.drumVoice[sel] || null;
+      const radio = (value, label, on) => `<button class="chip" type="button" role="radio" data-action="drum-voice" data-value="${value}" aria-checked="${on}">${label}</button>`;
+      let html = `<h3 class="drum-pad-title">${trackLabel(sel)}</h3>`;
+      html += `<div class="chip-row" role="radiogroup" aria-label="${t('lab.drumPads.engine')}">${radio('kit', tf('lab.drumPads.likeKit', { kit: t(`lab.kit.${kitMode}`) }), !v)}${radio('synth', t('lab.kit.synth'), v === 'synth')}${radio('acoustic', t('lab.kit.acoustic'), v === 'acoustic')}</div>`;
+      // Samples zum Tauschen: Werks-Schläge und eigene Schläge (Meine Sounds).
+      const own = [...this.sampler.meta.values()].filter((m) => m.kind === 'hit').sort((a, b) => b.createdAt - a.createdAt);
+      const samples = [...FACTORY_SAMPLES, ...own];
+      html += `<span class="sub-label" id="drum-pad-smp">${t('lab.drumPads.samples')}</span>
+        <div class="chip-row drum-pad-samples" role="radiogroup" aria-labelledby="drum-pad-smp">${samples.map((m) => radio(`pad:${m.id}`, this._padName(m), v === `pad:${m.id}`)).join('')}
+        <button class="chip drum-pad-rec" type="button" data-action="drum-pad-rec"><i aria-hidden="true"></i>${t('lab.drumPads.record')}</button></div>`;
+      if (sel === 'perc' && !v?.startsWith('pad:')) {
+        html += `<span class="sub-label" id="drum-pad-perc">${t('lab.drumPads.perc')}</span>
+          <div class="chip-row" role="radiogroup" aria-labelledby="drum-pad-perc">${PERC_SOUNDS.map((p) => `<button class="chip" type="button" role="radio" data-action="perc-sound" data-value="${p}" aria-checked="${s.percSound === p}">${t(`lab.perc.${p}`)}</button>`).join('')}</div>
+          <p class="foot-note">${t('lab.drumPads.percHint')}</p>`;
+      }
+      // Kick-Klang: wirkt nur auf die synthetische Kick (Synth-Kit, Hybrid oder hier „Synth“).
+      if (sel === 'kick' && (v === 'synth' || (!v && kitMode !== 'acoustic'))) {
+        html += `<span class="sub-label">${t('lab.kitTitle')}</span><div class="kit-sliders">${[['kickStart', 'lab.kitStart', 60, 300, 1], ['kickEnd', 'lab.kitEnd', 25, 200, 1], ['kickDecay', 'lab.kitDecay', .08, 1.2, .01]].map(([key, label, min, max, step]) =>
+          `<label class="slider-line"><span>${t(label)}</span><input type="range" data-kit="${key}" min="${min}" max="${max}" step="${step}"><output data-kit-out="${key}"></output></label>`).join('')}</div>
+          <div class="pill-row"><button class="chip" type="button" data-action="kit-reset">${t('lab.kitReset')}</button></div>`;
+      } else if (sel === 'kick') html += `<p class="foot-note">${t('lab.drumPads.kickSynthOnly')}</p>`;
+      part.querySelector('.drum-pad-edit').innerHTML = html;
+    }
+    _setDrumVoice(value) {
+      const s = this.state;
+      const track = DRUM_TRACKS.includes(this.ui.drumPad) ? this.ui.drumPad : 'kick';
+      this._pushHistory();
+      if (value === 'kit') delete s.drumVoice[track];
+      else if (value === 'synth' || value === 'acoustic' || (value?.startsWith('pad:') && this._sampleMeta(value.slice(4)))) s.drumVoice[track] = value;
+      this._primeSamples();
+      this._renderBeat(); this._renderTrackHead?.();
+      if (!this.playing) {
+        // Ein eigenes Sample erst laden, dann hören.
+        const id = value?.startsWith('pad:') ? value.slice(4) : null;
+        if (id && !this._bufferNow(id)) this._loadBuffer(id).then(() => this._preview(track, 1));
+        else this._preview(track, 1);
+      }
     }
 
     /** Kick-Klang: Regler, Anzeige und „geändert“ im eingeklappten Kopf —
@@ -9339,11 +9452,11 @@
       const kit = this.state.kit;
       const changed = Object.keys(KIT_DEFAULTS).some((key) => kit[key] !== KIT_DEFAULTS[key]);
       for (const key of Object.keys(KIT_DEFAULTS)) {
-        this.$(`[data-kit="${key}"]`).value = String(kit[key]);
-        this.$(`[data-kit-out="${key}"]`).textContent = key === 'kickDecay' ? `${kit[key].toFixed(2)} s` : `${Math.round(kit[key])} Hz`;
+        this.$all(`[data-kit="${key}"]`).forEach((el) => { el.value = String(kit[key]); });
+        this.$all(`[data-kit-out="${key}"]`).forEach((el) => { el.textContent = key === 'kickDecay' ? `${kit[key].toFixed(2)} s` : `${Math.round(kit[key])} Hz`; });
       }
       this.$('.kit-sum').textContent = t('lab.kitTitle') + (changed ? ` · ${t('lab.edited')}` : '');
-      this.$('[data-action="kit-reset"]').disabled = !changed;
+      this.$all('[data-action="kit-reset"]').forEach((b) => { b.disabled = !changed; });
     }
 
     _renderTracks() {
@@ -9489,7 +9602,7 @@
       try { await this._ensureAudio(); } catch { return; }
       const now = this.engine.ctx.currentTime;
       if (track === 'bass') this._bassNote(now, this._bassMidi(this._currentHarmony(), value), 1);
-      else this.engine.hitTrack(track, now, value, this.state.kit, this._drumOpts());
+      else this._hitDrum(track, now, value);
     }
 
     /* ---- Sampler (Paket 9) ----------------------------------------------
@@ -9585,7 +9698,8 @@
 
     /** Alles laden, was Kit und Sample-Spuren brauchen — im Hintergrund, danach neu zeichnen. */
     _primeSamples() {
-      const ids = new Set([...this._kit().pads.filter(Boolean), ...this.state.sampleLanes.map((l) => l.padId)]);
+      const voices = Object.values(this.state.drumVoice || {}).filter((v) => v.startsWith('pad:')).map((v) => v.slice(4));
+      const ids = new Set([...this._kit().pads.filter(Boolean), ...this.state.sampleLanes.map((l) => l.padId), ...voices]);
       const missing = [...ids].filter((id) => !isFactoryId(id) && this._sampleMeta(id) && !this.sampler.buffers.has(id));
       if (!missing.length) return;
       Promise.all(missing.map((id) => this._loadBuffer(id))).then(() => { this._renderSampler(); this._renderTracks(); this._renderLive(); });
@@ -10139,7 +10253,7 @@
       while (taken.has(tf('lab.sampler.defaultName', { n }))) n++;
       const meta = sanitizeSampleMeta({
         id, name: tf('lab.sampler.defaultName', { n }), kind, trim: [start, end], gainDb: 0, pitch: 0, reverse: false, decay: SAMPLER_MAX_SEC[kind], reverb: 0,
-        track: 'perc', layerOriginal: false, toneRole: 'auto', detectedMidi: pitch?.midi ?? null, detectedCents: pitch?.cents ?? 0,
+        track: DRUM_TRACKS.includes(this.ui.drumPadRec) ? this.ui.drumPadRec : 'perc', layerOriginal: false, toneRole: 'auto', detectedMidi: pitch?.midi ?? null, detectedCents: pitch?.cents ?? 0,
         loopBars: rec.bars, bpmAtRec: kind === 'loop' ? rec.bpm : null, meterAtRec: kind === 'loop' ? rec.meter : null, by: '', createdAt: Date.now(),
       });
       await this._saveSample(meta, blob, buffer);
@@ -10322,9 +10436,13 @@
         const row = this._mk('div', 'chip-row');
         row.setAttribute('role', 'radiogroup');
         row.setAttribute('aria-label', t('lab.snd.after'));
-        const current = this.ui.smpUse || 'beat';
+        // Aus dem Drum-Pad im Klang-Reiter aufgenommen: Standard „tauscht den Sound der Spur“.
+        const drum = d.kind === 'hit' && DRUM_TRACKS.includes(this.ui.drumPadRec) ? this.ui.drumPadRec : null;
+        const current = this.ui.smpUse || (drum ? 'drum' : 'beat');
         const groove = d.kind === 'loop' ? t('lab.snd.afterRec') : d.kind === 'tone' ? t('lab.snd.afterBass') : tf('lab.snd.afterLane', { track: this._roleLabel(d) });
-        for (const [id, label] of [['pad', tf('lab.snd.afterPad', { n: smp.sel + 1 })], ['beat', groove], ['save', t('lab.snd.afterSave')]]) {
+        const uses = [['pad', tf('lab.snd.afterPad', { n: smp.sel + 1 })], ['beat', groove], ['save', t('lab.snd.afterSave')]];
+        if (drum) uses.unshift(['drum', tf('lab.snd.afterDrum', { track: trackLabel(drum) })]);
+        for (const [id, label] of uses) {
           const b = this._radioChip('snd-after', id, label, current === id);
           row.append(b);
         }
@@ -10422,7 +10540,8 @@
         }
       }
       const wasNew = smp.draftNew;
-      const use = this.ui.smpUse || 'beat';
+      const drum = d?.kind === 'hit' && DRUM_TRACKS.includes(this.ui.drumPadRec) ? this.ui.drumPadRec : null;
+      const use = this.ui.smpUse || (drum ? 'drum' : 'beat');
       this.ui.smpUse = null;
       smp.draft = null; smp.draftBuffer = null; smp.draftPeaks = null; smp.draftNew = false; smp.undoPad = null;
       this._samplerGo(smp.returnTo || 'pads');
@@ -10432,7 +10551,15 @@
       if (save && d && wasNew) {
         const name = d.name.trim() || d.name;
         let msg = null;
-        if (use === 'beat') {
+        if (use === 'drum' && drum) {
+          this._pushHistory();
+          this.state.drumVoice[drum] = `pad:${d.id}`;
+          this.ui.drumPadRec = null;
+          msg = tf('lab.snd.doneDrum', { name, track: trackLabel(drum) });
+          this._primeSamples(); this._renderBeat();
+          // Zurück ins Drums-Blatt (Klang), wo die Aufnahme begann.
+          if (!this.$('.panel-layer').hidden) this._closeLayer(this.$('.panel-layer'), { focus: false });
+        } else if (use === 'beat') {
           this._padToBeat(d.id);
           if (this.state.sampleLanes.some((l) => l.padId === d.id)) msg = tf('lab.snd.doneBeat', { name, track: this._trackName('rec') });
         } else if (use === 'save') {
@@ -11159,6 +11286,16 @@
     _renderSoundName() {
       const sound = this._editSound();
       this.$('[data-action="reset-sound"]').hidden = !sound.custom;
+      // Klangerzeugung: Samples (echtes Instrument, schlanker Editor) oder Synth (voller Editor).
+      this.$all('.engine-seg [role="radio"]').forEach((b) => b.setAttribute('aria-checked', String((b.dataset.value === 'sample') === !!sound.sample)));
+      const chips = this.$('.sample-inst');
+      if (chips) {
+        chips.hidden = !sound.sample;
+        chips.innerHTML = sound.sample ? SAMPLE_INSTRUMENTS.map((x) => {
+          const i = SYNTH_PRESETS.findIndex((pr) => pr.sample === x);
+          return `<button class="chip" type="button" role="radio" data-action="sample-inst" data-value="${i}" aria-checked="${sound.sample === x}">${SYNTH_PRESETS[i].name}</button>`;
+        }).join('') : '';
+      }
       this._renderPickerFor('sound');
     }
 
@@ -13123,6 +13260,7 @@
           // Ein Undo-Schritt je Wahl: der Tausch verwirft sonst eigene Zellen unwiderruflich.
           if (Number(value) !== s.patternIndex || s.beatEdited) this._pushHistory();
           const meterBefore = this._meter();
+          const swingBefore = this._pattern().swing;
           s.patternIndex = Number(value);
           s.beat = beatFromPattern(this._pattern());
           // Die Bass-Spielweise bleibt (wie in Chor), abgeleitet aus der Linie des neuen Loops.
@@ -13137,7 +13275,10 @@
           }
           if (this._meter() !== meterBefore) { this._convertTempo(); this._onTempoChange(); if (styleOf(s.styleId)?.meter !== this._meter()) s.styleId = null; this._renderStudio(); this._renderChor(); }
           // Loops mit eigener Swing-Vorgabe (Swing Soul) bringen sie mit.
+          // Ein unverändert übernommener Swing (Vorgabe des alten Loops) fällt bei geraden Loops weg —
+          // er wirkte dort auf Sechzehntel statt Achtel (swingUnit); ein eigener Wert bleibt.
           if (typeof this._pattern().swing === 'number') { s.swing = this._pattern().swing; }
+          else if (typeof swingBefore === 'number' && s.swing === swingBefore) s.swing = 0;
           this._ensureMelodyMeter();
           if (this.playing && this._meter() !== meterBefore) this.globalStep = Math.ceil(this.globalStep / this._barSteps()) * this._barSteps();
           this._renderBeat(); this._renderMelody();
@@ -13224,7 +13365,19 @@
         case 'smp-lib-use': this._assignPad(this.sampler.sel, value); this._primeSamples(); this._samplerGo('pads'); this._renderLive(); break;
         case 'lane-cell': this._toggleLaneCell(Number(target.dataset.lane), Number(target.dataset.step)); break;
         case 'lane-preview': this._auditionPad(s.sampleLanes[Number(value)]?.padId); break;
-        case 'drum-kit': this._pushHistory(); s.drumKit = DRUM_KITS.includes(value) ? value : 'auto'; this._renderBeat(); if (!this.playing) this._preview('snare', 1); break;
+        case 'drum-kit':
+          this._pushHistory(); s.drumKit = DRUM_KITS.includes(value) ? value : 'auto';
+          // Die Leiste stellt das ganze Kit um; getauschte Samples (Pads) bleiben.
+          for (const [track, v] of Object.entries(s.drumVoice)) if (!v.startsWith('pad:')) delete s.drumVoice[track];
+          this._renderBeat(); this._renderTrackHead?.(); if (!this.playing) this._preview('snare', 1);
+          break;
+        case 'loop-bass': this._setLoopBass(value); break;
+        case 'drum-pad': this.ui.drumPad = DRUM_TRACKS.includes(value) ? value : 'kick'; this._renderDrumPads(); this._renderKit(); this.$(`.drum-pad[data-value="${this.ui.drumPad}"]`)?.focus(); this._preview(this.ui.drumPad, 1); break;
+        case 'drum-voice': this._setDrumVoice(value); this._renderKit(); break;
+        case 'drum-pad-rec': this.ui.drumPadRec = DRUM_TRACKS.includes(this.ui.drumPad) ? this.ui.drumPad : 'kick'; this._openSounds('record', 'hit'); break;
+        case 'perc-sound':
+          if (PERC_SOUNDS.includes(value)) { this._pushHistory(); s.percSound = value; this._renderDrumPads(); if (!this.playing) this._preview('perc', 1); }
+          break;
         case 'chord-voicing': this._pushHistory(); s.chordVoicing = value === 'pop' ? 'pop' : 'satb'; this._renderHarmony(); this._renderSatb(); break;
         case 'chord-sound': this._pushHistory(); s.chordSound = value === 'choir' ? 'choir' : 'synth'; this._syncEngine(); this._renderHarmony(); break;
         case 'fills': this._pushHistory(); s.fills = FILL_LENGTHS.includes(Number(value)) ? Number(value) : 0; this._renderBeat(); break;
@@ -13429,6 +13582,11 @@
           this._renderSound();
           this._auditionSound();
           break;
+        case 'sound-engine': this._setSoundEngine(value); break;
+        case 'sample-inst':
+          this._setEditSound(soundFromPreset(Number(value)));
+          this._applySound(); this._renderSound(); this._auditionSound();
+          break;
         case 'reset-sound':
           this._setEditSound(soundFromPreset(this._editSound().presetIndex));
           this._applySound();
@@ -13548,6 +13706,25 @@
       if (id === 'chords' && !s.chordSynth) s.chordSynth = sound;
       if (id === 'pad' && !s.padSynth) s.padSynth = sound;
       this._soundDraft = null;
+    }
+    /** Umschalter Samples ↔ Synth: Synth nimmt den Ersatzklang des Instruments (SAMPLE_FALLBACK),
+     *  Samples das zuletzt gewählte Instrument dieser Spur bzw. das passende zum Spurtyp. */
+    _setSoundEngine(engine) {
+      const id = this._soundFor();
+      const cur = this._editSound();
+      if ((engine === 'sample') === !!cur.sample) return;
+      const last = (this.ui.lastSample ||= {});
+      let index;
+      if (engine === 'synth') {
+        last[id] = cur.sample;
+        index = presetIndexByName(SAMPLE_FALLBACK[cur.sample]);
+      } else {
+        const type = this._instOf(id)?.type || id;
+        const want = last[id] || ({ bass: 'bass', chords: 'piano', pad: 'strings', melody: 'piano' }[type] || 'piano');
+        index = SYNTH_PRESETS.findIndex((pr) => pr.sample === want);
+      }
+      this._setEditSound(soundFromPreset(index));
+      this._applySound(); this._renderSound(); this._auditionSound();
     }
     _setEditSound(sound) {
       const s = this.state;
@@ -14516,6 +14693,11 @@
   .picker-name { font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .picker-sub { font-size: .66rem; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .reset-sound-row { margin-top: 8px; }
+  .engine-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .engine-row .sub-label { margin: 0; flex: 0 0 auto; }
+  .engine-seg { flex: 1; }
+  .sample-inst { margin: 8px 0 6px; }
+  .sample-inst[hidden] { display: none; }
   .reset-sound-row:has([hidden]) { display: none; }
 
   .mel-card { margin-top: 10px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 10px; }
@@ -14815,6 +14997,23 @@
   .track-layer[data-track="bass"] .track-row:not([data-track="bass"]):not([data-group="bass"]) { display: none; }
   .track-layer[data-track="bass"] .kit-box, .track-layer[data-track="bass"] .dc-pattern-head .reset-beat { display: none; }
   .track-layer .groove-swing, .track-layer .chordsound-chips, .track-layer .voicing-chips { display: none; }
+  /* Drums · Muster: Swing und Basslinie unter dem Loop; Drums · Klang: Pads zum Tauschen einzelner Sounds
+     (der Kick-Klang steht dort am Kick-Pad, nicht mehr unter dem Raster). Nur im Spur-Blatt. */
+  [data-tab-panel] > [data-part="loopCtl"], [data-tab-panel] > [data-part="drumPads"] { display: none; }
+  .track-layer .kit-box { display: none; }
+  .loop-ctl { display: grid; gap: 6px; }
+  .loop-ctl .foot-note { margin: 0; }
+  .loop-ctl [hidden] { display: none; }
+  .drum-pad-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .drum-pad { min-height: 72px; min-width: 0; border-radius: 16px; border: 2px solid var(--line); background: var(--surface); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 6px; }
+  .drum-pad strong { font-size: .9rem; }
+  .drum-pad span { font-size: .68rem; color: var(--muted); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .drum-pad.is-swapped span { color: var(--accent); font-weight: 800; }
+  .drum-pad[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+  .drum-pad-edit { display: grid; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .drum-pad-title { margin: 0; font-size: 1rem; }
+  .drum-pad-edit .foot-note { margin: 0; }
+  .drum-pad-rec i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #e0445a; margin-right: 6px; vertical-align: -1px; }
   .cp-hits { display: grid; gap: 3px; }
   .cp-hit { height: 34px; border-radius: 5px; background: var(--line); }
   .cp-hit.alt { background: #e7d6c8; }
@@ -15348,6 +15547,13 @@
       <div class="panel-head"><h2>${t('lab.drumloop')}</h2>${lockBtn('beat')}</div>
       ${pickerTrigger('beat')}
     </section>
+    <section data-part="loopCtl" class="panel loop-ctl">
+      <label class="slider-line loop-swing"><span>${t('lab.swing')}</span><input type="range" data-field="swing" min="0" max="1" step=".01"><output data-out="swing"></output></label>
+      <p class="foot-note loop-swing-note"></p>
+      <span class="sub-label" id="loop-bass-l">${t('lab.loopCtl.bass')}</span>
+      <div class="chip-row loop-bass" role="radiogroup" aria-labelledby="loop-bass-l"></div>
+      <p class="foot-note loop-bass-note" hidden></p>
+    </section>
     <section data-part="grid" class="panel beat-panel">
       <div class="zoom-head"><h2>${t('lab.pattern')}</h2><button class="chip zoom-done" type="button" data-action="beat-zoom-close">${t('lab.zoomClose')}</button></div>
       <div class="panel-head dc-pattern-head"><h2>${t('lab.pattern')}</h2>${help('editHint')}<button class="chip reset-beat" type="button" data-action="reset-beat">${t('lab.resetBeat')}</button>${zoomBtn}</div>
@@ -15378,10 +15584,18 @@
       <div class="panel-head"><h2>${t('lab.drumKit')}</h2>${help('helpKit')}</div>
       ${helpText('helpKit')}
       <div class="chip-row kit-chips" role="group" aria-label="${t('lab.drumKit')}"></div>
+    </section>
+    <section data-part="fills" class="panel dc-bass-panel fills-panel">
       <div class="panel-head"><h2>${t('lab.fills')}</h2>${help('helpFills')}</div>
       ${helpText('helpFills')}
       <div class="chip-row fill-chips" role="group" aria-label="${t('lab.fills')}"></div>
     </section>
+    <section data-part="drumPads" class="panel drum-pads">
+      <div class="panel-head"><h2>${t('lab.drumPads')}</h2><span class="smp-hint">${t('lab.drumPads.hint')}</span></div>
+      <div class="drum-pad-grid" role="group" aria-label="${t('lab.drumPads')}"></div>
+      <div class="drum-pad-edit"></div>
+    </section>
+
     <section data-part="bassSound" class="panel dc-bass-panel">
       <div class="panel-head"><h2>${t('lab.bassSound')}</h2>${help('helpBass')}</div>
       ${helpText('helpBass')}
@@ -15512,6 +15726,9 @@
       <div class="panel-head"><h2>${t('lab.sound')}</h2>${help('helpSound')}${lockBtn('sound')}</div>
       ${helpText('helpSound')}
       ${pickerTrigger('sound')}
+      <div class="engine-row"><span class="sub-label" id="engine-l">${t('lab.engine')}</span>
+        <div class="seg engine-seg" role="radiogroup" aria-labelledby="engine-l">${['sample', 'synth'].map((e) => `<button type="button" role="radio" data-action="sound-engine" data-value="${e}" aria-checked="false">${t(`lab.engine.${e}`)}</button>`).join('')}</div></div>
+      <div class="chip-row sample-inst" role="radiogroup" aria-label="${t('lab.engine.sample')}"></div>
       <div class="reset-sound-row"><button class="chip" type="button" data-action="reset-sound">${t('lab.resetSound')}</button></div>
       <p class="sample-note" role="status" hidden>${t('lab.sampleFallback')}</p>
       <div class="knob-row macro-knobs"></div>
@@ -16046,8 +16263,19 @@
     const gridHome = () => v.$('[data-part="grid"]').closest('.tab-panel')?.dataset.tabPanel;
     v._openTrack('drums');
     if (!v.$('.track-body [data-part="loop"]') || !v.$('.track-body [data-part="grid"]') || v.$('.track-layer .layer-card').getAttribute('role') !== 'dialog') fail('Drums-Blatt: Muster fehlt');
+    if (!v.$('.track-body [data-part="loopCtl"] .loop-bass [data-value="line"]')) fail('Drums-Blatt: Basslinie unter dem Loop');
     v._showTrackTab('sound');
     if (!v.$('.track-body [data-part="kit"]') || v.$('.track-body [data-part="grid"]')) fail('Drums-Blatt: Klang');
+    if (v.$all('.track-body .drum-pad').length !== 6 || !v.$('.track-body [data-part="fills"] .fill-chips')) fail('Drums-Blatt: Pads zum Tauschen / Fills');
+    {
+      // Ein getauschter Sound klingt über _hitDrum; die Kit-Leiste setzt Synth/Akustik zurück, Samples bleiben.
+      const keep = JSON.stringify(v.state.drumVoice);
+      v.state.drumVoice = { kick: 'synth', snare: 'pad:f:rim' };
+      v._handleAction('drum-kit', v.state.drumKit, null);
+      if (JSON.stringify(v.state.drumVoice) !== '{"snare":"pad:f:rim"}') fail('Kit-Leiste: getauschte Sounds');
+      v.undo();
+      v.state.drumVoice = JSON.parse(keep);
+    }
     v._showTrackTab('mix');
     if (!v.$('.track-body [data-mix="drums"]') || !v.$('.track-body [data-part="groove"]')) fail('Drums-Blatt: Mix (Lautstärke, Pumpen)');
     v._closeLayer(v.$('.track-layer'), { focus: false });
