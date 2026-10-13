@@ -6767,6 +6767,9 @@ async function audioPlayStart() {
  */
 async function audioPlayFromControls() {
   if (audioRebuildInFlight) await audioRebuildInFlight.catch(() => {});
+  // Ein im Hintergrund weiterlaufendes Metronom hat einen eigenen Kontext mit
+  // Scheduler; neben dem Song kostet das Rechenzeit (Ruckeln beim Verlangsamen).
+  if (metronomeBg.running && metronomeInBackground()) stopBackgroundMetronome();
   return audioPlay();
 }
 
@@ -24536,9 +24539,16 @@ function flushToolFrame(frame) {
   try { frame?.contentWindow?.chorToolFlush?.(); } catch { /* schon weg */ }
 }
 
+/** Audiokontext der Tool-Seite endgültig schließen, bevor ihr iframe entfernt
+ *  wird (auf WebKit bliebe er sonst bis zur Garbage Collection offen). */
+function releaseToolFrame(frame) {
+  try { frame?.contentWindow?.chorToolRelease?.(); } catch { /* schon weg */ }
+}
+
 function removeMetronomeFrame() {
   const frame = metronomeFrame();
   flushToolFrame(frame);
+  releaseToolFrame(frame);
   frame?.remove();
   clearTimeout(metronomeStopFallback);
   metronomeBg.running = false;
@@ -24557,11 +24567,13 @@ function openToolFrame(page, titleKey, query = '') {
   // Andere Tools gibt es immer nur einmal; das Metronom bleibt, falls es läuft.
   for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) {
     try { other.contentWindow?.chorToolFlush?.(); } catch { /* fremde Herkunft */ }
+    releaseToolFrame(other);
     other.remove();
   }
   let metro = metronomeFrame();
   if (metro && !metronomeBg.running && page !== METRONOME_PAGE) {
     flushToolFrame(metro);
+    releaseToolFrame(metro);
     metro.remove();
     metro = null;
   }
@@ -24634,7 +24646,7 @@ function closeToolFrame() {
   for (const frame of host.querySelectorAll('iframe')) {
     try { frame.contentWindow?.chorToolFlush?.(); } catch { /* fremde Herkunft */ }
   }
-  for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) other.remove();
+  for (const other of host.querySelectorAll('iframe:not([data-tool="metronome"])')) { releaseToolFrame(other); other.remove(); }
   const metro = metronomeFrame();
   if (metro) {
     if (metronomeBg.running) metro.hidden = true;

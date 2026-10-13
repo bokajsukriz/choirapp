@@ -1408,6 +1408,17 @@
   }
   window.chorToolFlush = flushSave;
   window.addEventListener('pagehide', flushSave);
+  /* Kontext endgültig schließen, wenn die App das Tool entfernt (chorToolRelease)
+     oder die Seite geht: ein nur angehaltener Kontext eines entfernten iframes
+     bleibt auf WebKit bis zur Garbage Collection bestehen und belegt die
+     Audio-Hardware — der Song im Player ruckelt dann beim Verlangsamen. */
+  function releaseEngine() {
+    const c = engine.ctx; if (!c) return;
+    engine.ctx = null;
+    try { Promise.resolve(c.close()).catch(() => {}); } catch { /* schon zu */ }
+  }
+  window.chorToolRelease = releaseEngine;
+  window.addEventListener('pagehide', (e) => { if (!e.persisted) releaseEngine(); });
 
   /** Grundtempo einer Übung (pro Übung gemerkt, Tempo-Regler). */
   const bpmOf = (ex) => state.bpm[ex.id] ?? ex.bpm;
