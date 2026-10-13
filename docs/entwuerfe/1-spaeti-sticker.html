@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entwurf 1 – Späti-Sticker</title>
+<style>
+  :root {
+    --paper: #f3eee2; --ink: #111; --pink: #ff3d8b; --yellow: #ffe500;
+    --green: #17c27b; --blue: #3d6bff; --white: #fff;
+    --disp: "Arial Black", "Helvetica Neue", Impact, system-ui, sans-serif;
+    --body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --b: 2.5px solid var(--ink); --sh: 4px 4px 0 var(--ink);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: #d9d3c4; font-family: var(--body); color: var(--ink); padding: 24px 12px 48px; }
+  h1.page { font: 900 15px/1 var(--body); letter-spacing: .08em; text-transform: uppercase; text-align: center; margin-bottom: 20px; }
+  .stage { display: flex; gap: 28px; justify-content: center; flex-wrap: wrap; }
+  .phone { width: 390px; height: 800px; background: var(--paper); border: 3px solid var(--ink); border-radius: 36px; overflow: hidden; position: relative; display: flex; flex-direction: column; box-shadow: 10px 10px 0 rgba(0,0,0,.25); }
+  .phone::before { content: ""; position: absolute; inset: 0; background-image: radial-gradient(rgba(0,0,0,.07) 1px, transparent 1.2px); background-size: 7px 7px; pointer-events: none; }
+  .scroll { flex: 1; overflow-y: auto; padding: 18px 16px 80px; position: relative; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  /* Header */
+  .top { display: flex; align-items: flex-start; justify-content: space-between; }
+  .logo { font: 900 44px/.9 var(--disp); letter-spacing: -.03em; text-transform: uppercase; }
+  .logo span { display: inline-block; background: var(--pink); color: var(--white); padding: 0 8px; transform: rotate(-3deg); border: var(--b); box-shadow: var(--sh); margin-top: 4px; }
+  .sticker { display: inline-block; border: var(--b); background: var(--yellow); font: 800 11px/1.15 var(--body); padding: 6px 9px; text-transform: uppercase; transform: rotate(4deg); box-shadow: 3px 3px 0 var(--ink); text-align: center; }
+
+  .ticket { margin: 18px 0 14px; background: var(--blue); color: #fff; border: var(--b); box-shadow: var(--sh); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; position: relative; }
+  .ticket::before, .ticket::after { content: ""; position: absolute; width: 16px; height: 16px; background: var(--paper); border: var(--b); border-radius: 50%; top: 50%; margin-top: -8px; }
+  .ticket::before { left: -10px; } .ticket::after { right: -10px; }
+  .ticket b { font: 900 17px/1.1 var(--disp); display: block; }
+  .ticket small { font-size: 12px; opacity: .9; }
+  .ticket .go { margin-left: auto; background: var(--yellow); color: var(--ink); border: var(--b); border-radius: 10px; padding: 8px 12px; font-weight: 900; font-size: 13px; }
+
+  .search { display: flex; gap: 8px; margin-bottom: 12px; }
+  .search input { flex: 1; min-width: 0; border: var(--b); border-radius: 12px; padding: 11px 14px; font: 600 15px var(--body); background: var(--white); box-shadow: 3px 3px 0 var(--ink); }
+  .sq { width: 46px; border: var(--b); border-radius: 12px; background: var(--white); box-shadow: 3px 3px 0 var(--ink); display: grid; place-items: center; }
+  .sq.rec { background: var(--pink); } .sq.rec i { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid var(--ink); }
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 12px; scrollbar-width: none; }
+  .chip { flex: none; border: var(--b); border-radius: 99px; background: var(--white); font: 800 13px var(--body); padding: 6px 13px; }
+  .chip.on { background: var(--ink); color: var(--yellow); }
+  .chip:nth-child(3n+2).on { transform: rotate(-2deg); }
+
+  .row { display: flex; align-items: center; gap: 12px; background: var(--white); border: var(--b); border-radius: 14px; padding: 9px 12px 9px 9px; margin-bottom: 11px; box-shadow: var(--sh); width: 100%; text-align: left; position: relative; }
+  .row:nth-child(even) { transform: rotate(.5deg); } .row:nth-child(odd) { transform: rotate(-.4deg); }
+  .cover { flex: none; width: 54px; height: 54px; border: var(--b); border-radius: 10px; display: grid; place-items: center; font: 900 22px var(--disp); }
+  .row h3 { font: 900 16px/1.15 var(--disp); letter-spacing: -.01em; }
+  .row p { font-size: 12.5px; color: #555; margin-top: 2px; font-weight: 600; }
+  .row .meta { flex: 1; min-width: 0; }
+  .dots { display: flex; gap: 3px; margin-top: 6px; }
+  .dots i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--ink); background: #fff; }
+  .dots i.f { background: var(--green); }
+  .tag { flex: none; font: 900 10.5px var(--body); text-transform: uppercase; border: 2px solid var(--ink); border-radius: 6px; padding: 3px 6px; transform: rotate(3deg); }
+  .t-sitzt { background: var(--green); } .t-fast { background: var(--yellow); } .t-neu { background: var(--pink); color: #fff; }
+  .playing .cover::after { content: ""; }
+  .eq { display: flex; gap: 2px; align-items: flex-end; height: 18px; }
+  .eq i { width: 4px; background: var(--ink); animation: eq 0.9s ease-in-out infinite alternate; }
+  .eq i:nth-child(2) { animation-delay: .2s; } .eq i:nth-child(3) { animation-delay: .4s; }
+  @keyframes eq { from { height: 4px; } to { height: 18px; } }
+  @media (prefers-reduced-motion: reduce) { .eq i { animation: none; height: 12px; } }
+
+  .fab { position: absolute; right: 16px; bottom: 86px; width: 58px; height: 58px; border-radius: 16px; background: var(--yellow); border: var(--b); box-shadow: var(--sh); font: 900 30px/1 var(--disp); transform: rotate(-5deg); z-index: 3; }
+
+  .nav { display: flex; border-top: var(--b); background: var(--white); position: relative; z-index: 4; }
+  .nav button { flex: 1; border: 0; background: none; padding: 9px 0 12px; font: 800 11px var(--body); text-transform: uppercase; display: grid; justify-items: center; gap: 3px; }
+  .nav svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .nav button.on { background: var(--yellow); border-left: var(--b); border-right: var(--b); }
+  .nav button.on:first-child { border-left: 0; } .nav button.on:last-child { border-right: 0; }
+  .mini { margin: 0 10px 8px; border: var(--b); border-radius: 14px; background: var(--pink); color: #fff; display: flex; align-items: center; gap: 10px; padding: 8px 10px; box-shadow: 3px 3px 0 var(--ink); position: relative; z-index: 4; }
+  .mini b { font: 900 14px var(--disp); flex: 1; }
+  .mini button { width: 36px; height: 36px; border-radius: 10px; border: var(--b); background: var(--yellow); color: var(--ink); }
+
+  /* Player */
+  .pl-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .back { border: var(--b); background: var(--white); border-radius: 10px; padding: 6px 12px; font-weight: 900; font-size: 13px; box-shadow: 3px 3px 0 var(--ink); }
+  .poster { background: var(--yellow); border: var(--b); border-radius: 18px; box-shadow: 6px 6px 0 var(--ink); padding: 16px; position: relative; overflow: hidden; }
+  .poster h2 { font: 900 34px/.95 var(--disp); text-transform: uppercase; letter-spacing: -.03em; position: relative; }
+  .poster h2 mark { background: var(--pink); color: #fff; padding: 0 5px; }
+  .poster p { font-weight: 800; font-size: 13px; margin-top: 8px; position: relative; }
+  .vinyl { position: absolute; right: -34px; top: -34px; width: 140px; height: 140px; border-radius: 50%; background: repeating-radial-gradient(circle, #111 0 3px, #2a2a2a 3px 5px); border: var(--b); animation: spin 6s linear infinite; }
+  .vinyl::after { content: ""; position: absolute; inset: 48px; border-radius: 50%; background: var(--pink); border: 2px solid var(--ink); }
+  .paused .vinyl { animation-play-state: paused; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .vinyl { animation: none; } }
+
+  .seekwrap { margin: 18px 4px 6px; position: relative; }
+  .seek { height: 22px; border: var(--b); border-radius: 99px; background: var(--white); position: relative; overflow: hidden; box-shadow: 3px 3px 0 var(--ink); }
+  .seek .loop { position: absolute; top: 0; bottom: 0; left: 30%; width: 22%; background: repeating-linear-gradient(45deg, var(--yellow) 0 6px, #fff 6px 12px); border-left: 2px solid var(--ink); border-right: 2px solid var(--ink); }
+  .seek .fill { position: absolute; inset: 0 auto 0 0; width: 38%; background: var(--pink); border-right: var(--b); }
+  .flag { position: absolute; top: -17px; font: 900 11px var(--body); background: var(--ink); color: var(--yellow); padding: 1px 5px; border-radius: 4px; }
+  .times { display: flex; justify-content: space-between; font: 800 12px var(--body); margin: 10px 4px 0; font-variant-numeric: tabular-nums; }
+
+  .transport { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 14px 0 16px; }
+  .tb { width: 54px; height: 54px; border-radius: 14px; border: var(--b); background: var(--white); box-shadow: 3px 3px 0 var(--ink); font: 900 13px var(--body); display: grid; place-items: center; }
+  .tb:active, .play:active { transform: translate(3px,3px); box-shadow: 0 0 0 var(--ink); }
+  .play { width: 84px; height: 84px; border-radius: 24px; background: var(--pink); color: #fff; border: var(--b); box-shadow: 6px 6px 0 var(--ink); display: grid; place-items: center; }
+  .play svg { width: 40px; height: 40px; fill: #fff; stroke: var(--ink); stroke-width: 1.5; }
+
+  .lbl { font: 900 11px var(--body); text-transform: uppercase; letter-spacing: .08em; margin: 14px 2px 6px; }
+  .voices { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .voices button { border: var(--b); border-radius: 12px; background: var(--white); padding: 10px 0 8px; font: 900 18px var(--disp); box-shadow: 3px 3px 0 var(--ink); display: grid; justify-items: center; gap: 1px; }
+  .voices button small { font: 700 9.5px var(--body); text-transform: uppercase; }
+  .voices button.on { background: var(--blue); color: #fff; transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--ink); }
+  .speed { display: flex; gap: 8px; }
+  .speed button { flex: 1; border: var(--b); border-radius: 99px; background: var(--white); font: 900 14px var(--body); padding: 8px 0; }
+  .speed button.on { background: var(--green); }
+  .tabs { display: flex; margin-top: 18px; gap: 4px; position: relative; z-index: 2; }
+  .tabs button { flex: 1; border: var(--b); border-bottom: 0; border-radius: 12px 12px 0 0; background: #e2dccb; font: 900 13px var(--body); padding: 9px 0; }
+  .tabs button.on { background: var(--white); padding-bottom: 12px; margin-bottom: -2.5px; }
+  .panel { background: var(--white); border: var(--b); border-radius: 0 0 14px 14px; padding: 14px; min-height: 120px; font-size: 14.5px; line-height: 1.5; font-weight: 600; }
+  .panel .now { background: var(--yellow); padding: 1px 4px; font-weight: 800; }
+  .panel .dim { color: #888; }
+  .loopctl { display: flex; gap: 8px; align-items: center; }
+  .loopctl button { border: var(--b); border-radius: 10px; background: var(--yellow); font-weight: 900; padding: 8px 14px; }
+  [hidden] { display: none !important; }
+  .cap { text-align: center; font: 700 12px var(--body); margin-top: 10px; color: #444; max-width: 390px; }
+  .col { display: flex; flex-direction: column; align-items: center; }
+</style>
+</head>
+<body>
+<h1 class="page">Entwurf 1 · Späti-Sticker – laut, bunt, Kiez-Plakat</h1>
+<div class="stage">
+
+  <!-- ================= SONGS ================= -->
+  <div class="col">
+  <div class="phone" id="p-songs">
+    <div class="scroll">
+      <div class="top">
+        <div class="logo">Wir<br><span>singen</span></div>
+        <div class="sticker">Probe<br>Di 19:30<br>Rixdorf</div>
+      </div>
+
+      <div class="ticket">
+        <div><b>Sommerset 2026</b><small>7 Lieder · 3 sitzen schon</small></div>
+        <button class="go">Los →</button>
+      </div>
+
+      <div class="search">
+        <input type="search" placeholder="Song suchen …" aria-label="Song suchen">
+        <button class="sq" aria-label="Zufälliges Lied"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1" fill="#111"/><circle cx="15.5" cy="15.5" r="1" fill="#111"/><circle cx="12" cy="12" r="1" fill="#111"/></svg></button>
+        <button class="sq rec" aria-label="Aufnehmen"><i></i></button>
+      </div>
+      <div class="chips" id="chips">
+        <button class="chip on">Alle</button><button class="chip">Sommerset</button><button class="chip">Winterkonzert</button><button class="chip">Neu</button><button class="chip">Warm-ups</button>
+      </div>
+
+      <div id="list"></div>
+    </div>
+    <button class="fab" aria-label="Songs importieren">+</button>
+    <div class="mini" id="mini1"><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M8 5.5v13l11-6.5z"/></svg><b>Dancing On My Own</b><button aria-label="Pause">❚❚</button></div>
+    <nav class="nav" aria-label="Hauptnavigation">
+      <button class="on"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>Songs</button>
+      <button><svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h7"/><circle cx="18" cy="17" r="2.5"/><path d="M20.5 17V8"/></svg>Listen</button>
+      <button><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z" fill="currentColor"/></svg>Player</button>
+      <button><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg>Tools</button>
+    </nav>
+  </div>
+  <div class="cap">Songs: große Cover-Kacheln mit Farbe pro Lied, Status als Sticker („sitzt“, „fast“, „neu“), nächste Probe als Ticket oben.</div>
+  </div>
+
+  <!-- ================= PLAYER ================= -->
+  <div class="col">
+  <div class="phone paused" id="p-player">
+    <div class="scroll">
+      <div class="pl-top"><button class="back">← Songs</button><span class="sticker" style="transform:rotate(-3deg)">Lied 3 / 7</span></div>
+      <div class="poster">
+        <div class="vinyl"></div>
+        <h2>Dancing<br>on my <mark>own</mark></h2>
+        <p>Robyn · 124 bpm · D-Dur</p>
+      </div>
+
+      <div class="seekwrap">
+        <span class="flag" style="left:30%">A</span><span class="flag" style="left:52%">B</span>
+        <div class="seek"><div class="loop"></div><div class="fill"></div></div>
+        <div class="times"><span>1:24</span><span>3:41</span></div>
+      </div>
+
+      <div class="transport">
+        <button class="tb" aria-label="Zum Anfang">⏮</button>
+        <button class="tb" aria-label="10 Sekunden zurück">−10</button>
+        <button class="play" id="play" aria-label="Abspielen"><svg viewBox="0 0 24 24" id="ico"><path d="M8 5.5v13l11-6.5z"/></svg></button>
+        <button class="tb" aria-label="Loop">⟳</button>
+        <button class="tb" aria-label="Nächstes Lied">⏭</button>
+      </div>
+
+      <div class="lbl">Meine Stimme</div>
+      <div class="voices" id="voices">
+        <button>S<small>Sopran</small></button><button class="on">A<small>Alt</small></button><button>T<small>Tenor</small></button><button>B<small>Bass</small></button><button>★<small>Alle</small></button>
+      </div>
+      <div class="lbl">Tempo</div>
+      <div class="speed" id="speed"><button>60 %</button><button>70 %</button><button>85 %</button><button class="on">100 %</button></div>
+
+      <div class="tabs" id="tabs"><button class="on" data-t="lyrics">Lyrics</button><button data-t="loops">Loops</button><button data-t="rec">REC</button><button data-t="notes">Notes</button></div>
+      <div class="panel" id="panel"></div>
+    </div>
+    <nav class="nav" aria-label="Hauptnavigation">
+      <button><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>Songs</button>
+      <button><svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h7"/><circle cx="18" cy="17" r="2.5"/><path d="M20.5 17V8"/></svg>Listen</button>
+      <button class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z" fill="currentColor"/></svg>Player</button>
+      <button><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg>Tools</button>
+    </nav>
+  </div>
+  <div class="cap">Player: Song als Plakat, dicke „Knöpfe zum Draufhauen“, Stimme als große Kacheln statt Dropdown, Tempo als Schnellwahl.</div>
+  </div>
+</div>
+
+<script>
+const songs = [
+  ["Dancing On My Own","Robyn","#ff3d8b","D",3,"sitzt",1],
+  ["Bad Guy","Billie Eilish","#17c27b","B",2,"fast"],
+  ["Shallow","Lady Gaga & B. Cooper","#3d6bff","S",1,"neu"],
+  ["Rolling in the Deep","Adele","#ffe500","R",4,"sitzt"],
+  ["Mr. Brightside","The Killers","#ff9d3d","M",2,"fast"],
+  ["Heroes","David Bowie","#b28bff","H",0,"neu"],
+];
+const tagCls = {sitzt:"t-sitzt", fast:"t-fast", neu:"t-neu"};
+document.getElementById("list").innerHTML = songs.map(s => `
+  <button class="row ${s[6]?'playing':''}">
+    <span class="cover" style="background:${s[2]};color:${s[2]==='#3d6bff'||s[2]==='#ff3d8b'?'#fff':'#111'}">${s[3]}</span>
+    <span class="meta"><h3>${s[0]}</h3><p>${s[1]}</p>
+      <span class="dots">${[0,1,2,3].map(i=>`<i class="${i<s[4]?'f':''}"></i>`).join("")}</span></span>
+    ${s[6] ? '<span class="eq"><i></i><i></i><i></i></span>' : `<span class="tag ${tagCls[s[5]]}">${s[5]}</span>`}
+  </button>`).join("");
+
+const toggleOne = (id, sel) => document.getElementById(id).addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  [...b.parentNode.children].forEach(x => x.classList.toggle("on", x === b));
+});
+toggleOne("chips"); toggleOne("voices"); toggleOne("speed");
+
+const panels = {
+  lyrics: `<span class="dim">Somebody said you got a new friend</span><br><span class="now">Does she love you better than I can?</span><br>There's a big black sky over my town<br><span class="dim">I know where you're at, you're all by her side</span>`,
+  loops: `<div class="loopctl"><button>A setzen</button><button>B setzen</button><span>Loop: 1:03 – 1:52</span></div><p style="margin-top:10px">Gespeichert: „Refrain“, „Brücke“</p>`,
+  rec: `<p>Noch keine Aufnahme. Tipp auf den roten Knopf und sing los – ohne Druck. 🎤</p>`,
+  notes: `<p>Takt 17: Einsatz Alt <b>nach</b> dem Snare-Schlag. Atmen vor „own“.</p>`,
+};
+const panel = document.getElementById("panel");
+panel.innerHTML = panels.lyrics;
+document.getElementById("tabs").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  [...b.parentNode.children].forEach(x => x.classList.toggle("on", x === b));
+  panel.innerHTML = panels[b.dataset.t];
+});
+document.getElementById("play").addEventListener("click", () => {
+  const ph = document.getElementById("p-player"); const paused = ph.classList.toggle("paused");
+  document.getElementById("ico").innerHTML = paused ? '<path d="M8 5.5v13l11-6.5z"/>' : '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>';
+});
+</script>
+</body>
+</html>

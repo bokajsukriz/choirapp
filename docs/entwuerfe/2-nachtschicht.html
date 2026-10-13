@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entwurf 2 – Nachtschicht</title>
+<style>
+  :root {
+    --bg: #0c0a18; --bg2: #151227; --glass: rgba(255,255,255,.07); --glass-line: rgba(255,255,255,.14);
+    --text: #f6f3ff; --muted: #a9a2c6; --pink: #ff5ea8; --violet: #8a6bff; --cyan: #2fd8e8; --lime: #c6ff4d;
+    --g: var(--pink); --g2: var(--violet);
+    --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: #05040b; color: var(--text); font-family: var(--font); padding: 24px 12px 48px; }
+  h1.page { font: 700 13px/1 var(--font); letter-spacing: .14em; text-transform: uppercase; text-align: center; margin-bottom: 20px; color: var(--muted); }
+  .stage { display: flex; gap: 28px; justify-content: center; flex-wrap: wrap; }
+  .col { display: flex; flex-direction: column; align-items: center; }
+  .phone { width: 390px; height: 800px; border-radius: 40px; background: var(--bg); border: 1px solid var(--glass-line); overflow: hidden; position: relative; display: flex; flex-direction: column; box-shadow: 0 30px 80px rgba(138,107,255,.18); }
+  .glow { position: absolute; inset: 0; pointer-events: none; background:
+      radial-gradient(420px 320px at 90% -5%, color-mix(in srgb, var(--g) 55%, transparent), transparent 70%),
+      radial-gradient(380px 300px at -10% 40%, color-mix(in srgb, var(--g2) 40%, transparent), transparent 70%); }
+  .scroll { flex: 1; overflow-y: auto; position: relative; padding: 22px 18px 130px; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+  button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; }
+
+  .hello { font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+  h1 { font-size: 32px; line-height: 1.05; letter-spacing: -.03em; margin: 4px 0 16px; font-weight: 800; }
+  h1 em { font-style: normal; background: linear-gradient(90deg, var(--pink), var(--cyan)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  .hero { border-radius: 26px; padding: 18px; position: relative; overflow: hidden; background: linear-gradient(135deg, #ff5ea8, #8a6bff 60%, #2fd8e8); color: #fff; min-height: 150px; display: flex; flex-direction: column; justify-content: flex-end; box-shadow: 0 16px 40px rgba(255,94,168,.28); }
+  .hero::before { content: ""; position: absolute; width: 220px; height: 220px; border-radius: 50%; right: -60px; top: -80px; background: rgba(255,255,255,.18); filter: blur(2px); }
+  .hero small { font-weight: 700; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; opacity: .9; }
+  .hero b { font-size: 24px; letter-spacing: -.02em; margin: 4px 0 10px; }
+  .hero .btns { display: flex; gap: 8px; }
+  .pillbtn { background: #fff; color: #1a1030; font-weight: 800; font-size: 14px; padding: 10px 16px; border-radius: 99px; }
+  .pillbtn.ghost { background: rgba(255,255,255,.2); color: #fff; backdrop-filter: blur(10px); }
+
+  .searchrow { display: flex; gap: 8px; margin: 18px 0 12px; }
+  .search { flex: 1; min-width: 0; display: flex; gap: 8px; align-items: center; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 16px; padding: 0 14px; backdrop-filter: blur(14px); }
+  .search input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--text); font: 500 15px var(--font); padding: 13px 0; }
+  .search input::placeholder { color: var(--muted); }
+  .iconb { flex: none; width: 48px; height: 48px; border-radius: 16px; background: var(--glass); border: 1px solid var(--glass-line); display: grid; place-items: center; }
+  .iconb.rec { background: rgba(255,70,100,.2); border-color: rgba(255,70,100,.5); } .iconb.rec i { width: 14px; height: 14px; border-radius: 50%; background: #ff4664; box-shadow: 0 0 14px #ff4664; }
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 14px; scrollbar-width: none; }
+  .chip { flex: none; padding: 7px 14px; border-radius: 99px; background: var(--glass); border: 1px solid var(--glass-line); font-weight: 600; font-size: 13px; color: var(--muted); }
+  .chip.on { background: #fff; color: #1a1030; border-color: #fff; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .card { border-radius: 22px; padding: 12px; text-align: left; background: var(--glass); border: 1px solid var(--glass-line); display: flex; flex-direction: column; gap: 10px; backdrop-filter: blur(10px); }
+  .art { aspect-ratio: 1; border-radius: 16px; position: relative; overflow: hidden; }
+  .art::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 25% 20%, rgba(255,255,255,.45), transparent 50%); }
+  .ring { position: absolute; right: 8px; bottom: 8px; width: 34px; height: 34px; z-index: 2; }
+  .ring svg { width: 34px; height: 34px; transform: rotate(-90deg); }
+  .ring circle { fill: rgba(0,0,0,.35); stroke-width: 4; } .ring .tr { stroke: rgba(255,255,255,.3); fill: rgba(0,0,0,.35);} .ring .pr { stroke: #fff; fill: none; stroke-linecap: round; }
+  .ring span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 10px; font-weight: 800; }
+  .card h3 { font-size: 15px; letter-spacing: -.01em; line-height: 1.2; }
+  .card p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .live { position: absolute; left: 8px; top: 8px; z-index: 2; background: var(--lime); color: #111; font-size: 10px; font-weight: 900; padding: 3px 8px; border-radius: 99px; letter-spacing: .06em; }
+
+  .dock { position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 5; display: grid; gap: 8px; }
+  .mini { display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 8px; border-radius: 20px; background: rgba(30,24,56,.78); border: 1px solid var(--glass-line); backdrop-filter: blur(20px); }
+  .mini .t { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, var(--pink), var(--violet)); }
+  .mini b { flex: 1; font-size: 14px; } .mini small { display: block; color: var(--muted); font-weight: 500; font-size: 11.5px; }
+  .mini button { width: 40px; height: 40px; border-radius: 50%; background: #fff; color: #111; display: grid; place-items: center; }
+  .nav { display: flex; padding: 6px; border-radius: 24px; background: rgba(30,24,56,.82); border: 1px solid var(--glass-line); backdrop-filter: blur(20px); }
+  .nav button { flex: 1; padding: 9px 0 7px; border-radius: 18px; font-size: 11px; font-weight: 700; color: var(--muted); display: grid; justify-items: center; gap: 2px; }
+  .nav button.on { background: linear-gradient(135deg, rgba(255,94,168,.3), rgba(138,107,255,.3)); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+  .nav svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Player */
+  .p-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .p-top .iconb { width: 42px; height: 42px; border-radius: 50%; }
+  .p-top span { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .bigart { width: 100%; aspect-ratio: 1.15; border-radius: 30px; position: relative; overflow: hidden; background: linear-gradient(135deg, var(--pink), var(--violet) 55%, var(--cyan)); box-shadow: 0 24px 60px color-mix(in srgb, var(--pink) 45%, transparent); transition: transform .4s; }
+  .bigart::before { content: ""; position: absolute; inset: -20%; background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.5), transparent 45%); }
+  .bigart .rings { position: absolute; inset: 0; display: grid; place-items: center; }
+  .bigart .rings i { position: absolute; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); animation: pulse 2.4s ease-out infinite; }
+  .bigart .rings i:nth-child(1) { width: 90px; height: 90px; } .bigart .rings i:nth-child(2) { width: 90px; height: 90px; animation-delay: .8s; } .bigart .rings i:nth-child(3) { width: 90px; height: 90px; animation-delay: 1.6s; }
+  .paused .rings i { animation-play-state: paused; opacity: .4; }
+  @keyframes pulse { from { transform: scale(.6); opacity: .9; } to { transform: scale(3.2); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .bigart .rings i { animation: none; } }
+  .bigart .note { position: absolute; left: 18px; bottom: 14px; right: 18px; display: flex; justify-content: space-between; font-weight: 800; font-size: 12px; text-shadow: 0 1px 8px rgba(0,0,0,.4); }
+  .titleblock { margin: 18px 2px 4px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .titleblock h2 { font-size: 26px; line-height: 1.05; letter-spacing: -.03em; font-weight: 800; }
+  .titleblock p { color: var(--muted); font-size: 14px; margin-top: 4px; font-weight: 500; }
+
+  .wave { margin: 16px 0 4px; height: 64px; display: flex; align-items: center; gap: 2px; position: relative; }
+  .wave i { flex: 1; border-radius: 2px; background: rgba(255,255,255,.25); }
+  .wave i.d { background: linear-gradient(var(--pink), var(--violet)); }
+  .wave i.l { background: rgba(198,255,77,.55); }
+  .wave i.d.l { background: var(--lime); }
+  .wave .head { position: absolute; top: -4px; bottom: -4px; width: 2px; background: #fff; box-shadow: 0 0 10px #fff; left: 38%; }
+  .wtimes { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; margin: 0 2px; }
+
+  .ctrls { display: flex; align-items: center; justify-content: space-between; margin: 12px 4px 16px; }
+  .cb { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 13px; }
+  .cb.on { color: var(--lime); }
+  .cb svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .pbig { width: 76px; height: 76px; border-radius: 50%; background: #fff; color: #111; display: grid; place-items: center; box-shadow: 0 10px 30px rgba(255,255,255,.28); }
+  .pbig svg { width: 34px; height: 34px; fill: #111; }
+
+  .glass { border-radius: 22px; background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(14px); padding: 14px; margin-bottom: 12px; }
+  .glass h4 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; font-weight: 700; display: flex; justify-content: space-between; }
+  .vrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .vrow button { padding: 12px 0; border-radius: 14px; background: rgba(255,255,255,.08); font-weight: 800; font-size: 15px; display: grid; justify-items: center; gap: 4px; border: 1px solid transparent; }
+  .vrow button i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 10px var(--c); }
+  .vrow button.on { background: color-mix(in srgb, var(--c) 28%, transparent); border-color: var(--c); }
+  .slider { height: 6px; border-radius: 6px; background: rgba(255,255,255,.15); position: relative; margin: 8px 4px 4px; }
+  .slider b { position: absolute; left: 0; width: 70%; top: 0; bottom: 0; background: linear-gradient(90deg, var(--violet), var(--cyan)); border-radius: 6px; }
+  .slider u { position: absolute; left: 70%; top: -7px; width: 20px; height: 20px; border-radius: 50%; background: #fff; margin-left: -10px; }
+  .ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-weight: 600; }
+  .seg { display: flex; background: rgba(255,255,255,.08); border-radius: 14px; padding: 4px; }
+  .seg button { flex: 1; padding: 9px 0; border-radius: 11px; font-size: 13px; font-weight: 700; color: var(--muted); }
+  .seg button.on { background: #fff; color: #111; }
+  .lyric { font-size: 20px; line-height: 1.35; font-weight: 700; letter-spacing: -.01em; }
+  .lyric span { color: rgba(255,255,255,.35); }
+  .lyric .cur { color: #fff; }
+  .cap { text-align: center; font: 600 12px var(--font); margin-top: 10px; color: var(--muted); max-width: 390px; }
+</style>
+</head>
+<body>
+<h1 class="page">Entwurf 2 · Nachtschicht – Club-Flyer-Dunkelmodus mit Glow</h1>
+<div class="stage">
+
+  <!-- ================= SONGS ================= -->
+  <div class="col">
+  <div class="phone">
+    <div class="glow"></div>
+    <div class="scroll">
+      <div class="hello">Dienstag, 19:12 · Gleich geht's los</div>
+      <h1>Was singen<br>wir <em>heute?</em></h1>
+
+      <div class="hero">
+        <small>Nächste Probe · Di 19:30</small>
+        <b>Sommerset 2026</b>
+        <div class="btns"><button class="pillbtn">▶ Alles durchspielen</button><button class="pillbtn ghost">7 Songs</button></div>
+      </div>
+
+      <div class="searchrow">
+        <label class="search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a9a2c6" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input type="search" placeholder="Song suchen …" aria-label="Song suchen"></label>
+        <button class="iconb" aria-label="Zufälliges Lied">🎲</button>
+        <button class="iconb rec" aria-label="Aufnehmen"><i></i></button>
+      </div>
+      <div class="chips" id="chips"><button class="chip on">Alle</button><button class="chip">Sommerset</button><button class="chip">Winterkonzert</button><button class="chip">Neu</button><button class="chip">Warm-ups</button></div>
+
+      <div class="grid" id="grid"></div>
+    </div>
+    <div class="dock">
+      <div class="mini"><span class="t"></span><b>Dancing On My Own<small>Robyn · Alt</small></b><button aria-label="Pause"><svg width="18" height="18" viewBox="0 0 24 24" fill="#111"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg></button></div>
+      <nav class="nav" aria-label="Hauptnavigation">
+        <button class="on"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>Songs</button>
+        <button><svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h7"/><circle cx="18" cy="17" r="2.5"/><path d="M20.5 17V8"/></svg>Listen</button>
+        <button><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z" fill="currentColor"/></svg>Player</button>
+        <button><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg>Tools</button>
+      </nav>
+    </div>
+  </div>
+  <div class="cap">Songs: Jeder Song bekommt ein eigenes Farb-Cover (aus dem Titel berechnet), Fortschritt als Ring, Setliste als Hero-Karte.</div>
+  </div>
+
+  <!-- ================= PLAYER ================= -->
+  <div class="col">
+  <div class="phone paused" id="pp">
+    <div class="glow"></div>
+    <div class="scroll">
+      <div class="p-top"><button class="iconb" aria-label="Zurück">⌄</button><span>Spielt aus „Sommerset“</span><button class="iconb" aria-label="Song online suchen">🔍</button></div>
+      <div class="bigart"><div class="rings"><i></i><i></i><i></i></div><div class="note"><span>124 bpm</span><span>D-Dur</span><span>3:41</span></div></div>
+      <div class="titleblock"><div><h2>Dancing On<br>My Own</h2><p>Robyn · Du singst Alt</p></div></div>
+
+      <div class="wave" id="wave"><div class="head"></div></div>
+      <div class="wtimes"><span>1:24</span><span>Loop A–B · 0:49</span><span>3:41</span></div>
+
+      <div class="ctrls">
+        <button class="cb" aria-label="10 s zurück">−10</button>
+        <button class="cb" aria-label="Vorheriges"><svg viewBox="0 0 24 24"><path d="M6 6v12M18 6v12L9 12z"/></svg></button>
+        <button class="pbig" id="play" aria-label="Abspielen"><svg viewBox="0 0 24 24" id="ico"><path d="M8 5.5v13l11-6.5z"/></svg></button>
+        <button class="cb" aria-label="Nächstes"><svg viewBox="0 0 24 24"><path d="M18 6v12M6 6v12l9-6z"/></svg></button>
+        <button class="cb on" aria-label="Loop"><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></button>
+      </div>
+
+      <div class="glass"><h4>Stimme <span>hörst du lauter</span></h4>
+        <div class="vrow" id="voices">
+          <button style="--c:#ff5ea8">S<i></i></button><button class="on" style="--c:#8a6bff">A<i></i></button><button style="--c:#2fd8e8">T<i></i></button><button style="--c:#c6ff4d">B<i></i></button>
+        </div>
+      </div>
+      <div class="glass"><h4>Tempo <span>85 %</span></h4>
+        <div class="slider"><b></b><u></u></div><div class="ticks"><span>50</span><span>70</span><span>85</span><span>100 %</span></div>
+      </div>
+      <div class="glass"><div class="seg" id="seg"><button class="on" data-t="0">Lyrics</button><button data-t="1">Loops</button><button data-t="2">REC</button><button data-t="3">Notes</button></div>
+        <div class="lyric" id="tabbody" style="margin-top:14px"></div>
+      </div>
+    </div>
+    <div class="dock">
+      <nav class="nav" aria-label="Hauptnavigation">
+        <button><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>Songs</button>
+        <button><svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h7"/><circle cx="18" cy="17" r="2.5"/><path d="M20.5 17V8"/></svg>Listen</button>
+        <button class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z" fill="currentColor"/></svg>Player</button>
+        <button><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg>Tools</button>
+      </nav>
+    </div>
+  </div>
+  <div class="cap">Player: Wellenform statt Balken (Loop A–B leuchtet lime), vier Stimmfarben, Tempo als Regler, Lyrics groß wie bei Streaming-Apps.</div>
+  </div>
+</div>
+
+<script>
+const songs = [
+  ["Dancing On My Own","Robyn",["#ff5ea8","#8a6bff"],75,"LÄUFT"],
+  ["Bad Guy","Billie Eilish",["#c6ff4d","#2fd8e8"],50],
+  ["Shallow","Lady Gaga",["#2fd8e8","#3d6bff"],25],
+  ["Rolling in the Deep","Adele",["#ffb347","#ff5e62"],100],
+  ["Mr. Brightside","The Killers",["#ff5ea8","#ffb347"],50],
+  ["Heroes","David Bowie",["#8a6bff","#2fd8e8"],0],
+];
+const ring = p => { const r = 13, c = 2*Math.PI*r; return `<span class="ring"><svg viewBox="0 0 34 34"><circle class="tr" cx="17" cy="17" r="${r}"/><circle class="pr" cx="17" cy="17" r="${r}" stroke-dasharray="${c}" stroke-dashoffset="${c*(1-p/100)}"/></svg><span>${p ? p : ""}</span></span>`; };
+document.getElementById("grid").innerHTML = songs.map(s => `
+  <button class="card"><div class="art" style="background:linear-gradient(135deg,${s[2][0]},${s[2][1]})">${s[4] ? `<span class="live">${s[4]}</span>` : ""}${ring(s[3])}</div>
+  <div><h3>${s[0]}</h3><p>${s[1]}</p></div></button>`).join("");
+
+const wave = document.getElementById("wave");
+const head = wave.firstElementChild;
+for (let i = 0; i < 64; i++) {
+  const h = 10 + Math.abs(Math.sin(i * .5) * 22 + Math.sin(i * 1.7) * 14 + Math.cos(i * .23) * 10);
+  const b = document.createElement("i");
+  b.style.height = Math.min(h, 60) + "px";
+  if (i < 24) b.classList.add("d");
+  if (i >= 18 && i <= 34) b.classList.add("l");
+  wave.insertBefore(b, head);
+}
+const tog = id => document.getElementById(id).addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; [...b.parentNode.children].forEach(x => x.classList.toggle("on", x === b)); });
+tog("chips"); tog("voices");
+const bodies = [
+  `<span>Somebody said you got a new friend</span><br><span class="cur">Does she love you like I do?</span><br><span>Nobody'll ever love you like I do</span>`,
+  `<div style="font-size:15px;font-weight:600">🔁 „Refrain“ 1:03–1:52<br>🔁 „Brücke“ 2:40–3:05<br><span style="color:#c6ff4d">+ Neuen Loop speichern</span></div>`,
+  `<div style="font-size:15px;font-weight:600;color:#a9a2c6">Noch nichts aufgenommen. Hör das Playback und sing dich selbst ein.</div>`,
+  `<div style="font-size:15px;font-weight:600">Alt-Einsatz nach dem Snare. Vor „own“ atmen.</div>`];
+const tb = document.getElementById("tabbody"); tb.innerHTML = bodies[0];
+document.getElementById("seg").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; [...b.parentNode.children].forEach(x => x.classList.toggle("on", x === b)); tb.innerHTML = bodies[b.dataset.t]; });
+document.getElementById("play").addEventListener("click", () => { const p = document.getElementById("pp").classList.toggle("paused"); document.getElementById("ico").innerHTML = p ? '<path d="M8 5.5v13l11-6.5z"/>' : '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>'; });
+</script>
+</body>
+</html>
