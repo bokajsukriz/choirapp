@@ -60,6 +60,9 @@ ein Dialog mit echter Wahl).
   (Netzwerkfehler, korrupter Cache) — sonst bliebe nur die leere, aber
   vollständige Oberfläche stehen.
 - `sw.js` — Service Worker (App-Shell-Cache, Offline-Betrieb).
+- `fonts/bricolage-grotesque-latin.woff2` — Schrift „Bricolage Grotesque“
+  (OFL 1.1, siehe `THIRD-PARTY.md`) für das Design „Serious Cartoonist“;
+  liegt in `SHELL_OPTIONAL` und wird nur geladen, wenn dieses Design aktiv ist.
 - `groove-lab.js` — Groove Lab (Beat/Synth), nachgeladen über den
   Tools-Reiter oder das Easter Egg (7× auf den Songtitel im Player).
   Beat-Editor (Studio und de:construct): Lupe öffnet ihn bildschirmfüllend
@@ -518,6 +521,28 @@ Firmen-/Schul-WLANs kommt, wo klassisches UDP-NTP (Port 123) oft blockiert
 wäre. Anders als bei der externen Liedsuche (deren Hinweis nur beim
 allerersten Mal erscheint) fragt der Bestätigungsdialog hier jedes Mal
 neu, weil dabei eine echte Netzwerkanfrage ausgelöst wird.
+
+## Designs
+
+Unter Einstellungen → „Aussehen und Sprache“ wählt die Zeile „Design“ zwischen
+„Konfetti“ (Standard, bunt, Baloo 2) und „Serious Cartoonist“ (ruhige Flächen,
+Bricolage Grotesque, Songs und Player nach dem Entwurf „C · Serious
+Cartoonist“). Gespeichert wird in den Einstellungen (IndexedDB) über zwei
+Felder: `design` (`'konfetti'` | `'serious'`) und `seriousAccent` (id aus
+`SERIOUS_ACCENTS`: indigo, green, blackberry, cobalt, ochre, carmine). Die
+Konfetti-Akzentfarbe `accentColor` bleibt davon unberührt. Beide Felder laufen
+über `sanitizeSettingsPatch()` und die Sicherung mit.
+
+`applyDesign()` setzt `data-design` am `<html>`-Element, schaltet die
+Akzent-Variablen (`--accent`, `--accent-foreground`, `--accent-ink`,
+`--sc-accent-tint`/`-tint-2`/`-dark`) und `theme-color` um. Alle
+Serious-Regeln stehen gesammelt am Ende des `<style>`-Blocks in `index.html`
+und beginnen mit `:root[data-design="serious"]`; Konfetti ändert sich dadurch
+nicht. Nur für Serious gedachtes Markup (Titel über der Suche, Beschriftung am
+Import-Knopf, Mini-Player, Chevron im Lyrics-Fuß) ist in Konfetti per CSS
+ausgeblendet. Die Setlisten-Zeile hängt `applyDesign()` bei Serious in den
+farbigen Player-Kopf um; `--sc-voice` (Farbe der gewählten Stimme) setzt
+`updateSeriousVoiceColor()`.
 
 ## Wichtige Regel für Änderungen
 
