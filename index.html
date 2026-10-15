@@ -3509,7 +3509,6 @@ input[type="checkbox"] {
   --muted:      #4A4656;           /* 8,3 : 1 auf #F6F4FB */
   --danger-fg:  #C8102E;
   --radius:     22px;
-  --pad:        20px;
   --nav-h:      76px;
   --font:         "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-display: var(--font);
@@ -3569,7 +3568,7 @@ input[type="checkbox"] {
 :root[data-design="serious"] .nav-btn[aria-current="page"] svg { background: var(--sc-accent-tint); }
 
 /* ---------- 6.2 Songs-Reiter -------------------------------------------- */
-:root[data-design="serious"] #view-songs { padding-bottom: 150px; }
+:root[data-design="serious"] #view-songs { padding: 0 4px 150px; }
 :root[data-design="serious"] body.sc-mini-visible .app-main { padding-bottom: calc(var(--pad) + 24px + 74px); }
 :root[data-design="serious"] .searchbar {
   display: grid;
@@ -3695,6 +3694,53 @@ input[type="checkbox"] {
 :root[data-design="serious"] #view-songs .placeholder-badge svg { width: 14px; height: 14px; }
 /* Markierungen (Lyrics/Notiz/Noten) gibt es in Serious nicht. */
 :root[data-design="serious"] #view-songs .marks { display: none; }
+
+/* Leerer Player: dieselbe Songliste wie in der Bibliothek */
+:root[data-design="serious"] #player-empty-list {
+  border: 0;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #FFFFFF;
+  box-shadow: var(--sc-shadow-card);
+}
+:root[data-design="serious"] #player-empty-list .list-item {
+  min-height: 58px;
+  padding: 8px 14px 8px 18px;
+  gap: 12px;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  background: transparent;
+}
+:root[data-design="serious"] #player-empty-list > li + li .list-item { border-top: 1px solid #EEEBF5; }
+:root[data-design="serious"] #player-empty-list .list-item:active { background: #F6F4FB; }
+:root[data-design="serious"] #player-empty-list .song-line {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 12px;
+  line-height: 1.3;
+}
+:root[data-design="serious"] #player-empty-list .song-line strong {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:root[data-design="serious"] #player-empty-list .voice-pills { flex: 0 0 auto; margin-left: auto; justify-content: flex-end; }
+:root[data-design="serious"] #player-empty-list .voice-pills .voice-chip { box-shadow: 0 0 0 2px #FFFFFF; }
+:root[data-design="serious"] #player-empty-list .placeholder-badge {
+  width: 30px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px dashed #8A8696;
+  border-radius: 11px;
+  color: var(--sc-faint);
+}
+:root[data-design="serious"] #player-empty-list .placeholder-badge svg { width: 14px; height: 14px; }
 
 /* Import-Knopf: Kapsel mit Beschriftung, über dem Mini-Player */
 :root[data-design="serious"] .fab-add {
@@ -3822,11 +3868,6 @@ input[type="checkbox"] {
 :root[data-design="serious"] #player-body > .player-body-scroll {
   padding: 14px calc(20px + var(--safe-right)) 14px calc(20px + var(--safe-left));
 }
-/* Leerer Player: Songliste wie in der Bibliothek (Grundwerte) */
-:root[data-design="serious"] #player-empty-list .list-item { border-color: #EEEBF5; background: #FFFFFF; }
-:root[data-design="serious"] #player-empty-list .song-line strong { font-size: 18px; font-weight: 700; }
-:root[data-design="serious"] #player-empty-list .voice-chip { color: #17151F; height: 22px; }
-
 /* ---------- 6.4 Player-Reiter ------------------------------------------- */
 :root[data-design="serious"] #player-tabs {
   gap: 2px;
@@ -4099,7 +4140,7 @@ input[type="checkbox"] {
 }
 :root[data-design="serious"] #loop-list .loop-item[data-active="true"] .icon-btn:not(.loop-stop) { background: #FFFFFF; }
 :root[data-design="serious"] .loop-item .icon-btn svg { width: 18px; height: 18px; stroke-width: 2.2; }
-:root[data-design="serious"] .loop-item .loop-stop { background: var(--accent); color: var(--accent-ink); margin-right: 4px; }
+:root[data-design="serious"] .loop-item .loop-stop { background: var(--accent); color: var(--accent-ink); margin: 0 4px 0 8px; }
 
 /* ---------- 6.7 Reiter REC ---------------------------------------------- */
 :root[data-design="serious"] .rc-host--player .rc-dock,
