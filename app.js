@@ -1287,6 +1287,8 @@ const DEFAULT_SETTINGS = {
   debugLog: false,            // Diagnose-Log für schwer reproduzierbare Fehler (Beta)
   defaultPlayerTab: 'loops',  // Reiter, der beim Öffnen eines Songs zuerst erscheint
   accentColor: '#F868B0',     // Akzentfarbe — siehe ACCENT_PRESETS/applyAccentColor
+  design: 'konfetti',         // 'konfetti' | 'serious' — App-Design, siehe DESIGNS/applyDesign
+  seriousAccent: 'indigo',    // Akzentfarbe NUR im Design „Serious Cartoonist“ — id aus SERIOUS_ACCENTS (accentColor bleibt davon unberührt)
   language: 'de',             // 'de' | 'en' | 'pl' — siehe STRINGS/t()/applyTranslations()
   firstUseAt: null,           // Zeitstempel der allerersten Nutzung — Basis für den Kompatibilitätshinweis
   compatWarningsShown: [],    // welche Tages-Schwellen (0/3/7/30) den Hinweis schon gezeigt bekamen
@@ -1492,6 +1494,123 @@ function applyAccentColor(hex) {
 }
 
 /* ==========================================================================
+   DESIGN — zweites, umschaltbares App-Design „Serious Cartoonist“ (neben dem
+   Standard „Konfetti“). Alle Serious-Regeln in index.html hängen an
+   `:root[data-design="serious"]`; Konfetti bleibt dadurch unberührt.
+
+   Je Akzentton sechs Werte (Kontraste siehe Selbsttest „Serious-Akzente“):
+     main  = Flächen (Schalter an, Hauptknopf, Import-Knopf)
+     on    = Schrift/Symbol AUF main
+     fg    = Akzent als Schrift/Symbol auf hellem Grund
+     tint  = zarte Fläche      tint2 = noch zarter      dark = Schrift auf tint
+   „Grün“ ist bewusst hell (Alt-Stimmfarbe): dort ist `on` dunkel, `fg` dunkel.
+   Darum nie fest „weiß auf Akzent“, sondern immer `on` — und für Akzentschrift
+   auf hellem Grund immer `fg`, nie `main`.
+   ========================================================================== */
+const SERIOUS_ACCENTS = [
+  { id: 'indigo',     nameKey: 'settings.seriousAccentName.indigo',     main: '#3B2BB8', on: '#FFFFFF', fg: '#3B2BB8', tint: '#E4E1F5', tint2: '#EFEEF9', dark: '#2C208A' },
+  { id: 'green',      nameKey: 'settings.seriousAccentName.green',      main: '#6BCB77', on: '#17151F', fg: '#1B6E2F', tint: '#E3F5E6', tint2: '#EFF9F1', dark: '#1B6E2F' },
+  { id: 'blackberry', nameKey: 'settings.seriousAccentName.blackberry', main: '#8E2463', on: '#FFFFFF', fg: '#8E2463', tint: '#EFE0E9', tint2: '#F6EDF3', dark: '#6A1B4A' },
+  { id: 'cobalt',     nameKey: 'settings.seriousAccentName.cobalt',     main: '#1F5BB5', on: '#FFFFFF', fg: '#1F5BB5', tint: '#E0E8F5', tint2: '#EDF2F9', dark: '#174488' },
+  { id: 'ochre',      nameKey: 'settings.seriousAccentName.ochre',      main: '#8A5A00', on: '#FFFFFF', fg: '#8A5A00', tint: '#EFE8DB', tint2: '#F6F2EB', dark: '#684400' },
+  { id: 'carmine',    nameKey: 'settings.seriousAccentName.carmine',    main: '#B4233C', on: '#FFFFFF', fg: '#B4233C', tint: '#F4E0E4', tint2: '#F9EDEF', dark: '#871A2D' },
+];
+
+const DESIGNS = [
+  { id: 'konfetti', labelKey: 'settings.designName.konfetti' },
+  { id: 'serious', labelKey: 'settings.designName.serious' },
+];
+
+/** theme-color je Design: Konfetti-Creme (wie im Markup) bzw. der Serious-Hintergrund. */
+const THEME_COLOR_KONFETTI = '#fff7ec';
+const THEME_COLOR_SERIOUS = '#F6F4FB';
+
+function isSeriousDesign() {
+  return document.documentElement.dataset.design === 'serious';
+}
+
+function seriousAccentById(id) {
+  return SERIOUS_ACCENTS.find((a) => a.id === id) || SERIOUS_ACCENTS[0];
+}
+
+/**
+ * Setzt das gewählte Design auf <html> (`data-design`), schaltet die
+ * Akzent-Variablen passend um und stellt `theme-color` nach. Im Konfetti-Fall
+ * läuft genau der bisherige Weg (applyAccentColor mit `accentColor`); im
+ * Serious-Fall kommen Akzentwerte aus SERIOUS_ACCENTS. `accentColor` selbst
+ * wird nie angefasst — beim Zurückschalten ist die Konfetti-Farbe unverändert.
+ */
+function applyDesign() {
+  const root = document.documentElement;
+  const serious = settings.design === 'serious';
+  root.dataset.design = serious ? 'serious' : 'konfetti';
+  const sc = ['--sc-accent-tint', '--sc-accent-tint-2', '--sc-accent-dark'];
+  if (serious) {
+    const ac = seriousAccentById(settings.seriousAccent);
+    root.style.setProperty('--accent', ac.main);
+    root.style.setProperty('--accent-rgb', hexToRgbTriplet(ac.main));
+    root.style.setProperty('--accent-foreground', ac.fg);
+    root.style.setProperty('--accent-ink', ac.on);
+    root.style.setProperty('--sc-accent-tint', ac.tint);
+    root.style.setProperty('--sc-accent-tint-2', ac.tint2);
+    root.style.setProperty('--sc-accent-dark', ac.dark);
+  } else {
+    root.style.removeProperty('--accent-ink');
+    for (const v of sc) root.style.removeProperty(v);
+    applyAccentColor(settings.accentColor || DEFAULT_SETTINGS.accentColor);
+  }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', serious ? THEME_COLOR_SERIOUS : THEME_COLOR_KONFETTI);
+  // Platzhalter der Songsuche je Design (applyTranslations() liest data-i18n-placeholder).
+  const search = document.getElementById('search');
+  if (search) {
+    search.dataset.i18nPlaceholder = serious ? 'songs.searchPlaceholderSerious' : 'songs.searchPlaceholder';
+    search.placeholder = t(search.dataset.i18nPlaceholder);
+  }
+  // Nur beim echten Wechsel (nicht bei jedem Accent-Patch) das Umfeld nachziehen.
+  if (appliedDesign !== root.dataset.design) {
+    const first = appliedDesign === null;
+    appliedDesign = root.dataset.design;
+    placeQueueBlock(serious);
+    if (!first) refreshForDesign();
+  }
+  updateSeriousVoiceColor();
+  updateMiniPlayer();
+  updateFooterCompact();
+}
+
+let appliedDesign = null;
+let queueHome = null;
+
+/**
+ * Serious Cartoonist zeigt die Setlisten-Zeile im farbigen Player-Kopf. Das
+ * Markup dafür liegt im Standard weiter unten in #player-loaded; nur wenn
+ * Serious aktiv ist, wird der Block (samt aller Knöpfe und Ids) in den Kopf
+ * umgehängt und beim Zurückschalten an seinen Platz gestellt.
+ */
+function placeQueueBlock(serious) {
+  const queue = document.getElementById('queue-block');
+  const head = document.querySelector('#player > .player-head');
+  if (!queue || !head) return;
+  if (serious) {
+    if (queue.parentElement === head) return;
+    if (!queueHome) { queueHome = document.createComment('queue-block'); queue.before(queueHome); }
+    head.prepend(queue);
+  } else if (queueHome && queue.parentElement === head) {
+    queueHome.after(queue);
+  }
+}
+
+/** Nach einem Designwechsel: was vom Design abhängt (Titel ohne/mit Interpret, Liste) neu zeichnen. */
+function refreshForDesign() {
+  songsRenderSignature = null;
+  if (currentView === 'songs') renderSongs();
+  if (playerSong) $('#player-title').textContent = displayTitle(playerSong);
+  else if (currentView === 'player') renderPlayerEmpty();
+  if (currentView === 'settings') { renderAccentPicker(); }
+}
+
+/* ==========================================================================
    SPRACHE — Deutsch/Englisch/Polnisch für die statische Oberfläche (Navigation,
    Ersteinrichtung, Einstellungen, Import, Leerzustände). Seltene, tief
    verschachtelte Meldungen (einzelne Fehlertexte, Sicherungs-Zusammenfassungen)
@@ -1570,7 +1689,7 @@ async function loadSettings() {
   // Klemmen, damit eine kaputte Sicherung keine absurden Werte einschleppt.
   settings.lightshowOffsetMs = Math.max(-5000, Math.min(5000, settings.lightshowOffsetMs || 0));
   settings.recBackingOffsetMs = Math.max(-BACKING_OFFSET_MAX_MS, Math.min(BACKING_OFFSET_MAX_MS, settings.recBackingOffsetMs || 0));
-  applyAccentColor(settings.accentColor || DEFAULT_SETTINGS.accentColor);
+  applyDesign();
 
   // Jedes Gerät bekommt genau einmal einen eigenen Zufallswert, den es von da
   // an behält (kein Neuwürfeln bei jedem Laden). „Sternenmeer" mischt ihn in
@@ -1594,7 +1713,7 @@ async function loadSettings() {
 
 /** Nebenwirkungen eines Settings-Patches auf die schon sichtbare Oberfläche — unabhängig davon, ob der Patch am Ende auch gespeichert werden konnte. */
 function applySettingsSideEffects(patch) {
-  if ('accentColor' in patch) applyAccentColor(settings.accentColor);
+  if ('accentColor' in patch || 'design' in patch || 'seriousAccent' in patch) applyDesign();
   if ('language' in patch) {
     applyTranslations();
     updateMetronomeFab(); // dynamisches aria-label (mit BPM)
@@ -1688,7 +1807,7 @@ function settingsRecovered() {
   const wasShowingBanner = !!closeSettingsLoadBanner;
   closeSettingsLoadBanner?.();
   closeSettingsLoadBanner = null;
-  applyAccentColor(settings.accentColor);
+  applyDesign();
   applyTranslations();
   if (!playerSong) { $('#player-title').textContent = t('player.emptyTitle'); renderPlayerEmpty(); }
   renderVoicePicker();
@@ -2167,6 +2286,7 @@ function showTab(name) {
   document.title = `${viewName} – BVG`;
 
   VIEWS[name].render?.();
+  updateMiniPlayer();
 }
 
 /**
@@ -2197,7 +2317,7 @@ async function renderPlayerEmpty() {
         onclick: () => { playQueue = null; navigate(`#song/${song.id}`); },
       },
         el('div', { class: 'song-line', style: 'flex:1; min-width:0' },
-          el('strong', { text: songLabel(song) || t('songs.untitled') }),
+          el('strong', { text: displayTitle(song) || t('songs.untitled') }),
           song.tracks.length
             ? renderVoicePills(song.tracks)
             : el('span', { class: 'placeholder-badge', role: 'img', 'aria-label': t('songs.placeholderBadge'), title: t('songs.placeholderBadge') }, iconUnavailable()),
@@ -2489,6 +2609,9 @@ async function renderSongs() {
   // Kurzschluss-„nichts geändert“ eine Notiz oder einen eigenen Liedtext, die
   // gerade hinzugefügt oder gelöscht wurden — die Markierung in der Zeile
   // bliebe bis zum nächsten Songwechsel veraltet stehen.
+  // Serious Cartoonist kennt keine Sammelordner-Filterleiste: ein aus Konfetti
+  // übrig gebliebener Filter bliebe sonst unsichtbar aktiv.
+  if (document.documentElement.dataset.design === 'serious') songFilter = null;
   const signature = `${songCacheStamp}\u0000${noteCacheStamp}\u0000${lyricsNoteCacheStamp}\u0000${songQuery}\u0000${songFilter}`;
   if (signature === songsRenderSignature && host.firstChild) return;
   songsRenderSignature = signature;
@@ -2622,7 +2745,7 @@ async function renderSongs() {
         },
       },
         el('div', { class: 'song-line', style: 'flex:1; min-width:0' },
-          el('strong', { text: songLabel(song) || t('songs.untitled') }),
+          el('strong', { text: displayTitle(song) || t('songs.untitled') }),
           song.tracks.length
             ? renderVoicePills(song.tracks)
             : el('span', { class: 'placeholder-badge', role: 'img', 'aria-label': t('songs.placeholderBadge'), title: t('songs.placeholderBadge') }, iconUnavailable()),
@@ -3119,6 +3242,7 @@ async function renderSettings() {
   initSettingsAccordion();
   renderDefaultTabPicker();
   renderLanguagePicker();
+  renderDesignPicker();
   renderAccentPicker();
   renderPresentThemePicker();
   renderSongSearchServicePicker();
@@ -3378,6 +3502,25 @@ $('#language-picker').addEventListener('change', async (e) => {
 function renderAccentPicker() {
   const host = $('#accent-picker');
   host.textContent = '';
+
+  // Serious Cartoonist hat eigene Töne (SERIOUS_ACCENTS) und eine eigene
+  // Auswahl (seriousAccent); die Konfetti-Farbe bleibt dabei unberührt.
+  if (settings.design === 'serious') {
+    const currentId = seriousAccentById(settings.seriousAccent).id;
+    for (const ac of SERIOUS_ACCENTS) {
+      host.append(el('button', {
+        class: 'accent-swatch', type: 'button', style: `background:${ac.main}`,
+        'aria-pressed': ac.id === currentId ? 'true' : 'false',
+        'aria-label': t(ac.nameKey),
+        onclick: async () => {
+          await saveSettings({ seriousAccent: ac.id });
+          renderAccentPicker();
+        },
+      }));
+    }
+    return;
+  }
+
   const current = settings.accentColor || DEFAULT_SETTINGS.accentColor;
 
   for (const preset of ACCENT_PRESETS) {
@@ -3391,6 +3534,25 @@ function renderAccentPicker() {
       },
     });
     host.append(btn);
+  }
+}
+
+/** Design wählen (Konfetti | Serious Cartoonist) — Segment-Umschalter in „Aussehen und Sprache". */
+function renderDesignPicker() {
+  const host = $('#design-picker');
+  host.textContent = '';
+  const current = settings.design === 'serious' ? 'serious' : 'konfetti';
+  for (const d of DESIGNS) {
+    host.append(el('button', {
+      class: 'routine-seg', type: 'button', 'aria-pressed': d.id === current ? 'true' : 'false',
+      text: t(d.labelKey), 'data-i18n': d.labelKey,
+      onclick: async () => {
+        if (d.id === current) return;
+        await saveSettings({ design: d.id });
+        renderDesignPicker();
+        renderAccentPicker();
+      },
+    }));
   }
 }
 
@@ -9860,6 +10022,7 @@ function renderLoadingState() {
 function renderVoiceSelect() {
   const sel = $('#voice-select');
   sel.textContent = '';
+  updateSeriousVoiceColor();
   if (!playerSong) return;
 
   // Bewusst ohne Dateigröße und ohne „bereit": im Alltag zählt nur, welche
@@ -10029,6 +10192,7 @@ function updateSeekUI(seconds) {
 }
 
 function setPlayIcon(playing) {
+  updateMiniPlayerPlayState(playing);
   // Bei einem Platzhalter-Song hält setPlayerFootUnavailable() das
   // Verbotssymbol — kein anderer Aufrufer (Mediensitzung, REC-Vorschau,
   // Klick-Handler) darf das Play/Pause-Icon währenddessen überschreiben,
@@ -10038,6 +10202,61 @@ function setPlayIcon(playing) {
   $('#icon-pause').style.display = playing ? '' : 'none';
   $('#btn-play').setAttribute('aria-label', t(playing ? 'player.pauseAria' : 'player.playAria'));
 }
+
+/* ---------- Serious Cartoonist: Stimmfarbe, Mini-Player, einklappbarer Fuß ---- */
+
+/** Farbe der gerade gewählten Stimme als --sc-voice (Player-Kopf, Zeitleistenknopf, Mini-Player). */
+function updateSeriousVoiceColor() {
+  const rootStyle = document.documentElement.style;
+  if (!playerSong) { rootStyle.removeProperty('--sc-voice'); return; }
+  const track = playerSong.tracks?.find((tr) => tr.fileKey === playerVoice);
+  rootStyle.setProperty('--sc-voice', VOICE_COLOR[track?.voice] || VOICE_COLOR.FULL);
+}
+
+/** Mini-Player über der Navigation: nur in Serious, mit geladenem Song, nicht im Player-Reiter. */
+function updateMiniPlayer() {
+  const host = document.getElementById('mini-player');
+  if (!host) return;
+  const show = isSeriousDesign() && !!playerSong && currentView !== 'player';
+  host.hidden = !show;
+  document.body.classList.toggle('sc-mini-visible', show);
+  if (!show) return;
+  const title = displayTitle(playerSong) || t('songs.untitled');
+  $('#mini-player-title').textContent = title;
+  $('#mini-player-open').setAttribute('aria-label', t('player.miniOpenAria').replace('{title}', title));
+  updateMiniPlayerPlayState(Audio.playing);
+}
+
+function updateMiniPlayerPlayState(playing) {
+  const btn = document.getElementById('mini-player-play');
+  if (!btn) return;
+  btn.querySelector('.mini-icon-play').style.display = playing ? 'none' : '';
+  btn.querySelector('.mini-icon-pause').style.display = playing ? '' : 'none';
+  btn.setAttribute('aria-label', t(playing ? 'player.pauseAria' : 'player.playAria'));
+}
+
+$('#mini-player-open').addEventListener('click', () => showView('player'));
+// Dieselbe Wiedergabe wie der Abspielknopf im Player — kein zweiter Weg.
+$('#mini-player-play').addEventListener('click', () => $('#btn-play').click());
+
+/**
+ * Lyrics-Reiter in Serious: der Fuß schrumpft auf eine Zeile (Play, Zeitleiste,
+ * Chevron). Der Chevron klappt die volle Steuerung auf und wieder zu; beim
+ * Reiterwechsel gilt wieder der volle Fuß. Der Zustand wird nicht gespeichert.
+ */
+let footExpanded = false;
+function updateFooterCompact() {
+  const foot = document.getElementById('player-foot');
+  const btn = document.getElementById('btn-foot-expand');
+  if (!foot || !btn) return;
+  const onLyrics = isSeriousDesign() && $('#tab-btn-lyrics').getAttribute('aria-selected') === 'true';
+  if (!onLyrics) footExpanded = false;
+  btn.hidden = !onLyrics;
+  foot.classList.toggle('player-foot--compact', onLyrics && !footExpanded);
+  btn.setAttribute('aria-expanded', String(onLyrics && footExpanded));
+  btn.setAttribute('aria-label', t(footExpanded ? 'player.footCollapseAria' : 'player.footExpandAria'));
+}
+$('#btn-foot-expand').addEventListener('click', () => { footExpanded = !footExpanded; updateFooterCompact(); });
 
 /**
  * Platzhalter-Song ohne Aufnahme: die Transportleiste bleibt sichtbar statt
@@ -10202,7 +10421,7 @@ async function openPlayer(songId) {
   $('#player-foot').hidden = true;
   setPlayerFootUnavailable(false);
   updateWakeLock();
-  $('#player-title').textContent = songLabel(song);
+  $('#player-title').textContent = displayTitle(song);
   $('#btn-song-search').hidden = false;
   $('#player-hint').hidden = true;
   // Jeder neue Song beginnt mit eingeklappter Setlisten-Vorschau.
@@ -10434,6 +10653,11 @@ function showLengthNotice(song) {
 function songLabel(song) {
   if (!song) return '';
   return song.artist ? `${song.title} (${song.artist})` : song.title;
+}
+
+/** Titel für Songliste und Player-Kopf: Serious Cartoonist zeigt nur den Titel, Konfetti Titel (Interpret). */
+function displayTitle(song) {
+  return isSeriousDesign() ? (song?.title || '') : songLabel(song);
 }
 
 /**
@@ -10682,6 +10906,8 @@ function closePlayer() {
   Audio.previewBound = null;
   recordingLoopId = null;
   playerSong = null;
+  updateSeriousVoiceColor();
+  updateMiniPlayer();
   $('#player-title').textContent = t('player.emptyTitle');
   $('#btn-song-search').hidden = true;
   $('#btn-song-search').disabled = true;
@@ -11019,6 +11245,9 @@ function updateLoopUI() {
   $('#btn-loop-toggle').setAttribute('aria-label', t(on ? 'player.loopOffAria' : 'player.loopOnAria'));
   $('#btn-loop-a').setAttribute('aria-pressed', fly && loopA !== null ? 'true' : 'false');
   $('#btn-loop-b').setAttribute('aria-pressed', fly && loopB !== null ? 'true' : 'false');
+  // Zeiten in den Start/Ende-Knöpfen (nur Serious zeigt sie, siehe .loop-time).
+  $('#loop-time-a').textContent = fly && loopA !== null ? fmtTime(loopA) : '–';
+  $('#loop-time-b').textContent = fly && loopB !== null ? fmtTime(loopB) : '–';
 
   const info = $('#loop-info');
   if (!fly) {
@@ -11164,6 +11393,7 @@ function renderLoopList() {
   const host = $('#loop-list');
   host.textContent = '';
   updateLoopsTabDot();
+  $('#loop-list-title').hidden = !songLoops.length;
   if (!songLoops.length) return;
 
   for (const loop of songLoops) {
@@ -13943,6 +14173,7 @@ function renderRecordingList() {
   // während einer laufenden Aufnahme aus; das bleibt davon unberührt, weil
   // diese Funktion währenddessen nicht aufgerufen wird.
   $('#rec-status').hidden = songRecordings.length > 0;
+  $('#rec-list-title').hidden = !songRecordings.length;
   if (!songRecordings.length) return;
 
   for (const recording of songRecordings) {
@@ -14011,6 +14242,8 @@ function renderRecordingList() {
     host.append(el('div', {
       class: 'loop-item recording-item',
       'data-active': playing ? 'true' : 'false',
+      // Farbe der Stimme dieser Aufnahme für den Abspielknopf (nur Serious).
+      style: recording.voice && VOICE_COLOR[recording.voice] ? `--sc-rec-voice:${VOICE_COLOR[recording.voice]}` : null,
     }, go, repeat, menu));
   }
 }
@@ -14433,6 +14666,7 @@ function setPlayerTab(tab) {
   // .lyrics-present-fab) und muss sich daher hier selbst um sein
   // Verstecken/Zeigen kümmern.
   updateLyricsPresentFab();
+  updateFooterCompact();
 }
 
 /** Färbt Icon und Beschriftung eines Reiters rosa, wenn dort etwas hinterlegt ist. */
@@ -14499,6 +14733,8 @@ async function renderPlayerExtras() {
   list.textContent = '';
   const scores = playerSong?.scores || [];
   $('#btn-scores-hint').hidden = scores.length === 0;
+  $('#scores-hint-count').textContent = scores.length === 1
+    ? t('scores.hintCountOne') : t('scores.hintCountMany').replace('{n}', String(scores.length));
   scoresPreviewLoaded = false;
 
   for (const score of scores) {
@@ -17388,6 +17624,7 @@ async function buildBackupParts(opts, onProgress) {
     parts.push(`,"settings":${JSON.stringify({
       myVoices: settings.myVoices, lyricsFontSize: settings.lyricsFontSize,
       defaultPlayerTab: settings.defaultPlayerTab, accentColor: settings.accentColor, language: settings.language,
+      design: settings.design, seriousAccent: settings.seriousAccent,
       lightshowOffsetMs: settings.lightshowOffsetMs, lightshowVoice: settings.lightshowVoice,
       lightshowShow: settings.lightshowShow, lightshowSeed: settings.lightshowSeed,
       voiceProfile: settings.voiceProfile,
@@ -17911,6 +18148,8 @@ function sanitizeSettingsPatch(raw) {
     if (typeof raw[key] === 'boolean') patch[key] = raw[key];
   }
   if (PRESENT_THEMES.some((th) => th.id === raw.presentTheme)) patch.presentTheme = raw.presentTheme;
+  if (DESIGNS.some((d) => d.id === raw.design)) patch.design = raw.design;
+  if (SERIOUS_ACCENTS.some((a) => a.id === raw.seriousAccent)) patch.seriousAccent = raw.seriousAccent;
   if (SONG_SEARCH_SERVICES.some((sv) => sv.id === raw.songSearchService)) patch.songSearchService = raw.songSearchService;
   if (['mine', 'full', 'all'].includes(raw.defaultImportScope)) patch.defaultImportScope = raw.defaultImportScope;
   if (raw.slowMode === 'standard' || raw.slowMode === 'hd') patch.slowMode = raw.slowMode;
@@ -19367,6 +19606,51 @@ function runSelfTests() {
     }
   }
 
+  // Serious Cartoonist: Akzentpalette. `on` auf `main` (Schrift auf Fläche),
+  // `fg` auf Weiß und auf dem Serious-Hintergrund (Akzentschrift auf hellem
+  // Grund) und `dark` auf `tint` müssen je mindestens 4,5:1 erreichen.
+  checks++;
+  {
+    const white = [255, 255, 255];
+    const seriousBg = hexToRgbArray('#F6F4FB');
+    for (const ac of SERIOUS_ACCENTS) {
+      const pairs = [
+        ['on auf main', contrastRatio(hexToRgbArray(ac.on), hexToRgbArray(ac.main))],
+        ['fg auf Weiß', contrastRatio(hexToRgbArray(ac.fg), white)],
+        ['fg auf #F6F4FB', contrastRatio(hexToRgbArray(ac.fg), seriousBg)],
+        ['dark auf tint', contrastRatio(hexToRgbArray(ac.dark), hexToRgbArray(ac.tint))],
+      ];
+      for (const [name, ratio] of pairs) {
+        if (ratio < ACCENT_FOREGROUND_MIN_CONTRAST) failed.push(`Serious-Akzent „${ac.id}": ${name} nur ${ratio.toFixed(2)}:1, gefordert ${ACCENT_FOREGROUND_MIN_CONTRAST}:1`);
+      }
+    }
+  }
+
+  // Serious Cartoonist: Einstellungen. Ungültiges Design/ungültiger Ton fliegt
+  // raus, gültige gehen durch; applyDesign() lässt Konfetti unverändert.
+  checks++;
+  {
+    if ('design' in sanitizeSettingsPatch({ design: 'xyz' })) failed.push('Design: sanitizeSettingsPatch müsste ein unbekanntes design verwerfen');
+    const ok = sanitizeSettingsPatch({ design: 'serious', seriousAccent: 'green' });
+    if (ok.design !== 'serious' || ok.seriousAccent !== 'green') failed.push('Design: sanitizeSettingsPatch müsste { design: serious, seriousAccent: green } durchlassen');
+    if ('seriousAccent' in sanitizeSettingsPatch({ seriousAccent: 'neon' })) failed.push('Design: sanitizeSettingsPatch müsste ein unbekanntes seriousAccent verwerfen');
+    const saved = { design: settings.design, seriousAccent: settings.seriousAccent };
+    const root = document.documentElement;
+    const before = { design: root.dataset.design, accent: root.style.getPropertyValue('--accent'), ink: root.style.getPropertyValue('--accent-ink') };
+    try {
+      settings.design = 'konfetti';
+      applyDesign();
+      if (root.dataset.design !== 'konfetti') failed.push('Design: applyDesign() müsste data-design="konfetti" setzen');
+      const want = (/^#[0-9a-f]{6}$/i.test(settings.accentColor) ? settings.accentColor : DEFAULT_SETTINGS.accentColor).toLowerCase();
+      if (root.style.getPropertyValue('--accent').toLowerCase() !== want) failed.push('Design: im Konfetti-Design müsste --accent der accentColor entsprechen');
+      if (root.style.getPropertyValue('--accent-ink')) failed.push('Design: im Konfetti-Design dürfte kein --accent-ink gesetzt sein');
+    } finally {
+      settings.design = saved.design;
+      settings.seriousAccent = saved.seriousAccent;
+      applyDesign();
+    }
+  }
+
   // Schlüsselparität STRINGS (AP-D in ARCHITEKTUR-PLAN.md, vor der geplanten
   // Auslagerung nach strings.js geschrieben): DE/EN/PL müssen exakt dieselben
   // Schlüssel tragen. Ohne diese Prüfung fiele eine vergessene Übersetzung
@@ -20670,7 +20954,7 @@ async function runAsyncSelfTests({ mutateSettings = true } = {}) {
       closeSettingsLoadBanner = originalBannerClose;
       // settingsRecovered() hat die Test-Sprache/-Farbe angewendet — zurück.
       await Promise.resolve();
-      applyAccentColor(settings.accentColor);
+      applyDesign();
       applyTranslations();
     }
   }

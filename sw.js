@@ -12,7 +12,7 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v565';
+const SW_VERSION = 'v567';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 // Samples (echte Instrumente in „Einsatz finden“, Klavier für Übungen und
 // piano.html, ./samples/*.mp3): eigener
@@ -54,7 +54,9 @@ const SHELL_REQUIRED = [
 // Tools), die nur als iframe geöffnet werden (siehe TOOL_PAGES), und für
 // harmony.js (gemeinsame Harmonik von Groove Lab und Tool-Seiten), für
 // piano-samples.js (gemeinsames Klavier der Tool-Seiten) sowie für
-// ueben.css (gemeinsame Designsprache der Übungsseiten).
+// ueben.css (gemeinsame Designsprache der Übungsseiten) und für die Schrift
+// des Designs „Serious Cartoonist“ (fonts/bricolage-grotesque-latin.woff2) —
+// ohne sie fällt Serious offline auf die System-Schrift zurück.
 const SHELL_OPTIONAL = [
   './boot-guard.js',
   './lame.min.js',
@@ -70,6 +72,7 @@ const SHELL_OPTIONAL = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
+  './fonts/bricolage-grotesque-latin.woff2',
 ];
 const SHELL = [...SHELL_REQUIRED, ...SHELL_OPTIONAL];
 // Eigene Seiten, die die App als iframe öffnet — siehe fetch-Handler.

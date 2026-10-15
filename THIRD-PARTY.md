@@ -62,3 +62,14 @@ Volltexte nicht. `lame.min.js` selbst wurde dabei nicht angefasst.
 | Lizenz Instrumente und Klavier | CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/) – Namensnennung in der App: Einstellungen → Über die App → „Lizenzen / Danke“ (alle Sprachen) und Fußnote in den Einstellungen von „Einsatz finden“, jeweils mit Link zum Lizenztext |
 | Verändert | ja – gekürzt, Stille am Anfang entfernt, ausgeblendet, mono, Pegel angeglichen, neu als MP3 kodiert; Klavier (Salamander) unverändert abgelegt, erst in der App gekürzt, zu Mono gemischt und umgestimmt (gemessene Abweichung je Datei, `TUNE` in `piano-samples.js`) |
 | Verwendung | Wiedergabe aller Songs in „Einsatz finden“ mit echten Instrumenten (Standard), dazu das Klavier für alle Vorgabetöne und Akkorde in Hören und Singen (`engine.keys`, beim Öffnen des Bereichs nachgeladen; ohne Samples Synthese) und das spielbare Piano `piano.html` (beim Öffnen nachgeladen, tiefe Töne mit verlängertem Ausklang; ohne Samples Synthese); erst beim ersten Gebrauch nachgeladen; nicht im Shell-Cache, sondern im eigenen Service-Worker-Cache `chor-samples-v3` (offline) |
+
+| Feld | Wert |
+|---|---|
+| Komponente | Bricolage Grotesque (Schrift) |
+| Urheber | Mathieu Triay / Atelier Triay (Copyright 2022 The Bricolage Grotesque Project Authors) |
+| Datei | `fonts/bricolage-grotesque-latin.woff2` |
+| SHA-256 (ausgeliefert) | `854bb88e2fbf6024f58ce853d1ebe480f5ecb72f109c45094ba13361b4613991` |
+| Quelle | https://github.com/ateliertriay/bricolage — bezogen aus https://github.com/google/fonts, Ordner `ofl/bricolagegrotesque` |
+| Lizenz | SIL Open Font License 1.1 (Volltext siehe `LICENSE-bricolage-grotesque-OFL.txt`) |
+| Verändert | **ja** — auf Latein beschnitten (Basis-Latein, Latein-Erweiterung A für Polnisch, Typografie-Zeichen), Breitenachse fest auf 100, Gewichtsachse auf 400–800 und Größenachse auf 14–48 begrenzt, nur die gebräuchlichen Layout-Features behalten, als WOFF2 gespeichert (variable Schrift, ≈ 72 KB) |
+| Verwendung | Schrift des Designs „Serious Cartoonist“; wird per `@font-face` nur von dessen Regeln benutzt und deshalb nur bei aktivem Design geladen (Konfetti lädt sie nie) |
