@@ -931,9 +931,6 @@ button.card-row:focus-visible {
   border-color: var(--accent);
 }
 
-.marks { display: flex; gap: 6px; color: var(--muted); flex: 0 0 auto; }
-.marks svg, .marks .mark-slot { width: 18px; height: 18px; display: block; }
-
 .placeholder-badge { display: block; flex: 0 0 auto; color: var(--muted); }
 .placeholder-badge svg { width: 20px; height: 20px; display: block; }
 
@@ -3535,11 +3532,95 @@ input[type="checkbox"] {
 :root[data-design="serious"] h3 { font-weight: 800; }
 
 /* ---------- Nur Serious: Elemente, die in Konfetti nichts verloren haben - */
-:root:not([data-design="serious"]) .sc-title,
 :root:not([data-design="serious"]) .fab-add-label,
 :root:not([data-design="serious"]) .mini-player,
 :root:not([data-design="serious"]) .player-foot-expand,
 :root:not([data-design="serious"]) .sc-only { display: none !important; }
+
+/* ---------- Nur Konfetti: Songs-Seite ------------------------------------
+   Überschrift über der Suche; Suche, Würfel, Aufnehmen und die Songliste als
+   deckendere weiße „Blasen" (die bunten Kreise dahinter scheinen nur noch
+   leicht durch); Titel einzeilig mit „…" statt Umbruch, Stimmen-Pillen
+   rechtsbündig. Alles unter :root:not(serious), damit die #-Selektoren hier
+   die Regeln von Serious (weiter unten, eigene Optik) nicht überstimmen. */
+:root:not([data-design="serious"]) {
+  --bubble-bg:     rgba(255,255,255,.88);
+  --bubble-shadow: 0 6px 18px -12px rgba(36,27,61,.35);
+}
+:root:not([data-design="serious"]) .searchbar { flex-wrap: wrap; row-gap: 14px; }
+:root:not([data-design="serious"]) .sc-title {
+  flex: 0 0 100%;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+:root:not([data-design="serious"]) .searchbar .search-input,
+:root:not([data-design="serious"]) #btn-feeling-lucky,
+:root:not([data-design="serious"]) #btn-rec-global {
+  border: 1px solid var(--pill-line);
+  background: var(--bubble-bg);
+  box-shadow: var(--bubble-shadow);
+}
+:root:not([data-design="serious"]) #btn-feeling-lucky {
+  flex: 0 0 auto;
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: 50%;
+}
+/* Aufnehmen: gleich große Blase wie der Würfel, der rote Ring (28 px) sitzt
+   als ::after darin; die Trefferfläche ist jetzt der ganze Knopf. */
+:root:not([data-design="serious"]) #btn-rec-global { width: var(--tap); height: var(--tap); }
+:root:not([data-design="serious"]) #btn-rec-global::before { inset: 0; }
+:root:not([data-design="serious"]) #btn-rec-global::after {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--danger);
+  background: var(--surface);
+}
+:root:not([data-design="serious"]) #btn-rec-global .rec-global-dot { position: relative; z-index: 1; }
+
+:root:not([data-design="serious"]) .song-az-head span { background: color-mix(in srgb, var(--bg) 85%, transparent); }
+:root:not([data-design="serious"]) .song-az-group .list {
+  background: var(--bubble-bg);
+  box-shadow: var(--bubble-shadow);
+}
+/* Unter SONG_AZ_MIN Songs: keine Gruppen, jede Zeile ist eine eigene Blase. */
+:root:not([data-design="serious"]) #song-list-host > .list .list-item,
+:root:not([data-design="serious"]) #song-list-host > .list-item {
+  background: var(--bubble-bg);
+  box-shadow: var(--bubble-shadow);
+}
+:root:not([data-design="serious"]) #view-songs .song-line {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 12px;
+  line-height: 1.3;
+}
+:root:not([data-design="serious"]) #view-songs .song-line strong {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:root:not([data-design="serious"]) #view-songs .voice-pills,
+:root:not([data-design="serious"]) #view-songs .placeholder-badge { flex: 0 0 auto; margin-left: auto; }
+:root:not([data-design="serious"]) #view-songs .voice-pills { justify-content: flex-end; }
+/* Dunkle Schrift: Weiß auf dem Gelb von Tenor war kaum lesbar. */
+:root:not([data-design="serious"]) #view-songs .voice-chip {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent-ink);
+}
+:root:not([data-design="serious"]) #view-songs .voice-pills .voice-chip { box-shadow: 0 0 0 2px #fff; }
+:root:not([data-design="serious"]) #view-songs .voice-pills .voice-chip:not(:first-child) { margin-left: -14px; }
 
 /* ---------- 6.1 Navigation unten ---------------------------------------- */
 :root[data-design="serious"] .app-nav {
@@ -3692,8 +3773,6 @@ input[type="checkbox"] {
   color: var(--sc-faint);
 }
 :root[data-design="serious"] #view-songs .placeholder-badge svg { width: 14px; height: 14px; }
-/* Markierungen (Lyrics/Notiz/Noten) gibt es in Serious nicht. */
-:root[data-design="serious"] #view-songs .marks { display: none; }
 
 /* Leerer Player: dieselbe Songliste wie in der Bibliothek */
 :root[data-design="serious"] #player-empty-list {

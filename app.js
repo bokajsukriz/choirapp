@@ -2499,45 +2499,6 @@ function renderVoicePills(tracks) {
   return host;
 }
 
-// Feste Reihenfolge der Markierungen in der Songliste — jede Zeile bekommt
-// alle drei Plätze, auch wenn nicht jeder Song alles hat. Nur so stehen die
-// vorhandenen Symbole in jeder Zeile an derselben Stelle, statt je nach
-// Song nach links zu rutschen.
-const MARK_KINDS = ['lyrics', 'notes', 'score'];
-
-function markIcon(kind) {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '1.8');
-  svg.setAttribute('stroke-linecap', 'round');
-  svg.setAttribute('stroke-linejoin', 'round');
-  svg.setAttribute('role', 'img');
-  if (kind === 'lyrics') {
-    svg.innerHTML = `<title>${t('songs.markLyrics')}</title>` + '<path d="M5 5h14M5 10h14M5 15h9"/>';
-  } else if (kind === 'notes') {
-    svg.innerHTML = `<title>${t('songs.markNotes')}</title>` +
-      '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
-  } else {
-    svg.innerHTML = `<title>${t('songs.markScore')}</title>` +
-      '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M10 17V11l4-1v6"/>' +
-      '<circle cx="9" cy="17" r="1.4"/><circle cx="13" cy="16" r="1.4"/>';
-  }
-  return svg;
-}
-
-/** Marken-Zeile mit festen Plätzen: fehlende Symbole bleiben unsichtbare Platzhalter. */
-function renderMarks(has) {
-  const marks = el('div', { class: 'marks' });
-  for (const kind of MARK_KINDS) {
-    marks.append(has[kind]
-      ? markIcon(kind)
-      : el('span', { class: 'mark-slot', 'aria-hidden': 'true' }));
-  }
-  return marks;
-}
-
 // Ab so vielen Songs in der Bibliothek wird die Songliste nach
 // Anfangsbuchstaben unterteilt (siehe renderSongs).
 const SONG_AZ_MIN = 12;
@@ -2605,14 +2566,10 @@ async function renderSongs() {
   // Hängt nicht an der Songliste, sondern am Datum der letzten Sicherung.
   if (songs.length) updateBackupReminder();
 
-  // noteCacheStamp/lyricsNoteCacheStamp gehören mit rein: sonst übersieht das
-  // Kurzschluss-„nichts geändert“ eine Notiz oder einen eigenen Liedtext, die
-  // gerade hinzugefügt oder gelöscht wurden — die Markierung in der Zeile
-  // bliebe bis zum nächsten Songwechsel veraltet stehen.
   // Serious Cartoonist kennt keine Sammelordner-Filterleiste: ein aus Konfetti
   // übrig gebliebener Filter bliebe sonst unsichtbar aktiv.
   if (document.documentElement.dataset.design === 'serious') songFilter = null;
-  const signature = `${songCacheStamp}\u0000${noteCacheStamp}\u0000${lyricsNoteCacheStamp}\u0000${songQuery}\u0000${songFilter}`;
+  const signature = `${songCacheStamp}\u0000${songQuery}\u0000${songFilter}`;
   if (signature === songsRenderSignature && host.firstChild) return;
   songsRenderSignature = signature;
 
@@ -2699,13 +2656,6 @@ async function renderSongs() {
 
   if (!visible.length) return;
 
-  const notedSongs = await DB.songIdsWithNotes().catch(() => new Set());
-  const lyricsNotedSongs = await DB.songIdsWithLyricsNotes().catch(() => new Set());
-  // Zwei weitere awaits seit dem letzten Abgleich (z.B. Filter-Chip-Klicks
-  // ohne Debounce) — ohne erneute Prüfung könnte ein überholter Aufruf hier
-  // seine Liste noch zusätzlich anhängen.
-  if (run.stale) return;
-
   // Nach Anfangsbuchstaben gruppiert: je Buchstabe eine Überschrift (klebt
   // beim Scrollen oben) und eine gemeinsame Karte. Die Liste ist schon nach
   // Titel sortiert, deshalb reicht es, bei jedem neuen Buchstaben eine neue
@@ -2727,12 +2677,6 @@ async function renderSongs() {
         el('h2', { class: 'song-az-head', id: headId }, el('span', { text: key })),
         list));
     }
-    const marks = renderMarks({
-      lyrics: !!song.lyrics || lyricsNotedSongs.has(song.id),
-      score: (song.scores || []).length > 0,
-      notes: notedSongs.has(song.id),
-    });
-
     list.append(el('li', {},
       el('button', {
         class: 'list-item',
@@ -2750,7 +2694,6 @@ async function renderSongs() {
             ? renderVoicePills(song.tracks)
             : el('span', { class: 'placeholder-badge', role: 'img', 'aria-label': t('songs.placeholderBadge'), title: t('songs.placeholderBadge') }, iconUnavailable()),
         ),
-        marks
       )
     ));
   }
