@@ -1985,6 +1985,18 @@ input[type="checkbox"] {
   margin: 0 0 10px;
 }
 .lyrics-toolbar-extended { flex-wrap: wrap; gap: 6px; }
+/* Beim Bearbeiten klebt die Leiste (mit „Fertig“) oben im Scrollbereich, statt
+   beim Scrollen im Text aus dem Bild zu wandern. */
+.lyrics-toolbar-extended.is-editing {
+  position: sticky;
+  /* -14px = oberes Polster von .player-body-scroll: die Leiste soll bündig am
+     Rand kleben, nicht 14 px darunter, sonst scrollt der Text darüber durch. */
+  top: -14px;
+  z-index: 3;
+  background: var(--bg);
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+}
 .lyrics-toolbar-spacer { flex: 1 1 0; min-width: 0; margin: 0 -6px; }
 /* Alle drei Gruppen der Leiste (Quelle, Schriftgröße, Bearbeiten) 36 px hoch,
    im Stil von .preset-row. */
@@ -3217,7 +3229,12 @@ input[type="checkbox"] {
 .note-box {
   display: block;
   width: 100%;
-  min-height: 320px;
+  /* Bewusst niedrig: ein hohes Feld schob die Leiste mit dem Fertig-Knopf (und
+     bei offener Tastatur das Feld selbst) aus dem Bild. Längere Texte scrollen
+     im Feld; mit dem Griff unten rechts lässt es sich aufziehen. */
+  min-height: 120px;
+  height: clamp(140px, 32vh, 260px);
+  height: clamp(140px, 32dvh, 260px);
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -3453,12 +3470,21 @@ input[type="checkbox"] {
 .dialog p { margin: 0 0 18px; color: var(--muted); }
 .dialog-actions { display: flex; gap: 10px; }
 .dialog-actions .btn { flex: 1; }
+/* Dialoge mit Textfeld: Knöpfe bleiben am unteren Rand sichtbar, auch wenn die
+   Tastatur den Dialog zum Scrollen zwingt. */
+.dialog:has(textarea) .dialog-actions {
+  position: sticky;
+  bottom: -20px;
+  margin: 0 -20px -20px;
+  padding: 12px 20px 20px;
+  background: var(--surface);
+}
 
 /* Texteingabe innerhalb eines Dialogs (promptDialog: Loop-/Playlist-Namen,
    mehrzeilig eingefügte Programme). */
 .dialog textarea {
   width: 100%;
-  min-height: 160px;
+  min-height: 110px;
   padding: 11px 14px;
   border-radius: 16px;
   border: 1px solid var(--line);
@@ -4443,7 +4469,7 @@ input[type="checkbox"] {
   padding: 16px 18px;
   font-size: 16px;
   line-height: 1.5;
-  min-height: 220px;
+  min-height: 120px;
   resize: none;
   box-shadow: inset 0 0 0 2px var(--sc-accent-tint);
 }

@@ -14874,6 +14874,7 @@ function renderLyricsBlock() {
   const editing = !showOfficial && lyricsNoteEditing;
 
   $('#lyrics-toolbar').hidden = !playerSong;
+  $('#lyrics-toolbar').classList.toggle('is-editing', editing);
   $('#lyrics-source-switch').hidden = !playerSong;
   $$('#lyrics-source-switch .preset').forEach((btn) => {
     btn.setAttribute('aria-pressed', String(btn.dataset.lyricsSource === activeSource));
