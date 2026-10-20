@@ -1296,6 +1296,7 @@ const DEFAULT_SETTINGS = {
   presentTheme: 'dark',       // 'dark' (weiß auf schwarz) | 'light' (schwarz auf weiß) — Textanzeige für andere
   songSearchService: 'youtube', // Standarddienst fürs Lupen-Symbol im Player (siehe SONG_SEARCH_SERVICES)
   songSearchNoticeShown: false, // einmaliger Hinweis vor der allerersten externen Liedsuche schon gezeigt? (AP-04)
+  lyricsSearchNoticeShown: false, // dasselbe für die Liedtext-Suche im Lyrics-Reiter (immer Google)
   lightshowOffsetMs: 0,       // vom PTB-Zeitserver ermittelte Korrektur der Geräteuhr in ms
   lightshowVoice: null,       // null = automatisch aus myVoices
   lightshowShow: 'sterne',    // zuletzt gewählte Show
@@ -3771,6 +3772,31 @@ async function openSongSearch(serviceId) {
     androidPackage: service.androidPackage,
   });
 }
+
+/**
+ * Liedtext-Suche im Lyrics-Reiter: öffnet Google mit „<Interpret> <Titel> lyrics“,
+ * unabhängig vom Standarddienst der Lupe oben (der sucht nach dem Song, nicht
+ * nach dem Text). Wie die Lupe nur auf aktives Antippen, und vor dem allerersten
+ * Mal mit demselben einmaligen Hinweis, dass der Titel an Google geht.
+ */
+async function openLyricsSearch() {
+  if (!playerSong) return;
+  if (!settings.lyricsSearchNoticeShown) {
+    const ok = await confirmDialog({
+      title: t('songsearch.dialogTitle'),
+      text: t('songsearch.lyricsDialogText'),
+      okLabel: t('songsearch.dialogOk'),
+      cancelLabel: t('songsearch.dialogCancel'),
+    });
+    if (!ok) return;
+    await saveSettings({ lyricsSearchNoticeShown: true });
+  }
+  // Titel erst jetzt lesen — während des Hinweises kann der Song gewechselt haben.
+  const query = songSearchQuery(playerSong);
+  if (!query) return;
+  openAppOrWeb({ web: `https://www.google.com/search?q=${encodeURIComponent(`${query} lyrics`)}` });
+}
+$('#btn-lyrics-search').addEventListener('click', openLyricsSearch);
 
 function renderSongSearchServicePicker() {
   const host = $('#song-search-service-picker');

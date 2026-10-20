@@ -51,6 +51,12 @@ automatisch im Hintergrund. Vor der allerersten Nutzung weist die App
 einmalig aktiv darauf hin (kein sich selbst wegklickender Hinweis, sondern
 ein Dialog mit echter Wahl).
 
+Im Lyrics-Reiter öffnet die Lupe in der Leiste (`#btn-lyrics-search`) Google
+mit „<Interpret> <Titel> lyrics“ — immer Google, unabhängig vom Standarddienst
+der Lupe im Player-Kopf. Auch hier gehen nur Titel und ggf. Interpret raus, nur
+bei aktivem Antippen, und vor dem ersten Mal weist die App einmalig darauf hin
+(`settings.lyricsSearchNoticeShown`).
+
 ## Dateiübersicht
 
 - `index.html` — Oberfläche und Styles.
