@@ -2008,6 +2008,22 @@ input[type="checkbox"] {
 .lyrics-size-seg .lyrics-size-small { font-size: 0.78rem; }
 .lyrics-size-seg .lyrics-size-big { font-size: 1.15rem; }
 .lyrics-toolbar-extended > .lyrics-edit-pill { flex: 0 0 auto; margin-left: auto; }
+/* Suche nach dem Liedtext (öffnet Google mit „… lyrics“) — gleiche Höhe wie die
+   übrigen Gruppen der Leiste. */
+.lyrics-search-btn {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 36px; height: 36px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  touch-action: manipulation;
+}
+.lyrics-search-btn svg { width: 18px; height: 18px; }
+.lyrics-search-btn:active { background: var(--surface); }
 .lyrics-edit-pill {
   display: inline-flex;
   align-items: center;
@@ -2813,6 +2829,29 @@ input[type="checkbox"] {
   text-align: right;
 }
 .recording-item[data-active="true"] .go { border-color: var(--accent); }
+
+/* REC-Pakete: verknüpfte RECs als eingerückte Gruppe unter einer Kopfzeile;
+   langes Drücken startet den Auswahlmodus, darum keine Textmarkierung und kein
+   System-Kontextmenü auf den Zeilen. */
+.recording-item .go { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.rec-chain { margin-top: 8px; padding-left: 8px; border-left: 3px solid var(--accent); }
+.rec-chain > .loop-item:first-child { margin-top: 0; }
+.rec-chain-head .go strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.rec-chain-head .go:disabled { opacity: .6; }
+.rec-select-mark {
+  width: 22px; height: 22px; flex: 0 0 auto; border-radius: 50%;
+  border: 2px solid var(--muted); display: inline-flex; align-items: center; justify-content: center;
+}
+.rec-select-mark.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.rec-select-mark svg { width: 12px !important; height: 12px !important; }
+.rec-select-bar {
+  position: sticky; top: 8px; z-index: 5;
+  display: flex; align-items: center; gap: 8px; margin: 8px 0;
+  padding: 8px 10px; border-radius: 16px;
+  background: var(--surface); border: 1px solid var(--accent);
+}
+.rec-select-bar[hidden] { display: none; }
+.rec-select-bar > span { flex: 1; font-weight: 650; font-size: 0.9rem; }
 
 /* Laufende Playlist im Player */
 .queue-item {
@@ -4278,6 +4317,17 @@ input[type="checkbox"] {
 :root[data-design="serious"] #recording-list .loop-item .go span.rec-meta { font-size: 12px; font-weight: 600; color: #4A4656; }
 :root[data-design="serious"] #recording-list .loop-item .icon-btn { width: 40px; height: 40px; }
 :root[data-design="serious"] .recording-item[data-active="true"] .go { border-color: transparent; }
+:root[data-design="serious"] #recording-list .rec-chain { margin: 0; padding-left: 0; border-left: 4px solid var(--accent); }
+:root[data-design="serious"] #recording-list > .rec-chain + .rec-chain,
+:root[data-design="serious"] #recording-list > .rec-chain + .loop-item { border-top: 1px solid #EEEBF5; }
+:root[data-design="serious"] #recording-list .rec-chain-head { background: var(--sc-accent-tint-2); }
+:root[data-design="serious"] #recording-list .loop-item .go > span.rec-select-mark {
+  width: 24px; height: 24px; margin: 6px; background: transparent; border: 2px solid #8A8498;
+}
+:root[data-design="serious"] #recording-list .loop-item .go > span.rec-select-mark.is-on {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+}
+:root[data-design="serious"] .rec-select-bar { border-radius: 22px; }
 
 :root[data-design="serious"] .rec-backing {
   margin-top: 12px;
@@ -4852,6 +4902,11 @@ input[type="checkbox"] {
         </div>
       </div>
       <h2 class="sc-only sc-section-title" id="rec-list-title" hidden data-i18n="rec.recordingsHeading">Deine Aufnahmen</h2>
+      <div class="rec-select-bar" id="rec-select-bar" hidden>
+        <span id="rec-select-count" role="status"></span>
+        <button class="btn" id="btn-rec-select-cancel" type="button" data-i18n="common.cancel">Abbrechen</button>
+        <button class="btn btn--primary" id="btn-rec-select-link" type="button" disabled data-i18n="rec.chain.link">Verknüpfen</button>
+      </div>
       <div id="recording-list"></div>
       <div class="rec-backing" id="rec-backing" hidden>
         <div class="rec-backing-row">
@@ -4892,6 +4947,9 @@ input[type="checkbox"] {
           <button class="preset" type="button" data-lyrics-source="private" aria-pressed="false" data-i18n="lyrics.sourcePrivate">Eigener</button>
         </div>
         <span class="lyrics-toolbar-spacer" aria-hidden="true"></span>
+        <button class="lyrics-search-btn" id="btn-lyrics-search" type="button" aria-label="Liedtext bei Google suchen" data-i18n-aria="lyrics.searchAria">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+        </button>
         <div class="lyrics-size-seg" role="group" aria-label="Schriftgröße" data-i18n-aria="lyrics.sizeAria">
           <button class="preset lyrics-size-small" id="btn-lyrics-smaller" type="button" aria-label="Schrift kleiner" data-i18n-aria="lyrics.smallerAria">A</button>
           <button class="preset lyrics-size-big" id="btn-lyrics-bigger" type="button" aria-label="Schrift größer" data-i18n-aria="lyrics.biggerAria">A</button>
@@ -5581,7 +5639,7 @@ input[type="checkbox"] {
          songs-fab-menu: „Aus der Dropbox" → #import-view, „Aus Recordings" →
          klickt dieses versteckte Eingabefeld direkt an). Kein eigener
          Einstieg mehr hier — das doppelte Angebot verwirrte mehr, als es half. -->
-    <input class="visually-hidden" id="rec-import-input" type="file" tabindex="-1" aria-hidden="true" accept=".mp3,audio/mpeg" multiple>
+    <input class="visually-hidden" id="rec-import-input" type="file" tabindex="-1" aria-hidden="true" accept=".mp3,audio/mpeg,.json,application/json" multiple>
 
     <div class="settings-group">
       <p class="settings-group-label" data-i18n="settings.group.makeItYours">Make it yours</p>
