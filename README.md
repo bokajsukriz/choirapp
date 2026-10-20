@@ -485,6 +485,42 @@ Drei Punkte dazu:
   Versatz-Regler nach Gehör ein. Er gilt geräteweit, weil die Latenz am
   Gerät und am Kopfhörer hängt, nicht am Lied.
 
+## REC-Pakete
+
+Wer einen Song in Teilen aufnimmt (Intro, Strophe, Refrain …), kann die RECs zu
+einem **Paket** verknüpfen: eine benannte, geordnete Folge von RECs desselben
+Songs, die immer hintereinander läuft und als eine Datei weitergegeben werden
+kann.
+
+- **Anlegen:** REC in der Liste lang drücken (500 ms; am Desktop Rechtsklick,
+  sonst „Verknüpfen …“ im REC-Menü) startet den Auswahlmodus — weitere RECs
+  antippen, dann „Verknüpfen“. Der Dialog setzt Namen, Haken und Reihenfolge
+  (Ziehpunkt oder Pfeil hoch/runter am fokussierten Griff; derselbe Baustein
+  `routineOrderList` wie beim Choirgym). Über „Bearbeiten“ im Paketmenü lassen
+  sich später Teile hinzufügen, entfernen und umsortieren, „Paket auflösen“
+  löst nur die Verknüpfung — die RECs bleiben.
+- **Datenmodell:** meta-Typ `recChain` (`id`, `songId`, `songTitle`, `name`,
+  `recIds` in Abspielreihenfolge, `createdAt`). Ein REC gehört zu höchstens
+  einem Paket; `normalizeRecChains()` räumt beim Laden eines Songs auf
+  (gelöschte RECs fallen heraus, unter zwei Teilen ist kein Paket mehr). Pakete
+  folgen ihrem Song wie RECs und Loops (`songLinkRecords`,
+  `reconnectPendingRecordings`).
+- **Abspielen:** Kopfzeile des Pakets spielt von vorn, ein Teil antippen ab
+  diesem Teil. Die Teile laufen über dieselbe Vorschau wie ein einzelner REC;
+  weitergeschaltet wird in `onPlaybackEnded()` und `Audio.onPreviewBoundStop`
+  (`recChainAdvance()`), den Teil bestimmt `audioPreview.tag.savedId`. Zwischen
+  den Teilen liegt die kurze Ladezeit des nächsten Blobs, kein nahtloser Übergang.
+  Die Dauerschleife eines einzelnen Teils und ein Choirgym-Programm haben Vorrang
+  (starten stoppt das Paket).
+- **Export/Import:** „Exportieren“ im Paketmenü schreibt eine `.json` im Format
+  der Sicherung (`BACKUP_FORMAT`, mit `"package":"recChain"`): die RECs mit
+  Audio, Zuschnitt und Anker plus `recChains` mit der Reihenfolge. Importiert
+  wird über „REC importieren“ (akzeptiert `.mp3` und `.json`) oder „Sicherung
+  einspielen“ — beides läuft durch `restoreBackup()`, ein fehlender Song wird beim
+  Paketimport als Platzhalter angelegt, schon vorhandene RECs (Name + Song) nicht
+  doppelt. Vollsicherungen enthalten die Pakete ebenfalls (`recChains`, RECs
+  tragen dafür ihre `id`).
+
 ## Übe-Programme
 
 An drei Stellen (aktuelle Setliste, übrige Setlisten, Loops und REC im

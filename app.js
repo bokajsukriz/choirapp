@@ -2978,13 +2978,14 @@ async function renameSong(song) {
 
 /** Alle Datensätze, die an einem Song hängen — Loops, Notizen, eigene Liedtexte und Aufnahmen. */
 async function songLinkRecords() {
-  const [loops, notes, lyricsNotes, recordings] = await Promise.all([
+  const [loops, notes, lyricsNotes, recordings, recChains] = await Promise.all([
     DB.metaByType('loop'),
     DB.metaByType('note'),
     DB.metaByType('lyricsNote'),
     DB.metaByType('recording'),
+    DB.metaByType('recChain'),
   ]);
-  return [...loops, ...notes, ...lyricsNotes, ...recordings];
+  return [...loops, ...notes, ...lyricsNotes, ...recordings, ...recChains];
 }
 
 /**
@@ -10350,6 +10351,8 @@ async function openPlayer(songId) {
   audioPreview = null;
   Audio.previewBound = null;
   recordingLoopId = null;
+  recChainPlay = null;
+  recSelect = null;
 
   playerSong = song;
   $('#btn-song-search').disabled = false;
@@ -10431,6 +10434,7 @@ async function openPlayer(songId) {
   Audio.onEnded = onPlaybackEnded;
   Audio.onLoopWrap = () => { if (routine?.scope === 'loops' && routine.targetId === playerSong?.id) routineAdvance(); };
   Audio.onPreviewBoundStop = () => {
+    if (audioPreview?.tag?.savedId && recChainAdvance()) return;
     if (routine?.scope === 'rec' && routine.targetId === playerSong?.id && audioPreview?.tag?.savedId) { routineAdvance(); return; }
     // Ein zugeschnittenes REC, das den Song vertritt, endet am Auswahlende
     // statt über 'ended' — sonst bliebe die Setliste genau dort stehen.
@@ -10767,6 +10771,8 @@ function onPlaybackEnded() {
       audioPlay().then(() => setPlayIcon(Audio.playing));
       return;
     }
+    // Ein Paket schaltet zum nächsten Teil weiter, bis der letzte durch ist.
+    if (audioPreview.tag?.savedId && recChainAdvance()) return;
     // Ein REC-Programm schaltet selbst weiter (siehe 5.4 der Anweisung) — vor
     // dem sonst hier folgenden Beenden der Vorschau, sonst schaltet eine
     // laufende Routine nie zur nächsten Aufnahme weiter.
@@ -10863,6 +10869,9 @@ function closePlayer() {
   playerVoice = null;
   songLoops = [];
   songRecordings = [];
+  songRecChains = [];
+  recChainPlay = null;
+  recSelect = null;
   playerNote = null;
   resetBrokenNotice();
   if (navigator.mediaSession) {
@@ -11611,7 +11620,13 @@ let recStarting = false;
 let recStartGeneration = 0;
 let takeSaveInProgress = false;
 let songRecordings = [];
-let pendingTake = null;     // { blob, mimeType, duration, anchor } — gestoppt, aber noch nicht gespeichert
+// REC-Pakete („recChain") des offenen Songs: geordnete Folgen von RECs, die
+// zusammen abgespielt und exportiert werden — siehe normalizeRecChains().
+let songRecChains = [];
+let recChainPlay = null;    // { chainId } solange ein Paket durchläuft, sonst null
+let recSelect = null;       // { ids: Set } im Auswahlmodus der REC-Liste, sonst null
+let recLongPressAt = 0;     // Zeitpunkt des letzten langen Drückens (verschluckt den Nachklick)
+let pendingTake = null;    // { blob, mimeType, duration, anchor } — gestoppt, aber noch nicht gespeichert
 let audioPreview = null;    // { tag, returnTrack, returnPos, returnPlaying, returnFootHidden, returnFootUnavailable }
 let recordingLoopId = null; // id des RECs, das gerade in Dauerschleife läuft, oder null
 // Anker der laufenden Aufnahme — welche Stimme an welcher Stelle lief, siehe
@@ -13025,13 +13040,51 @@ async function onTakeSaveClick() {
 $('#btn-rec-save').addEventListener('click', onTakeSaveClick);
 $('#btn-recorder-save').addEventListener('click', onTakeSaveClick);
 
+/**
+ * Räumt die Pakete eines Songs gegen seine vorhandenen RECs ab: gelöschte RECs
+ * fallen heraus, ein REC gehört höchstens zu einem Paket (das erste gewinnt),
+ * und ein Paket mit weniger als zwei RECs ist keins mehr. Reine Funktion —
+ * `update` sind die geänderten Pakete (Kopien), `drop` die aufzulösenden.
+ */
+function normalizeRecChains(chains, recordings) {
+  const known = new Set(recordings.map((r) => r.id));
+  const used = new Set();
+  const keep = [], update = [], drop = [];
+  const sorted = [...chains].sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+  for (const chain of sorted) {
+    const original = Array.isArray(chain.recIds) ? chain.recIds : [];
+    const recIds = original.filter((id, i) => known.has(id) && !used.has(id) && original.indexOf(id) === i);
+    if (recIds.length < 2) { drop.push(chain); continue; }
+    recIds.forEach((id) => used.add(id));
+    if (recIds.length === original.length) { keep.push(chain); continue; }
+    const fixed = { ...chain, recIds };
+    keep.push(fixed);
+    update.push(fixed);
+  }
+  return { chains: keep, update, drop };
+}
+
 async function loadSongRecordings() {
-  if (!playerSong) { songRecordings = []; return; }
-  const all = await DB.metaByType('recording').catch(() => []);
+  if (!playerSong) { songRecordings = []; songRecChains = []; return; }
+  const song = playerSong;
+  const [all, allChains] = await Promise.all([
+    DB.metaByType('recording').catch(() => []),
+    DB.metaByType('recChain').catch(() => []),
+  ]);
+  if (playerSong !== song) return;      // inzwischen ein anderes Lied geöffnet
   songRecordings = all
-    .filter((r) => r.songId === playerSong.id)
+    .filter((r) => r.songId === song.id)
     .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+  const norm = normalizeRecChains(allChains.filter((c) => c.songId === song.id), songRecordings);
+  songRecChains = norm.chains;
+  if (recChainPlay && !songRecChains.some((c) => c.id === recChainPlay.chainId)) recChainPlay = null;
+  if (recSelect) {
+    for (const id of [...recSelect.ids]) if (!songRecordings.some((r) => r.id === id)) recSelect.ids.delete(id);
+  }
   renderRecordingList();
+  // Aufräumen nachgelagert: die Anzeige hängt nicht an den Schreibvorgängen.
+  if (norm.update.length) DB.metaPutMany(norm.update).catch((err) => console.warn('[rec-paket]', err));
+  for (const dead of norm.drop) DB.metaDelete(dead.key).catch((err) => console.warn('[rec-paket]', err));
 }
 
 /**
@@ -13433,6 +13486,70 @@ async function toggleSavedRecordingPreview(recording) {
   }
   renderRecordingList();
   updateRecPreviewButton();
+}
+
+/* ---------- REC-Pakete abspielen ----------------------------------------
+   Ein Paket läuft Teil für Teil über dieselbe Vorschau wie ein einzelner REC.
+   Weitergeschaltet wird dort, wo eine Vorschau sonst endet: onPlaybackEnded()
+   (natürliches Ende) und Audio.onPreviewBoundStop (Ende der Zuschnitt-
+   Auswahl). Welcher Teil gerade läuft, steht nie extra irgendwo — er ergibt
+   sich aus audioPreview.tag.savedId, so bleibt die Reihenfolge auch nach einer
+   Änderung des Pakets mitten im Abspielen stimmig. */
+
+/** Lädt einen gespeicherten REC in die Vorschau und startet ihn von seinem Anfang. */
+async function startSavedRecording(recording) {
+  const rec = await DB.fileGet(recording.fileKey);
+  if (!rec) throw new Error('Der REC fehlt in der Datenbank.');
+  await previewRecordingBlob(recordBlob(rec, recording.mimeType), { savedId: recording.id, anchor: recording.anchor }, recordingTrimRange(recording));
+}
+
+/** Spielt ein Paket ab dem angegebenen Teil (und dann der Reihe nach weiter). */
+async function playRecChainFrom(chain, recordingId) {
+  const members = recChainMembers(chain);
+  const start = members.find((r) => r.id === recordingId) || members[0];
+  if (!start) return;
+  // Ein Choirgym-Programm bestimmt selbst, was als Nächstes kommt — beides
+  // zugleich würde sich gegenseitig weiterschalten.
+  if (routine) routineStop();
+  recChainPlay = { chainId: chain.id };
+  try {
+    await startSavedRecording(start);
+  } catch (err) {
+    recChainPlay = null;
+    bannerError(t('msg.recPlayFailed'), 'REC-PLAY', err);
+  }
+  renderRecordingList();
+  updateRecPreviewButton();
+}
+
+/**
+ * Schaltet nach dem Ende eines Teils zum nächsten weiter.
+ * @returns {boolean} true, wenn weitergeschaltet wird — der Aufrufer tut dann
+ *   nichts mehr; false beim letzten Teil bzw. ohne laufendes Paket, dann gilt
+ *   das normale Verhalten einer zu Ende gelaufenen Vorschau.
+ */
+function recChainAdvance() {
+  if (!recChainPlay) return false;
+  const chain = songRecChains.find((c) => c.id === recChainPlay.chainId);
+  const members = chain ? recChainMembers(chain) : [];
+  const idx = members.findIndex((m) => m.id === audioPreview?.tag?.savedId);
+  const next = idx >= 0 ? members[idx + 1] : null;
+  if (!next) { recChainPlay = null; return false; }
+  // Dauerschleife eines einzelnen Teils: die wiederholt sich, statt weiterzuschalten.
+  if (recordingLoopId === members[idx].id) return false;
+  const active = recChainPlay;
+  (async () => {
+    try {
+      await startSavedRecording(next);
+    } catch (err) {
+      if (recChainPlay === active) recChainPlay = null;
+      bannerError(t('msg.recPlayFailed'), 'REC-PLAY', err);
+      await endRecordingPreview();
+    }
+    renderRecordingList();
+    updateRecPreviewButton();
+  })();
+  return true;
 }
 
 /* ---------- MP3-Export: lamejs laden, dekodieren, kodieren, mit ID3 versehen ---------- */
@@ -13907,12 +14024,12 @@ function probeAudioDuration(blob) {
 }
 
 /** Fortschrittsbalken beim MP3-Export eines RECs — dieselbe Optik wie showBackupProgressDialog(). */
-function showRecExportProgressDialog() {
+function showRecExportProgressDialog(titleKey = 'rec.exportTitle', textKey = 'rec.exportText') {
   const bar = el('i');
   const status = el('p', { class: 'small muted', style: 'margin:10px 0 0', text: '0%' });
   const box = el('div', { class: 'dialog' },
-    el('h2', { text: t('rec.exportTitle') }),
-    el('p', { text: t('rec.exportText') }),
+    el('h2', { text: t(titleKey) }),
+    el('p', { text: t(textKey) }),
     el('div', { class: 'meter' }, bar),
     status);
   const layer = el('div', { class: 'overlay' }, box);
@@ -14017,6 +14134,71 @@ async function exportRecording(recording, anchorBtn) {
 }
 
 /**
+ * Baut die Paketdatei eines REC-Pakets: dasselbe Format wie die Sicherung
+ * (`BACKUP_FORMAT`, Audio als Base64 neben dem Gerüst), nur mit den RECs dieses
+ * Pakets und `recChains` für die Reihenfolge. Der gewöhnliche Sicherungs-Import
+ * liest sie deshalb ebenfalls — und behält, anders als der MP3-Export, Anker
+ * und Zuschnitt der einzelnen Teile. Liefert Blob-Teilstücke (siehe
+ * metaWithAudioParts()), nie einen String über alle Audiodaten.
+ */
+async function buildRecChainPackageParts(chain, members, onProgress) {
+  const parts = [`{"format":${JSON.stringify(BACKUP_FORMAT)},"version":${BACKUP_FORMAT_VERSION},"exportedAt":${JSON.stringify(new Date().toISOString())},"package":"recChain","recordings":[`];
+  let first = true, done = 0, used = 0;
+  const ids = [];
+  for (const r of members) {
+    const file = await DB.fileGet(r.fileKey);
+    if (!file) continue;
+    const base64 = await blobToBase64(recordBlob(file, r.mimeType));
+    const meta = {
+      id: r.id, songTitle: playerSong?.title || r.songTitle || '',
+      name: r.name, voice: r.voice || null, duration: r.duration,
+      mimeType: r.mimeType, createdAt: r.createdAt,
+    };
+    if (Number.isFinite(r.trimStart)) meta.trimStart = r.trimStart;
+    if (Number.isFinite(r.trimEnd)) meta.trimEnd = r.trimEnd;
+    if (r.anchor) meta.anchor = r.anchor;
+    if (!first) parts.push(',');
+    first = false;
+    parts.push(...metaWithAudioParts(meta, base64));
+    ids.push(r.id);
+    used++;
+    onProgress?.(++done / members.length);
+  }
+  if (used < 2) throw new Error('Dem Paket fehlen Aufnahmen in der Datenbank.');
+  parts.push(`],"recChains":[${JSON.stringify({ name: chain.name, createdAt: chain.createdAt, recs: ids })}]}`);
+  return parts;
+}
+
+/** Exportiert ein REC-Paket als eine Datei (Teilen oder Herunterladen). */
+async function exportRecChain(chain, anchorBtn) {
+  const members = recChainMembers(chain);
+  if (members.length < 2) return;
+  const fileName = `${REC_NAME_MARKER}-paket_${[playerSong?.title || chain.songTitle || '', chain.name].map(sanitizeFileName).join('_')}.json`;
+  const probeFile = new File([], 'probe.json', { type: 'application/json' });
+  let action = 'download';
+  if (navigator.canShare?.({ files: [probeFile] })) {
+    action = await floatingMenu(anchorBtn, [
+      { value: 'share', label: t('common.share'), icon: REC_EXPORT_SHARE_ICON },
+      { value: 'download', label: t('common.download'), icon: REC_EXPORT_DOWNLOAD_ICON },
+    ]);
+    if (!action) return;
+  }
+  const progress = showRecExportProgressDialog('rec.chain.exportTitle', 'rec.chain.exportText');
+  try {
+    const parts = await buildRecChainPackageParts(chain, members, (fraction) => progress.update(fraction));
+    progress.close();
+    if (action === 'share') {
+      try { await navigator.share({ files: [new File(parts, fileName, { type: 'application/json' })], title: chain.name, text: fileName }); return; }
+      catch (err) { if (err?.name === 'AbortError') return; }
+    }
+    downloadBlob(new Blob(parts, { type: 'application/json' }), fileName);
+  } catch (err) {
+    progress.close();
+    bannerError(t('rec.chain.exportFailed'), 'REC-PAKET-EXPORT', err);
+  }
+}
+
+/**
  * Importiert eine mit exportRecording() erzeugte MP3-Datei — auch aus einer
  * anderen App-Instanz. Findet sich der Song (per Titel) nicht in der
  * Bibliothek, legt createPlaceholderSong() ihn als Platzhalter an, damit der
@@ -14090,9 +14272,13 @@ async function importRecordingFile(file) {
 
 /** RECs ohne songId nachträglich verbinden, nachdem ein Song importiert wurde. */
 async function reconnectPendingRecordings() {
-  const recordings = await DB.metaByType('recording').catch(() => []);
+  const [recordings, chains] = await Promise.all([
+    DB.metaByType('recording').catch(() => []),
+    DB.metaByType('recChain').catch(() => []),
+  ]);
   const pending = recordings.filter((r) => !r.songId && r.songTitle);
-  if (!pending.length) return 0;
+  const pendingChains = chains.filter((c) => !c.songId && c.songTitle);
+  if (!pending.length && !pendingChains.length) return 0;
 
   const songs = await DB.metaByType('song');
   const reconnected = [];
@@ -14102,8 +14288,42 @@ async function reconnectPendingRecordings() {
     recording.songId = song.id;
     reconnected.push(recording);
   }
-  await DB.metaPutMany(reconnected);
+  const reconnectedChains = [];
+  for (const chain of pendingChains) {
+    const song = findSongByTitle(songs, chain.songTitle);
+    if (!song) continue;
+    chain.songId = song.id;
+    reconnectedChains.push(chain);
+  }
+  await DB.metaPutMany([...reconnected, ...reconnectedChains]);
   return reconnected.length;
+}
+
+/* ---------- REC-Pakete: Liste, Auswahlmodus, Dialog ----------------------
+   Ein Paket („recChain", meta-Typ) ist eine benannte, geordnete Folge von RECs
+   desselben Songs — gedacht für einzeln aufgenommene Teile (Intro, Strophe …),
+   die man am Stück hören und weitergeben will. Ein REC gehört zu höchstens
+   einem Paket. Angelegt wird es per langem Drücken auf einen REC (Auswahlmodus)
+   oder über „Verknüpfen …" im REC-Menü. */
+
+const REC_LONG_PRESS_MS = 500;
+const REC_PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+const REC_PAUSE_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+const REC_CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+const REC_CHAIN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>';
+
+/** Die RECs eines Pakets in Paketreihenfolge. */
+function recChainMembers(chain) {
+  const byId = new Map(songRecordings.map((r) => [r.id, r]));
+  return chain.recIds.map((id) => byId.get(id)).filter(Boolean);
+}
+
+/** Gesamtlänge der zugeschnittenen Auswahlen in Sekunden. */
+function recChainDuration(members) {
+  return members.reduce((sum, r) => {
+    const range = recordingTrimRange(r);
+    return sum + Math.max(0, range.end - range.start);
+  }, 0);
 }
 
 function renderRecordingList() {
@@ -14117,31 +14337,66 @@ function renderRecordingList() {
   // diese Funktion währenddessen nicht aufgerufen wird.
   $('#rec-status').hidden = songRecordings.length > 0;
   $('#rec-list-title').hidden = !songRecordings.length;
+  renderRecSelectBar();
   if (!songRecordings.length) return;
 
+  // Pakete zuerst, darunter die einzelnen RECs.
+  const chained = new Set();
+  for (const chain of songRecChains) {
+    const members = recChainMembers(chain);
+    members.forEach((m) => chained.add(m.id));
+    host.append(buildRecChain(chain, members));
+  }
   for (const recording of songRecordings) {
-    const playing = audioPreview?.tag?.savedId === recording.id && Audio.playing;
-    const icon = el('span', { 'aria-hidden': 'true' });
-    icon.innerHTML = playing
-      ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>'
-      : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+    if (!chained.has(recording.id)) host.append(buildRecordingItem(recording));
+  }
+}
 
-    // Zeigt die Länge der Auswahl, nicht die volle Aufnahme — das ist auch,
-    // was Anhören und Export tatsächlich liefern (siehe recordingTrimRange()).
-    const trimRange = recordingTrimRange(recording);
-    const meta = [fmtTime(trimRange.end - trimRange.start)];
-    if (recording.voice) meta.push(voiceName(recording.voice));
+/** Eine Zeile der REC-Liste; `chainPos` ({chain, index, total}) bei Paket-Mitgliedern. */
+function buildRecordingItem(recording, chainPos = null) {
+  const selecting = !!recSelect;
+  const selected = selecting && recSelect.ids.has(recording.id);
+  const playing = !selecting && audioPreview?.tag?.savedId === recording.id && Audio.playing;
+  const icon = el('span', { 'aria-hidden': 'true', class: selecting ? `rec-select-mark${selected ? ' is-on' : ''}` : null });
+  icon.innerHTML = selecting ? (selected ? REC_CHECK_ICON : '') : (playing ? REC_PAUSE_ICON : REC_PLAY_ICON);
 
-    const go = el('button', {
-      class: 'go', type: 'button',
-      'aria-label': t(playing ? 'rec.pauseNamedAria' : 'rec.playAria').replace('{name}', recording.name),
-    },
-      icon,
-      el('span', { style: 'display:flex; flex-direction:column; align-items:flex-start; gap:2px' },
-        el('strong', { text: recording.name }),
-        el('span', { class: 'rec-meta', text: meta.join(' · ') })));
-    go.addEventListener('click', () => toggleSavedRecordingPreview(recording));
+  // Zeigt die Länge der Auswahl, nicht die volle Aufnahme — das ist auch,
+  // was Anhören und Export tatsächlich liefern (siehe recordingTrimRange()).
+  const trimRange = recordingTrimRange(recording);
+  const meta = [];
+  if (chainPos) meta.push(`${chainPos.index + 1}/${chainPos.total}`);
+  meta.push(fmtTime(trimRange.end - trimRange.start));
+  if (recording.voice) meta.push(voiceName(recording.voice));
 
+  const go = el('button', {
+    class: 'go', type: 'button',
+    'aria-pressed': selecting ? (selected ? 'true' : 'false') : null,
+    'aria-label': selecting
+      ? t('rec.chain.selectAria').replace('{name}', recording.name)
+      : t(playing ? 'rec.pauseNamedAria' : 'rec.playAria').replace('{name}', recording.name),
+  },
+    icon,
+    el('span', { style: 'display:flex; flex-direction:column; align-items:flex-start; gap:2px' },
+      el('strong', { text: recording.name }),
+      el('span', { class: 'rec-meta', text: meta.join(' · ') })));
+  // Vor dem Klick-Handler anhängen: der Nachklick eines langen Drückens muss
+  // zuerst ankommen (siehe attachRecLongPress).
+  if (!selecting) attachRecLongPress(go, recording);
+  go.addEventListener('click', () => {
+    if (recSelect) {
+      // Direkt nach dem langen Drücken baut sich die Liste neu auf; der Klick
+      // vom Loslassen darf die eben gesetzte Auswahl nicht gleich umkehren.
+      if (performance.now() - recLongPressAt > 350) toggleRecSelect(recording.id);
+      return;
+    }
+    if (chainPos && audioPreview?.tag?.savedId !== recording.id) { playRecChainFrom(chainPos.chain, recording.id); return; }
+    // Ein Paket-Mitglied läuft im Paket weiter, ein einzelner REC für sich.
+    recChainPlay = chainPos ? { chainId: chainPos.chain.id } : null;
+    toggleSavedRecordingPreview(recording);
+  });
+
+  const items = [];
+  if (!selecting) {
     const menu = el('button', {
       class: 'icon-btn', type: 'button', 'aria-label': t('rec.menuAria').replace('{name}', recording.name),
     });
@@ -14149,6 +14404,7 @@ function renderRecordingList() {
     menu.addEventListener('click', async () => {
       const action = await floatingMenu(menu, [
         { value: 'rename', label: t('common.edit'), icon: ICON_EDIT },
+        { value: 'link', label: t('rec.chain.menuLink'), icon: REC_CHAIN_ICON },
         { value: 'export', label: t('common.export'), icon: ICON_EXPORT },
         { value: 'delete', label: t('common.delete'), icon: ICON_DELETE, danger: true },
       ]);
@@ -14159,6 +14415,8 @@ function renderRecordingList() {
         recording.voice = result.voice;
         await DB.metaPut(recording);
         renderRecordingList();
+      } else if (action === 'link') {
+        enterRecSelect(recording.id);
       } else if (action === 'export') {
         await exportRecording(recording, menu);
       } else if (action === 'delete') {
@@ -14181,14 +14439,237 @@ function renderRecordingList() {
     });
     repeat.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>';
     repeat.addEventListener('click', () => toggleRecordingLoop(recording));
-
-    host.append(el('div', {
-      class: 'loop-item recording-item',
-      'data-active': playing ? 'true' : 'false',
-      // Farbe der Stimme dieser Aufnahme für den Abspielknopf (nur Serious).
-      style: recording.voice && VOICE_COLOR[recording.voice] ? `--sc-rec-voice:${VOICE_COLOR[recording.voice]}` : null,
-    }, go, repeat, menu));
+    items.push(repeat, menu);
   }
+
+  return el('div', {
+    class: `loop-item recording-item${chainPos ? ' rec-chain-member' : ''}`,
+    'data-active': playing ? 'true' : 'false',
+    // Farbe der Stimme dieser Aufnahme für den Abspielknopf (nur Serious).
+    style: recording.voice && VOICE_COLOR[recording.voice] ? `--sc-rec-voice:${VOICE_COLOR[recording.voice]}` : null,
+  }, go, ...items);
+}
+
+/** Ein Paket: Kopfzeile (alles abspielen, Menü) und darunter seine Teile in Reihenfolge. */
+function buildRecChain(chain, members) {
+  const selecting = !!recSelect;
+  const savedId = audioPreview?.tag?.savedId;
+  const pos = !selecting && recChainPlay?.chainId === chain.id ? members.findIndex((m) => m.id === savedId) : -1;
+  const active = pos >= 0;
+  const playing = active && Audio.playing;
+
+  const meta = [tPlural(members.length, 'rec.chain.partsOne', 'rec.chain.partsMany'), fmtTime(recChainDuration(members))];
+  if (active) meta.push(t('rec.chain.nowPlaying').replace('{n}', pos + 1).replace('{total}', members.length));
+
+  const icon = el('span', { 'aria-hidden': 'true' });
+  icon.innerHTML = playing ? REC_PAUSE_ICON : REC_PLAY_ICON;
+  const go = el('button', {
+    class: 'go', type: 'button', disabled: selecting ? true : null,
+    'aria-label': t(playing ? 'rec.chain.pauseAria' : 'rec.chain.playAria').replace('{name}', chain.name),
+  },
+    icon,
+    el('span', { style: 'display:flex; flex-direction:column; align-items:flex-start; gap:2px; min-width:0' },
+      el('strong', { text: chain.name }),
+      el('span', { class: 'rec-meta', text: meta.join(' · ') })));
+  go.addEventListener('click', () => {
+    if (active) toggleSavedRecordingPreview(members[pos]);   // pausieren bzw. fortsetzen
+    else playRecChainFrom(chain, members[0].id);
+  });
+
+  const head = el('div', { class: 'loop-item recording-item rec-chain-head', 'data-active': active ? 'true' : 'false' }, go);
+  if (!selecting) {
+    const menu = el('button', {
+      class: 'icon-btn', type: 'button', 'aria-label': t('rec.chain.menuAria').replace('{name}', chain.name),
+    });
+    menu.innerHTML = hamburgerIcon();
+    menu.addEventListener('click', async () => {
+      const action = await floatingMenu(menu, [
+        { value: 'edit', label: t('common.edit'), icon: ICON_EDIT },
+        { value: 'export', label: t('common.export'), icon: ICON_EXPORT },
+        { value: 'dissolve', label: t('rec.chain.dissolve'), icon: ICON_DELETE, danger: true },
+      ]);
+      if (action === 'edit') await editRecChain(chain);
+      else if (action === 'export') await exportRecChain(chain, menu);
+      else if (action === 'dissolve') await dissolveRecChain(chain);
+    });
+    head.append(menu);
+  }
+
+  return el('div', { class: 'rec-chain', 'data-active': active ? 'true' : 'false' },
+    head,
+    ...members.map((m, i) => buildRecordingItem(m, { chain, index: i, total: members.length })));
+}
+
+/**
+ * Langes Drücken (Maus und Touch gleich, über Pointer Events) startet den
+ * Auswahlmodus. Der Nachklick des Loslassens wird verschluckt — sonst spielte
+ * der REC zusätzlich los. Rechtsklick und Kontextmenü-Taste lösen dasselbe aus,
+ * damit es auch ohne Touch erreichbar ist; zusätzlich gibt es „Verknüpfen …"
+ * im REC-Menü.
+ */
+function attachRecLongPress(btn, recording) {
+  let timer = null, fired = false, startX = 0, startY = 0;
+  const cancel = () => { clearTimeout(timer); timer = null; };
+  btn.addEventListener('pointerdown', (e) => {
+    if (e.button != null && e.button !== 0) return;
+    fired = false;
+    startX = e.clientX; startY = e.clientY;
+    cancel();
+    timer = setTimeout(() => {
+      timer = null;
+      fired = true;
+      navigator.vibrate?.(15);
+      enterRecSelect(recording.id);
+    }, REC_LONG_PRESS_MS);
+  });
+  btn.addEventListener('pointermove', (e) => {
+    // Wer scrollen will, hält nicht lang.
+    if (timer && Math.hypot(e.clientX - startX, e.clientY - startY) > 10) cancel();
+  });
+  for (const type of ['pointerup', 'pointerleave', 'pointercancel']) btn.addEventListener(type, cancel);
+  btn.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (fired || recSelect) return;
+    cancel();
+    enterRecSelect(recording.id);
+  });
+  btn.addEventListener('click', (e) => {
+    if (!fired) return;
+    fired = false;
+    e.stopImmediatePropagation();
+  });
+}
+
+function enterRecSelect(firstId) {
+  recSelect = { ids: new Set(firstId ? [firstId] : []) };
+  recLongPressAt = performance.now();
+  renderRecordingList();
+  banner(t('rec.chain.selectHint'), { timeout: 4000 });
+}
+
+function exitRecSelect() {
+  recSelect = null;
+  renderRecordingList();
+}
+
+function toggleRecSelect(id) {
+  if (!recSelect) return;
+  if (recSelect.ids.has(id)) recSelect.ids.delete(id); else recSelect.ids.add(id);
+  renderRecordingList();
+}
+
+function renderRecSelectBar() {
+  const bar = $('#rec-select-bar');
+  bar.hidden = !recSelect;
+  if (!recSelect) return;
+  const n = recSelect.ids.size;
+  $('#rec-select-count').textContent = t('rec.chain.selectCount').replace('{n}', n);
+  $('#btn-rec-select-link').disabled = n < 2;
+}
+
+$('#btn-rec-select-cancel').addEventListener('click', exitRecSelect);
+$('#btn-rec-select-link').addEventListener('click', async () => {
+  if (!recSelect || !playerSong) return;
+  const song = playerSong;
+  // In Aufnahmereihenfolge vorbelegt; die Reihenfolge stellt der Dialog ein.
+  const ids = songRecordings.filter((r) => recSelect.ids.has(r.id)).map((r) => r.id);
+  const result = await recChainDialog({ ids });
+  if (!result) return;                 // Auswahl bleibt stehen, man kann weiter anpassen
+  if (playerSong !== song) return;     // währenddessen ein anderes Lied geöffnet
+  recSelect = null;
+  await saveRecChain(null, result, song);
+});
+
+/**
+ * Dialog zum Anlegen und Bearbeiten eines Pakets: Name, Haken für die Teile,
+ * Reihenfolge per Ziehpunkt (derselbe Baustein wie bei „… dann Playlist" im
+ * Choirgym). RECs, die schon in einem anderen Paket stecken, tauchen nur auf,
+ * wenn sie vorausgewählt sind — dann wechseln sie das Paket.
+ * @returns {Promise<{name: string, recIds: string[]}|null>}
+ */
+function recChainDialog({ chain = null, ids = [] }) {
+  return new Promise((resolve) => {
+    const taken = new Set();
+    for (const other of songRecChains) {
+      if (!chain || other.id !== chain.id) other.recIds.forEach((id) => taken.add(id));
+    }
+    const elements = songRecordings
+      .filter((r) => !taken.has(r.id) || ids.includes(r.id))
+      .map((r) => ({ id: r.id, label: r.name }));
+    const widget = routineOrderList(elements, ids);
+    const fallbackName = t('rec.chain.defaultName').replace('{n}', songRecChains.length + 1);
+
+    const nameInput = el('input', {
+      type: 'text', maxlength: '60', autocomplete: 'off', value: chain ? chain.name : fallbackName,
+      'aria-label': t('rec.chain.nameLabel'),
+    });
+    const error = el('p', { class: 'small', role: 'alert', hidden: true, style: 'color:var(--danger-fg); margin:0 0 8px', text: t('rec.chain.needTwo') });
+
+    const done = (value) => { layer.remove(); resolve(value); };
+    const save = el('button', { class: 'btn btn--primary', type: 'button', text: t('common.save') });
+    save.addEventListener('click', () => {
+      const picked = widget.getItems();
+      if (picked.length < 2) { error.hidden = false; return; }
+      done({ name: nameInput.value.trim() || fallbackName, recIds: picked });
+    });
+    const cancel = el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) });
+
+    const box = el('div', { class: 'dialog' },
+      el('h2', { text: t(chain ? 'rec.chain.editTitle' : 'rec.chain.newTitle') }),
+      el('p', { class: 'small muted', text: t('rec.chain.dialogHint') }),
+      nameInput,
+      el('div', { style: 'margin-top:12px' }, widget.host),
+      error,
+      el('div', { class: 'dialog-actions' }, cancel, save));
+    const layer = el('div', { class: 'overlay' }, box);
+    layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
+    mountModal(layer, { onEscape: () => done(null), initialFocus: nameInput });
+  });
+}
+
+/** Legt ein Paket an (`existing` = null) oder ändert es; RECs wechseln dabei aus anderen Paketen. */
+async function saveRecChain(existing, { name, recIds }, song = playerSong) {
+  try {
+    const writes = [], deletes = [];
+    const moved = new Set(recIds);
+    for (const other of songRecChains) {
+      if (existing && other.id === existing.id) continue;
+      const rest = other.recIds.filter((id) => !moved.has(id));
+      if (rest.length === other.recIds.length) continue;
+      if (rest.length < 2) deletes.push(other.key); else writes.push({ ...other, recIds: rest });
+    }
+    if (existing) {
+      writes.push({ ...existing, name, recIds });
+    } else {
+      const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      writes.push({
+        key: `recChain:${id}`, type: 'recChain', id,
+        songId: song.id, songTitle: song.title,
+        name, recIds, createdAt: new Date().toISOString(),
+      });
+    }
+    await DB.metaPutMany(writes);
+    for (const key of deletes) await DB.metaDelete(key);
+    await loadSongRecordings();
+  } catch (err) {
+    bannerError(t('rec.chain.saveFailed'), 'REC-PAKET', err);
+  }
+}
+
+async function editRecChain(chain) {
+  const result = await recChainDialog({ chain, ids: chain.recIds });
+  if (result) await saveRecChain(chain, result);
+}
+
+async function dissolveRecChain(chain) {
+  const ok = await confirmDialog({
+    title: t('rec.chain.dissolveTitle'), text: t('rec.chain.dissolveText').replace('{name}', chain.name),
+    okLabel: t('rec.chain.dissolve'), danger: true,
+  });
+  if (!ok) return;
+  if (recChainPlay?.chainId === chain.id) recChainPlay = null;
+  await DB.metaDelete(chain.key);
+  await loadSongRecordings();
 }
 
 /** Startet oder beendet die Dauerschleife eines RECs (wiederholt die getrimmte Auswahl). */
@@ -15900,6 +16381,7 @@ async function routineAdvance() {
  *  beim Start"). `plRef` erspart bei der Setliste eine zweite DB-Abfrage. */
 async function routineStart(scope, targetId, draft, plRef) {
   routineStop();
+  recChainPlay = null;
   let record = normalizeRoutine({ scope, targetId, steps: draft.steps, after: draft.after, items: draft.items });
   if (scope !== 'setlist') {
     const validIds = scope === 'loops' ? songLoops.map((l) => l.id) : songRecordings.map((r) => r.id);
@@ -17145,6 +17627,8 @@ const BACKUP_MAX_SONGS               = 5000;
 const BACKUP_MAX_TRACKS_PER_SONG     = 32;
 const BACKUP_MAX_SCORES_PER_SONG     = 16;
 const BACKUP_MAX_RECORDINGS          = 20000;
+const BACKUP_MAX_REC_CHAINS          = 2000;
+const BACKUP_MAX_CHAIN_RECS          = 200;   // Teile je REC-Paket
 const BACKUP_MAX_LOOPS               = 20000;
 const BACKUP_MAX_NOTES               = 10000;
 const BACKUP_MAX_LYRICS_NOTES        = 10000;
@@ -17658,6 +18142,8 @@ async function buildBackupParts(opts, onProgress) {
       const blob = recordBlob(rec, r.mimeType);
       const base64 = await blobToBase64(blob);
       const meta = {
+        // Die Kennung verbindet die RECs mit ihren Paketen (recChains weiter unten).
+        id: r.id,
         songTitle: byId.get(r.songId)?.title || r.songTitle || '',
         name: r.name, voice: r.voice || null, duration: r.duration,
         mimeType: r.mimeType, createdAt: r.createdAt,
@@ -17675,6 +18161,13 @@ async function buildBackupParts(opts, onProgress) {
     }
     parts.push(']');
     counts.recordings = n;
+    const chains = (await DB.metaByType('recChain').catch(() => []))
+      .filter((c) => Array.isArray(c.recIds) && c.recIds.length >= 2)
+      .map((c) => ({ name: c.name, createdAt: c.createdAt, recs: c.recIds }));
+    if (chains.length) {
+      parts.push(`,"recChains":${JSON.stringify(chains)}`);
+      counts.recChains = chains.length;
+    }
   }
 
   if (opts.songAudio) {
@@ -17933,8 +18426,15 @@ function backupPartialTallyText(tally) {
 }
 
 $('#rec-import-input').addEventListener('change', async (e) => {
-  const files = [...e.target.files];
+  const allFiles = [...e.target.files];
   e.target.value = '';
+  if (!allFiles.length) return;
+
+  // Paketdateien (.json, Export eines REC-Pakets) laufen über den
+  // Sicherungs-Import; nur MP3s gehen den Weg einzelner RECs.
+  const packages = allFiles.filter((f) => /\.json$/i.test(f.name) || f.type === 'application/json');
+  const files = allFiles.filter((f) => !packages.includes(f));
+  for (const file of packages) await importRecChainPackage(file);
   if (!files.length) return;
 
   let linked = 0, pending = 0, failed = 0;
@@ -17955,6 +18455,34 @@ $('#rec-import-input').addEventListener('change', async (e) => {
   if (failed) parts.push(tPlural(failed, 'rec.importFailedOne', 'rec.importFailedMany'));
   banner(parts.join(', ') + '.', { kind: linked || pending ? 'ok' : 'error' });
 });
+
+/** Spielt eine Paketdatei ein (siehe buildRecChainPackageParts). */
+async function importRecChainPackage(file) {
+  let data, resolveAudioBase64;
+  try {
+    ({ data, resolveAudioBase64 } = await readBackupFile(file));
+  } catch (err) {
+    bannerError(t('rec.chain.importFailed'), 'REC-PAKET-IMPORT', err);
+    return;
+  }
+  if (!data || data.format !== BACKUP_FORMAT || !Array.isArray(data.recChains) || !data.recChains.length) {
+    banner(t('rec.chain.importFailed'), { kind: 'error' });
+    return;
+  }
+  if (typeof data.version === 'number' && data.version > BACKUP_FORMAT_VERSION) {
+    banner(t('backup.newerVersion'), { kind: 'error' });
+    return;
+  }
+  // Nur die RECs und Pakete — alles Übrige, was eine (vielleicht von Hand
+  // geänderte) Datei sonst noch enthielte, wird hier nicht angefasst.
+  const slim = { format: data.format, version: data.version, recordings: data.recordings, recChains: data.recChains };
+  try {
+    await restoreBackup(slim, resolveAudioBase64, { pkg: true });
+    await renderImportStats();
+  } catch (err) {
+    bannerError(backupPartialTallyText(err.backupPartialTally), 'REC-PAKET-IMPORT', err);
+  }
+}
 
 /**
  * Welche der im Lauf vergebenen fileKeys referenziert nach einem Abbruch kein
@@ -18019,6 +18547,7 @@ function validateBackupSkeleton(data) {
   checkArray('notes', BACKUP_MAX_NOTES);
   checkArray('lyricsNotes', BACKUP_MAX_LYRICS_NOTES);
   checkArray('recordings', BACKUP_MAX_RECORDINGS);
+  checkArray('recChains', BACKUP_MAX_REC_CHAINS);
   checkArray('songAudio', BACKUP_MAX_SONGS);
 
   if (Array.isArray(data.songAudio)) {
@@ -18111,7 +18640,7 @@ function sanitizeSettingsPatch(raw) {
  * (siehe dort), sonst (z.B. Aufruf mit von Hand gebautem `data`) optional und
  * die Werte in `data` sind schon echtes Base64.
  */
-async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
+async function restoreBackup(data, resolveAudioBase64 = async (v) => v, { pkg = false } = {}) {
   validateBackupSkeleton(data);
   const songs = await DB.metaByType('song').catch(() => []);
   const loops = Array.isArray(data.loops) ? data.loops : [];
@@ -18119,6 +18648,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   const notes = Array.isArray(data.notes) ? data.notes : [];
   const lyricsNotes = Array.isArray(data.lyricsNotes) ? data.lyricsNotes : [];
   const recordingsIn = Array.isArray(data.recordings) ? data.recordings : [];
+  const recChainsIn = Array.isArray(data.recChains) ? data.recChains : [];
   const songAudioIn = Array.isArray(data.songAudio) ? data.songAudio : [];
   const songMetaIn = Array.isArray(data.songs) ? data.songs : [];
   const matched = loops.filter((l) => findSongByTitle(songs, l.songTitle)).length;
@@ -18126,7 +18656,14 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   // Nur noch Zusammenführen — „Alles ersetzen" ist als Datenverlust-Falle
   // entfernt: wer wirklich bei null anfangen will, löscht vorher von Hand
   // über „Alle Daten löschen" und spielt die Sicherung danach ein.
-  const ok = await confirmDialog({
+  // Eine Paketdatei (Export eines REC-Pakets) fragt knapper und mit eigenen Worten.
+  const ok = await confirmDialog(pkg ? {
+    title: t('rec.chain.importConfirmTitle'),
+    text: t('rec.chain.importConfirmText')
+      .replace('{name}', recChainsIn.map((c) => String(c?.name ?? '').slice(0, BACKUP_MAX_TITLE_LEN)).filter(Boolean).join(', '))
+      .replace('{recs}', tPlural(recordingsIn.length, 'count.recOne', 'count.recMany')),
+    okLabel: t('rec.chain.importOk'),
+  } : {
     title: t('backup.restoreConfirmTitle'),
     text: t('backup.restoreConfirmFound').replace('{loops}', tPlural(loops.length, 'count.loopOne', 'count.loopMany')).replace('{notes}', tPlural(notes.length, 'count.noteOne', 'count.noteMany'))
         .replace('{lyrics}', tPlural(lyricsNotes.length, 'count.lyricsOne', 'count.lyricsMany'))
@@ -18161,7 +18698,9 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   let addedLoops = 0, addedPl = 0, keptPending = 0;
   let addedNotes = 0, skippedNotes = 0;
   let addedLyricsNotes = 0, skippedLyricsNotes = 0;
-  let addedRecordings = 0, skippedRecordings = 0;
+  let addedRecordings = 0, skippedRecordings = 0, addedChains = 0;
+  // Kennung eines RECs in der Datei → Kennung hier (neu angelegt oder schon vorhanden).
+  const recIdMap = new Map();
 
   try {
     // Song-Audio zuerst von allem anderen — nur für Songs, die es hier noch
@@ -18424,11 +18963,22 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       if (r.mimeType && (typeof r.mimeType !== 'string' || r.mimeType.length > 100 || !r.mimeType.startsWith('audio/'))) {
         discardedRecordings++; continue;
       }
-      const song = findSongByTitle(songs, r.songTitle || '');
+      let song = findSongByTitle(songs, r.songTitle || '');
       const norm = normalizeTitle(r.songTitle || '');
       const isDupe = (x) => x.name === r.name
         && (x.songId === song?.id || normalizeTitle(x.songTitle || '') === norm);
-      if (existingRecordings.some(isDupe)) { skippedRecordings++; continue; }
+      const dupe = existingRecordings.find(isDupe);
+      if (dupe) {
+        if (typeof r.id === 'string') recIdMap.set(r.id, dupe.id);
+        skippedRecordings++;
+        continue;
+      }
+      // Ein Paket bringt seinen Song mit: ohne ihn bliebe das Paket unsichtbar
+      // liegen. Wie beim Import einer einzelnen REC-Datei als Platzhalter.
+      if (pkg && !song && r.songTitle) {
+        song = await createPlaceholderSong(r.songTitle);
+        songs.push(song);
+      }
 
       const mimeType = r.mimeType || 'audio/webm';
       const base64 = await resolveAudioBase64(r.audioBase64);
@@ -18468,8 +19018,10 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       });
       writtenFileKeys.push(fileKey);
       existingRecordings.push(recording);
+      if (typeof r.id === 'string') recIdMap.set(r.id, id);
       addedRecordings++;
     }
+    if (recChainsIn.length) addedChains = await restoreRecChains(recChainsIn, recIdMap);
     if (playerSong) await loadSongRecordings();
   }
   } catch (err) {
@@ -18556,6 +19108,14 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
   await renderPlaylists();
   await renderSettings();
   if (playerSong) { await loadSongNote(); await loadSongLyricsNote(); }
+  if (pkg) {
+    banner(addedChains || addedRecordings
+      ? t('rec.chain.importDone').replace('{chains}', tPlural(addedChains, 'rec.chain.countOne', 'rec.chain.countMany'))
+        + (addedRecordings ? t('backup.restoreRecs').replace('{recs}', tPlural(addedRecordings, 'count.recOne', 'count.recMany')) : '')
+      : t('rec.chain.importNothing'),
+    { kind: addedChains || addedRecordings ? 'ok' : 'info' });
+    return;
+  }
   const nLoops = (n) => tPlural(n, 'count.loopOne', 'count.loopMany');
   const nNotes = (n) => tPlural(n, 'count.noteOne', 'count.noteMany');
   const nLyrics = (n) => tPlural(n, 'count.lyricsOne', 'count.lyricsMany');
@@ -18568,6 +19128,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
       .replace('{playlists}', tPlural(addedPl, 'count.playlistOne', 'count.playlistMany'))
     + (addedLyricsNotes ? t('backup.restoreLyrics').replace('{lyrics}', nLyrics(addedLyricsNotes)) : '')
     + (addedRecordings ? t('backup.restoreRecs').replace('{recs}', nRecs(addedRecordings)) : '')
+    + (addedChains ? t('backup.restoreChains').replace('{chains}', tPlural(addedChains, 'rec.chain.countOne', 'rec.chain.countMany')) : '')
     + (songsCreated ? t('backup.restoreSongs').replace('{songs}', nSongs(songsCreated)) : '')
     + (scoresRestored ? t('backup.restoreScores').replace('{scores}', nScores(scoresRestored)) : '')
     + (practiceRestored.tools || practiceRestored.progress ? t('backup.restorePractice') : '')
@@ -18583,6 +19144,46 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v) {
         .replace('{tracks}', tPlural(discardedTracks, 'count.trackOne', 'count.trackMany')) : '')
     + (discardedScores ? t('backup.restoreDiscardedScores').replace('{scores}', nScores(discardedScores)) : ''),
     { kind: 'ok' });
+}
+
+/**
+ * Legt die REC-Pakete einer Sicherung bzw. Paketdatei an. `recIdMap` übersetzt
+ * die Kennungen der RECs in der Datei in die hiesigen (neu angelegt oder schon
+ * vorhanden). Unbekannte Kennungen und RECs, die hier schon in einem Paket
+ * stecken, fallen heraus; bleiben weniger als zwei, entsteht kein Paket — ein
+ * erneutes Einspielen derselben Datei legt so nichts doppelt an.
+ * @returns {Promise<number>} Anzahl neu angelegter Pakete
+ */
+async function restoreRecChains(chainsIn, recIdMap) {
+  const [existing, recordings] = await Promise.all([
+    DB.metaByType('recChain').catch(() => []),
+    DB.metaByType('recording').catch(() => []),
+  ]);
+  const taken = new Set(existing.flatMap((c) => (Array.isArray(c.recIds) ? c.recIds : [])));
+  const byId = new Map(recordings.map((r) => [r.id, r]));
+  const fresh = [];
+  for (const c of chainsIn) {
+    if (!c || typeof c.name !== 'string' || !c.name.trim() || c.name.length > BACKUP_MAX_TITLE_LEN) continue;
+    if (!Array.isArray(c.recs) || c.recs.length > BACKUP_MAX_CHAIN_RECS) continue;
+    const ids = [];
+    for (const orig of c.recs) {
+      const id = typeof orig === 'string' ? recIdMap.get(orig) : null;
+      if (id && byId.has(id) && !taken.has(id) && !ids.includes(id)) ids.push(id);
+    }
+    if (ids.length < 2) continue;
+    ids.forEach((id) => taken.add(id));
+    const home = byId.get(ids[0]);
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    fresh.push({
+      key: `recChain:${id}`, type: 'recChain', id,
+      songId: home.songId || null, songTitle: home.songTitle || '',
+      name: c.name.trim(),
+      recIds: ids,
+      createdAt: typeof c.createdAt === 'string' && !Number.isNaN(Date.parse(c.createdAt)) ? c.createdAt : new Date().toISOString(),
+    });
+  }
+  await DB.metaPutMany(fresh);
+  return fresh.length;
 }
 
 /**
@@ -19386,6 +19987,33 @@ function runSelfTests() {
   checks++;
   if ('lat' in sanitizeRecAnchor({ voice: 'ALT', pos: 1, rate: 1 })) {
     failed.push('sanitizeRecAnchor dürfte keinen Umweg erfinden');
+  }
+
+  // REC-Pakete: normalizeRecChains() räumt gegen die vorhandenen RECs ab.
+  {
+    const recs = ['a', 'b', 'c', 'd'].map((id) => ({ id }));
+    const norm = normalizeRecChains([
+      { id: 'p2', createdAt: '2026-02-01', recIds: ['c', 'a', 'x'] },   // 'a' gehört schon p1, 'x' gibt es nicht
+      { id: 'p1', createdAt: '2026-01-01', recIds: ['a', 'b', 'b'] },   // Doppeltes zählt einmal
+      { id: 'p3', createdAt: '2026-03-01', recIds: ['d'] },
+    ], recs);
+    checks++;
+    if (norm.chains.length !== 1 || norm.chains[0].id !== 'p1' || norm.chains[0].recIds.join() !== 'a,b') {
+      failed.push(`normalizeRecChains: erwartet nur p1 (a,b), bekam ${JSON.stringify(norm.chains)}`);
+    }
+    checks++;
+    if (norm.update.length !== 1 || norm.update[0].id !== 'p1' || norm.drop.map((c) => c.id).sort().join() !== 'p2,p3') {
+      failed.push(`normalizeRecChains: falsche Aufräumlisten ${JSON.stringify({ update: norm.update, drop: norm.drop })}`);
+    }
+    checks++;
+    const orig = { id: 'p', createdAt: '2026-01-01', recIds: ['a', 'x', 'b'] };
+    normalizeRecChains([orig], recs);
+    if (orig.recIds.join() !== 'a,x,b') failed.push('normalizeRecChains dürfte das übergebene Paket nicht verändern');
+    checks++;
+    const intact = normalizeRecChains([{ id: 'q', createdAt: '2026-01-01', recIds: ['d', 'c'] }], recs);
+    if (intact.update.length || intact.drop.length || intact.chains[0].recIds.join() !== 'd,c') {
+      failed.push('normalizeRecChains müsste ein intaktes Paket samt Reihenfolge unverändert lassen');
+    }
   }
 
   /* ---------- Verlangsamung: Halbtöne für den HD-Modus ---------- */
