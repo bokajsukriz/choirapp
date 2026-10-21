@@ -3841,7 +3841,8 @@ function lrclibBusyDelayMs(retryAfter, attempt, now = Date.now()) {
   if (!Number.isFinite(ms) || ms < 0) ms = fallback;
   return Math.min(LRCLIB_BUSY_MAX_WAIT_MS, Math.max(ms, 1000));
 }
-const LRCLIB_MAX_CHOICES = 8;
+const LRCLIB_PAGE_SIZE = 8;        // Treffer je Seite im Auswahldialog, „Weitere Treffer" zeigt die nächsten
+const LRCLIB_MAX_CANDIDATES = 50;  // Obergrenze über alle Suchen (LRCLIB liefert je Suche höchstens 20)
 
 /** Zeitmarken einer LRC-Fassung entfernen: „[01:02.34] Text" → „Text"; Kopfzeilen wie „[ar:…]" fallen weg. */
 function lrcToPlainText(lrc) {
@@ -3856,10 +3857,21 @@ function lrcToPlainText(lrc) {
 }
 
 /**
- * Brauchbare Treffer aus einer LRCLIB-Antwort, höchstens LRCLIB_MAX_CHOICES.
+ * Brauchbare Treffer aus einer LRCLIB-Antwort, höchstens LRCLIB_MAX_CANDIDATES.
  * Fremde Daten — jedes Feld wird geprüft, Instrumentals und leere Texte
  * fallen weg, gleiche Texte (LRCLIB kennt viele Dubletten) nur einmal.
  */
+/** Vergleichsschlüssel eines Liedtexts — gleich, wenn sich nur Groß-/Kleinschreibung oder Leerraum unterscheiden. */
+function lrclibTextKey(text) {
+  return String(text).toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** `more` an `list` anhängen, ohne Texte, die dort schon stehen. */
+function lrclibMerge(list, more) {
+  const seen = new Set(list.map((c) => lrclibTextKey(c.text)));
+  return [...list, ...more.filter((c) => !seen.has(lrclibTextKey(c.text)))].slice(0, LRCLIB_MAX_CANDIDATES);
+}
+
 function lrclibCandidates(json) {
   if (!Array.isArray(json)) return [];
   const str = (v) => (typeof v === 'string' ? v.trim().slice(0, BACKUP_MAX_TITLE_LEN) : '');
@@ -3871,14 +3883,14 @@ function lrclibCandidates(json) {
       : (typeof item.syncedLyrics === 'string' ? lrcToPlainText(item.syncedLyrics) : '');
     text = text.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
     if (!text || text.length > BACKUP_MAX_TEXT_LEN) continue;
-    const key = text.toLowerCase().replace(/\s+/g, ' ');
+    const key = lrclibTextKey(text);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({
       title: str(item.trackName), artist: str(item.artistName),
       text,
     });
-    if (out.length >= LRCLIB_MAX_CHOICES) break;
+    if (out.length >= LRCLIB_MAX_CANDIDATES) break;
   }
   return out;
 }
@@ -3920,39 +3932,101 @@ async function lrclibSearch(params, onWait) {
   }
 }
 
-/** Mit Interpret suchen; ohne Treffer noch einmal nur nach dem Titel (Chorsätze tragen oft einen anderen Interpreten). */
+/**
+ * Mit Interpret suchen; ohne Treffer noch einmal nur nach dem Titel (Chorsätze
+ * tragen oft einen anderen Interpreten). → { candidates, broad }: `broad`
+ * heißt, die Suche nur nach dem Titel lief schon — sonst kann der Dialog sie
+ * über „Weitere Treffer" noch nachholen (lrclibBroaden).
+ */
 async function lrclibFind(song, onWait) {
   const title = String(song.title || '').trim();
   const artist = String(song.artist || '').trim();
-  if (!artist) return lrclibSearch({ track_name: title }, onWait);
+  if (!artist) return { candidates: await lrclibSearch({ track_name: title }, onWait), broad: true };
   const found = await lrclibSearch({ track_name: title, artist_name: artist }, onWait);
-  if (found.length) return found;
+  if (found.length) return { candidates: found, broad: false };
   await new Promise((r) => setTimeout(r, LRCLIB_RETRY_PAUSE_MS));
-  return lrclibSearch({ track_name: title }, onWait);
+  return { candidates: await lrclibSearch({ track_name: title }, onWait), broad: true };
 }
 
-/** Auswahl unter den Treffern → der gewählte Treffer oder null. */
-function lrclibPickDialog(song, candidates) {
+/** Die breitere Suche nur nach dem Titel (für „Weitere Treffer"). */
+function lrclibBroaden(song, onWait) {
+  return lrclibSearch({ track_name: String(song.title || '').trim() }, onWait);
+}
+
+/** Fehler einer LRCLIB-Suche als Meldung (siehe lrclibSearch). */
+function lrclibErrorBanner(err) {
+  const status = err.status ? ` (HTTP ${err.status})` : '';
+  if (err.code === 'busy') banner(t('lyrics.lrclib.busy').replace('{status}', status), { kind: 'error' });
+  else if (err.code === 'offline') banner(t('lyrics.lrclib.offline'), { kind: 'error' });
+  else bannerError(t('lyrics.lrclib.failed') + status, 'LRCLIB', err);
+}
+
+/**
+ * Auswahl unter den Treffern, seitenweise. Am Ende der Liste ein Knopf, falls
+ * nichts passt: erst „Weitere Treffer" (die nächsten schon geladenen, dann
+ * einmal die breitere Suche nur nach dem Titel), danach „Bei Google suchen".
+ * → der gewählte Treffer, `{ google: true }` oder null bei Abbruch.
+ */
+function lrclibPickDialog(song, candidates, { broad }) {
   return new Promise((resolve) => {
     const done = (v) => { layer.remove(); resolve(v); };
+    let all = candidates;
+    let shown = Math.min(LRCLIB_PAGE_SIZE, all.length);
+    let loading = false;
     // Die ersten drei Zeilen — eine allein ist bei Dubletten oft gleich.
     const firstLines = (text) => text.split('\n').filter((line) => line.trim()).slice(0, 3);
+    const item = (c) => el('button', {
+      class: 'btn btn--block', type: 'button',
+      style: 'display:block; height:auto; text-align:left; white-space:normal; padding:10px 12px',
+      onclick: () => done(c),
+    },
+    el('strong', { style: 'display:block', text: [c.title, c.artist].filter(Boolean).join(' – ') || song.title }),
+    firstLines(c.text).map((line) => el('span', {
+      class: 'small', style: 'display:block; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap',
+      text: line,
+    })));
+    const list = el('div', { class: 'stack', style: 'max-height:50vh; overflow:auto' });
+    const moreBtn = el('button', { class: 'btn btn--block', type: 'button' });
+
+    const render = () => {
+      list.replaceChildren(...all.slice(0, shown).map(item), moreBtn);
+      moreBtn.disabled = loading;
+      moreBtn.textContent = loading ? t('lyrics.lrclib.searching')
+        : (shown < all.length || !broad) ? t('lyrics.lrclib.more') : t('lyrics.searchGoogle');
+    };
+    moreBtn.addEventListener('click', async () => {
+      if (loading) return;
+      if (shown < all.length) {
+        shown = Math.min(shown + LRCLIB_PAGE_SIZE, all.length);
+        render();
+        return;
+      }
+      if (broad) { done({ google: true }); return; }
+      loading = true;
+      render();
+      try {
+        const before = all.length;
+        all = lrclibMerge(all, await lrclibBroaden(song, (sec) => {
+          moreBtn.textContent = t('lyrics.lrclib.waiting').replace('{s}', sec);
+        }));
+        broad = true;
+        if (all.length === before) banner(t('lyrics.lrclib.noMore'));
+        shown = Math.min(shown + LRCLIB_PAGE_SIZE, all.length);
+      } catch (err) {
+        lrclibErrorBanner(err);
+      } finally {
+        loading = false;
+        if (layer.isConnected) render();
+      }
+    });
+
     const box = el('div', { class: 'dialog' },
       el('h2', { text: t('lyrics.lrclib.pickTitle') }),
       el('p', { text: t('lyrics.lrclib.pickText').replace('{song}', song.title) }),
-      el('div', { class: 'stack', style: 'max-height:50vh; overflow:auto' },
-        candidates.map((c) => el('button', {
-          class: 'btn btn--block', type: 'button',
-          style: 'display:block; height:auto; text-align:left; white-space:normal; padding:10px 12px',
-          onclick: () => done(c),
-        },
-        el('strong', { style: 'display:block', text: [c.title, c.artist].filter(Boolean).join(' – ') || song.title }),
-        firstLines(c.text).map((line) => el('span', {
-          class: 'small', style: 'display:block; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap',
-          text: line,
-        }))))),
+      list,
       el('div', { class: 'dialog-actions' },
         el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) })));
+    render();
     const layer = el('div', { class: 'overlay' }, box);
     layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
     mountModal(layer, { onEscape: () => done(null) });
@@ -4005,27 +4079,25 @@ async function loadLyricsFromLrclib() {
     closeBusy();
     closeBusy = banner(t('lyrics.lrclib.waiting').replace('{s}', sec), { timeout: 0 });
   };
-  let candidates;
+  let found;
   try {
-    candidates = await lrclibFind(song, onWait);
+    found = await lrclibFind(song, onWait);
   } catch (err) {
     closeBusy();
-    const status = err.status ? ` (HTTP ${err.status})` : '';
-    if (err.code === 'busy') banner(t('lyrics.lrclib.busy').replace('{status}', status), { kind: 'error' });
-    else if (err.code === 'offline') banner(t('lyrics.lrclib.offline'), { kind: 'error' });
-    else bannerError(t('lyrics.lrclib.failed') + status, 'LRCLIB', err);
+    lrclibErrorBanner(err);
     return;
   } finally {
     lrclibRunning = false;
   }
   closeBusy();
   if (playerSong !== song) return;
-  if (!candidates.length) {
+  if (!found.candidates.length) {
     banner(t('lyrics.lrclib.none').replace('{song}', song.title));
     return;
   }
-  const pick = await lrclibPickDialog(song, candidates);
+  const pick = await lrclibPickDialog(song, found.candidates, { broad: found.broad });
   if (!pick || playerSong !== song) return;
+  if (pick.google) { await openLyricsSearch(); return; }
   await applyLrclibLyrics(song, pick.text);
 }
 
@@ -20041,6 +20113,8 @@ function runSelfTests() {
         || c[1].text !== 'Nur synchron' || c[1].artist !== '' || lrclibCandidates({}).length !== 0) {
       failed.push('lrclibCandidates: Treffer müssten bereinigt und gefiltert werden');
     }
+    const merged = lrclibMerge([{ text: 'A b' }], [{ text: 'a  B' }, { text: 'C' }]);
+    if (merged.length !== 2 || merged[1].text !== 'C') failed.push('lrclibMerge: gleiche Texte dürften nur einmal vorkommen');
     const now = Date.parse('2026-10-21T12:00:00Z');
     if (lrclibBusyDelayMs('3', 1, now) !== 3000 || lrclibBusyDelayMs(null, 1, now) !== 2000
         || lrclibBusyDelayMs('', 2, now) !== 4000 || lrclibBusyDelayMs('600', 1, now) !== LRCLIB_BUSY_MAX_WAIT_MS

@@ -72,8 +72,11 @@ Menü mit zwei Wegen:
   während einer laufenden Suche startet keine weitere. Die Antwort wird als
   fremde Daten geprüft (`lrclibCandidates()`: Instrumentals, leere Texte und
   Dubletten fallen weg, nur synchronisierte Texte verlieren ihre Zeitmarken),
-  höchstens acht Treffer stehen zur Auswahl, je mit Titel, Interpret und
-  den ersten drei Zeilen. Der gewählte Text wird zum
+  zur Auswahl stehen je acht Treffer mit Titel, Interpret und den ersten
+  drei Zeilen. Passt keiner, zeigt „Weitere Treffer“ am Listenende erst die
+  übrigen schon geladenen (LRCLIB liefert bis zu 20 je Suche), dann — falls
+  bisher mit Interpret gesucht wurde — einmal die Suche nur nach dem Titel;
+  danach wird der Knopf zu „Bei Google suchen“. Der gewählte Text wird zum
   **eigenen Liedtext** und öffnet sich zum Prüfen; ein vorhandener eigener
   Text wird nur nach Rückfrage ersetzt, die offizielle Fassung aus dem Import
   nie angefasst. Vor dem ersten Abruf weist ein Dialog darauf hin, was
