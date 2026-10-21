@@ -5,7 +5,8 @@ Installierbare, rein lokale Progressive-Web-App zum Üben mit den
 Inhalte (Songs, Aufnahmen, Notizen, Einstellungen) verlassen nie das Gerät.
 Nutzt man die optionale Liedsuche (Lupe im Player), gehen Songtitel und ggf.
 Interpret an den gewählten externen Dienst — siehe
-[Externe Liedsuche](#externe-liedsuche). Der Internetzeit-Abgleich der
+[Externe Liedsuche](#externe-liedsuche); dasselbe gilt für den optionalen
+Liedtext-Abruf bei LRCLIB im Lyrics-Reiter. Der Internetzeit-Abgleich der
 Lichtshow (siehe [Lichtshow](#lichtshow)) baut nach ausdrücklicher
 Bestätigung eine kurze Verbindung zur Atomuhr der PTB (uhr.ptb.de) auf und
 fragt darüber einige Male die Uhrzeit ab. Unabhängig davon prüft der Browser
@@ -51,11 +52,33 @@ automatisch im Hintergrund. Vor der allerersten Nutzung weist die App
 einmalig aktiv darauf hin (kein sich selbst wegklickender Hinweis, sondern
 ein Dialog mit echter Wahl).
 
-Im Lyrics-Reiter öffnet die Lupe in der Leiste (`#btn-lyrics-search`) Google
-mit „<Interpret> <Titel> lyrics“ — immer Google, unabhängig vom Standarddienst
-der Lupe im Player-Kopf. Auch hier gehen nur Titel und ggf. Interpret raus, nur
-bei aktivem Antippen, und vor dem ersten Mal weist die App einmalig darauf hin
-(`settings.lyricsSearchNoticeShown`).
+Im Lyrics-Reiter öffnet die Lupe in der Leiste (`#btn-lyrics-search`) ein
+Menü mit zwei Wegen:
+
+- **„Bei Google suchen“** öffnet Google mit „<Interpret> <Titel> lyrics“ —
+  immer Google, unabhängig vom Standarddienst der Lupe im Player-Kopf. Vor dem
+  ersten Mal einmaliger Hinweis (`settings.lyricsSearchNoticeShown`).
+- **„Liedtext von LRCLIB laden“** fragt die freie Liedtext-Datenbank
+  [LRCLIB](https://lrclib.net) direkt aus dem Browser ab
+  (`loadLyricsFromLrclib()`, `GET https://lrclib.net/api/search` mit
+  `track_name` und ggf. `artist_name`; ohne Treffer nach gut einer Sekunde
+  Pause noch einmal nur mit dem Titel). LRCLIB erlaubt CORS für jede Herkunft
+  und braucht keinen Schlüssel, deshalb geht das ohne eigenen Server. Bewusst
+  ein einfacher GET ohne `Lrclib-Client`-Kopfzeile: die löste eine
+  CORS-Vorabanfrage aus und verdoppelte jede Suche, und LRCLIB drosselt
+  (429/503) schon bei etwa einer Anfrage pro Sekunde. Die Antwort wird als
+  fremde Daten geprüft (`lrclibCandidates()`: Instrumentals, leere Texte und
+  Dubletten fallen weg, nur synchronisierte Texte verlieren ihre Zeitmarken),
+  höchstens acht Treffer stehen zur Auswahl. Der gewählte Text wird zum
+  **eigenen Liedtext** und öffnet sich zum Prüfen; ein vorhandener eigener
+  Text wird nur nach Rückfrage ersetzt, die offizielle Fassung aus dem Import
+  nie angefasst. Vor dem ersten Abruf weist ein Dialog darauf hin, was
+  hinausgeht (Titel, Interpret, IP-Adresse), wer den Dienst betreibt
+  (Privatperson in Vietnam, Anfragen über Cloudflare, keine
+  Datenschutzerklärung) und dass Liedtexte meist geschützt sind
+  (`settings.lrclibNoticeShown`).
+
+Beide Wege laufen nur auf aktives Antippen, nie im Hintergrund.
 
 ## Dateiübersicht
 
@@ -633,7 +656,7 @@ Genanntes:
 ```
 default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self';
 style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:;
-media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' wss://uhr.ptb.de;
+media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' wss://uhr.ptb.de https://lrclib.net;
 manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';
 ```
 
@@ -650,9 +673,10 @@ manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';
   haben als eigene Seiten keine eigene CSP-Meta-Angabe; sie laden nichts von
   außen.
 - `connect-src` erlaubt neben der eigenen Herkunft ausschließlich
-  `wss://uhr.ptb.de` — das einzige Ziel, das die App je aktiv per
-  WebSocket anspricht (siehe [Lichtshow](#lichtshow)); jede andere
-  Netzwerkanfrage aus dem Code wäre damit von vornherein blockiert.
+  `wss://uhr.ptb.de` (Internetzeit per WebSocket, siehe
+  [Lichtshow](#lichtshow)) und `https://lrclib.net` (Liedtext-Abruf, siehe
+  [Externe Liedsuche](#externe-liedsuche)); jede andere Netzwerkanfrage aus
+  dem Code wäre damit von vornherein blockiert.
 - `manifest-src 'self'`, `object-src 'none'`, `base-uri 'none'` und
   `form-action 'none'` schließen die übrigen Kanäle.
 

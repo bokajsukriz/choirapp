@@ -1298,6 +1298,7 @@ const DEFAULT_SETTINGS = {
   songSearchService: 'youtube', // Standarddienst fürs Lupen-Symbol im Player (siehe SONG_SEARCH_SERVICES)
   songSearchNoticeShown: false, // einmaliger Hinweis vor der allerersten externen Liedsuche schon gezeigt? (AP-04)
   lyricsSearchNoticeShown: false, // dasselbe für die Liedtext-Suche im Lyrics-Reiter (immer Google)
+  lrclibNoticeShown: false, // einmaliger Hinweis vor dem ersten Liedtext-Abruf bei LRCLIB
   lightshowOffsetMs: 0,       // vom PTB-Zeitserver ermittelte Korrektur der Geräteuhr in ms
   lightshowVoice: null,       // null = automatisch aus myVoices
   lightshowShow: 'sterne',    // zuletzt gewählte Show
@@ -3804,7 +3805,200 @@ async function openLyricsSearch() {
   if (!query) return;
   openAppOrWeb({ web: `https://www.google.com/search?q=${encodeURIComponent(`${query} lyrics`)}` });
 }
-$('#btn-lyrics-search').addEventListener('click', openLyricsSearch);
+
+/* ---------- Liedtext von LRCLIB -------------------------------------------
+   LRCLIB (https://lrclib.net) ist eine freie Liedtext-Datenbank ohne
+   Schlüssel, die CORS für jede Herkunft erlaubt (Access-Control-Allow-Origin
+   *) — der Abruf läuft deshalb direkt aus dem Browser, ohne eigenen Server
+   (CSP: connect-src https://lrclib.net). Bewusst ein „einfacher" GET ohne
+   eigene Kopfzeile wie `Lrclib-Client`: die löste eine CORS-Vorabanfrage aus
+   und verdoppelte jede Suche, und LRCLIB drosselt (429/503) schon bei etwa
+   einer Anfrage pro Sekunde. Nur auf aktives Antippen und vor dem ersten Mal
+   mit Hinweis, was wohin geht. Der Text landet im eigenen Liedtext
+   (lyricsNote) und öffnet sich zum Prüfen — die offizielle Fassung aus dem
+   Import bleibt unberührt. */
+
+const LRCLIB_SEARCH_URL = 'https://lrclib.net/api/search';
+const LRCLIB_TIMEOUT_MS = 15000;
+const LRCLIB_RETRY_PAUSE_MS = 1200; // zweite Suche ohne Interpret, nicht schneller als LRCLIB erlaubt
+const LRCLIB_MAX_CHOICES = 8;
+
+/** Zeitmarken einer LRC-Fassung entfernen: „[01:02.34] Text" → „Text"; Kopfzeilen wie „[ar:…]" fallen weg. */
+function lrcToPlainText(lrc) {
+  return String(lrc)
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*\[[a-z]+:[^\]]*\]\s*$/i.test(line))
+    .map((line) => line
+      .replace(/\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]/g, '')
+      .replace(/<\d{1,3}:\d{2}(?:[.:]\d{1,3})?>/g, '')
+      .trim())
+    .join('\n');
+}
+
+/**
+ * Brauchbare Treffer aus einer LRCLIB-Antwort, höchstens LRCLIB_MAX_CHOICES.
+ * Fremde Daten — jedes Feld wird geprüft, Instrumentals und leere Texte
+ * fallen weg, gleiche Texte (LRCLIB kennt viele Dubletten) nur einmal.
+ */
+function lrclibCandidates(json) {
+  if (!Array.isArray(json)) return [];
+  const str = (v) => (typeof v === 'string' ? v.trim().slice(0, BACKUP_MAX_TITLE_LEN) : '');
+  const seen = new Set();
+  const out = [];
+  for (const item of json) {
+    if (!isPlainObject(item) || item.instrumental === true) continue;
+    let text = typeof item.plainLyrics === 'string' && item.plainLyrics.trim() ? item.plainLyrics
+      : (typeof item.syncedLyrics === 'string' ? lrcToPlainText(item.syncedLyrics) : '');
+    text = text.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+    if (!text || text.length > BACKUP_MAX_TEXT_LEN) continue;
+    const key = text.toLowerCase().replace(/\s+/g, ' ');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      title: str(item.trackName), artist: str(item.artistName), album: str(item.albumName),
+      duration: Number.isFinite(item.duration) && item.duration > 0 ? item.duration : null,
+      text,
+    });
+    if (out.length >= LRCLIB_MAX_CHOICES) break;
+  }
+  return out;
+}
+
+/** Eine Suche bei LRCLIB. Wirft einen Fehler mit `code`: 'busy' | 'offline' | 'failed'. */
+async function lrclibSearch(params) {
+  const fail = (code, cause) => Object.assign(new Error(`LRCLIB: ${code}`, { cause }), { code });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), LRCLIB_TIMEOUT_MS);
+  try {
+    let res;
+    try {
+      res = await fetch(`${LRCLIB_SEARCH_URL}?${new URLSearchParams(params)}`, {
+        signal: ctrl.signal, credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store',
+      });
+    } catch (err) {
+      // Offline, Zeitüberschreitung — oder eine Drosselung (429) ohne
+      // CORS-Kopfzeilen, die der Browser nur als Netzwerkfehler meldet.
+      throw fail('offline', err);
+    }
+    if (res.status === 429 || res.status === 503) throw fail('busy');
+    if (!res.ok) throw fail('failed', new Error(`HTTP ${res.status}`));
+    try { return lrclibCandidates(await res.json()); }
+    catch (err) { throw fail('failed', err); }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Mit Interpret suchen; ohne Treffer noch einmal nur nach dem Titel (Chorsätze tragen oft einen anderen Interpreten). */
+async function lrclibFind(song) {
+  const title = String(song.title || '').trim();
+  const artist = String(song.artist || '').trim();
+  if (!artist) return lrclibSearch({ track_name: title });
+  const found = await lrclibSearch({ track_name: title, artist_name: artist });
+  if (found.length) return found;
+  await new Promise((r) => setTimeout(r, LRCLIB_RETRY_PAUSE_MS));
+  return lrclibSearch({ track_name: title });
+}
+
+/** Auswahl unter den Treffern → der gewählte Treffer oder null. */
+function lrclibPickDialog(song, candidates) {
+  return new Promise((resolve) => {
+    const done = (v) => { layer.remove(); resolve(v); };
+    const firstLine = (text) => text.split('\n').find((line) => line.trim()) || '';
+    const box = el('div', { class: 'dialog' },
+      el('h2', { text: t('lyrics.lrclib.pickTitle') }),
+      el('p', { text: t('lyrics.lrclib.pickText').replace('{song}', song.title) }),
+      el('div', { class: 'stack', style: 'max-height:50vh; overflow:auto' },
+        candidates.map((c) => el('button', {
+          class: 'btn btn--block', type: 'button',
+          style: 'display:block; height:auto; text-align:left; white-space:normal; padding:10px 12px',
+          onclick: () => done(c),
+        },
+        el('strong', { style: 'display:block', text: [c.title, c.artist].filter(Boolean).join(' – ') || song.title }),
+        el('span', { class: 'small muted', style: 'display:block',
+          text: [c.album, c.duration ? fmtTime(c.duration) : '', tPlural(c.text.split('\n').filter((l) => l.trim()).length, 'lyrics.lrclib.lineOne', 'lyrics.lrclib.lineMany')]
+            .filter(Boolean).join(' · ') }),
+        el('span', { class: 'small', style: 'display:block; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap',
+          text: firstLine(c.text) })))),
+      el('div', { class: 'dialog-actions' },
+        el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) })));
+    const layer = el('div', { class: 'overlay' }, box);
+    layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
+    mountModal(layer, { onEscape: () => done(null) });
+  });
+}
+
+/** Text als eigenen Liedtext übernehmen und zum Prüfen in der Bearbeitung öffnen. */
+async function applyLrclibLyrics(song, text) {
+  const current = (lyricsNoteEditing ? $('#lyrics-note-text').value : playerLyricsNote?.text) || '';
+  if (current.trim() && current.trim() !== text.trim()) {
+    const ok = await confirmDialog({
+      title: t('lyrics.lrclib.replaceTitle'),
+      text: t('lyrics.lrclib.replaceText'),
+      okLabel: t('lyrics.lrclib.replaceOk'),
+      danger: true,
+    });
+    if (!ok) return;
+  }
+  if (playerSong !== song) return;
+  lyricsSource = 'private';
+  startLyricsNoteEditing();
+  if (!lyricsNoteEditing) return;
+  $('#lyrics-note-text').value = text;
+  await saveLyricsNote();
+  renderLyricsBlock();
+  banner(t('lyrics.lrclib.applied'), { kind: 'ok' });
+}
+
+async function loadLyricsFromLrclib() {
+  if (!playerSong) return;
+  if (!settings.lrclibNoticeShown) {
+    const ok = await confirmDialog({
+      title: t('lyrics.lrclib.noticeTitle'),
+      text: t('lyrics.lrclib.noticeText'),
+      okLabel: t('lyrics.lrclib.noticeOk'),
+    });
+    if (!ok) return;
+    await saveSettings({ lrclibNoticeShown: true });
+  }
+  // Song erst jetzt festhalten — während des Hinweises kann er gewechselt haben.
+  const song = playerSong;
+  if (!song || !String(song.title || '').trim()) return;
+  const closeBusy = banner(t('lyrics.lrclib.searching'), { timeout: 0 });
+  let candidates;
+  try {
+    candidates = await lrclibFind(song);
+  } catch (err) {
+    closeBusy();
+    if (err.code === 'busy') banner(t('lyrics.lrclib.busy'), { kind: 'error' });
+    else if (err.code === 'offline') banner(t('lyrics.lrclib.offline'), { kind: 'error' });
+    else bannerError(t('lyrics.lrclib.failed'), 'LRCLIB', err);
+    return;
+  }
+  closeBusy();
+  if (playerSong !== song) return;
+  if (!candidates.length) {
+    banner(t('lyrics.lrclib.none').replace('{song}', song.title));
+    return;
+  }
+  const pick = await lrclibPickDialog(song, candidates);
+  if (!pick || playerSong !== song) return;
+  await applyLrclibLyrics(song, pick.text);
+}
+
+// Die Lupe im Lyrics-Reiter: Text direkt von LRCLIB holen oder wie bisher
+// bei Google suchen.
+const LYRICS_GOOGLE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>';
+$('#btn-lyrics-search').addEventListener('click', async (e) => {
+  if (!playerSong) return;
+  const btn = e.currentTarget;
+  const choice = await floatingMenu(btn, [
+    { value: 'lrclib', label: t('lyrics.lrclib.menu'), icon: REC_EXPORT_DOWNLOAD_ICON },
+    { value: 'google', label: t('lyrics.searchGoogle'), icon: LYRICS_GOOGLE_ICON },
+  ]);
+  if (choice === 'lrclib') await loadLyricsFromLrclib();
+  else if (choice === 'google') await openLyricsSearch();
+});
 
 function renderSongSearchServicePicker() {
   const host = $('#song-search-service-picker');
@@ -19785,6 +19979,25 @@ function runSelfTests() {
       || parsedPrintable[0].songTitle !== 'Erster Song'
       || parsedPrintable[0].text !== 'Zeile eins\nZeile zwei') {
     failed.push('Notiz-Export müsste sich verlustfrei wieder importieren lassen');
+  }
+  // LRCLIB: Zeitmarken raus, Dubletten/Instrumentals/Unbrauchbares weg.
+  checks++;
+  {
+    if (lrcToPlainText('[ar:Wer]\n[00:01.20] Erste Zeile\n[00:03.50]<00:03.50> Zweite\n') !== 'Erste Zeile\nZweite\n') {
+      failed.push('lrcToPlainText: Zeitmarken und Kopfzeilen müssten verschwinden');
+    }
+    const c = lrclibCandidates([
+      { trackName: 'A', artistName: 'B', plainLyrics: 'Text\r\neins', duration: 120 },
+      { trackName: 'A', plainLyrics: 'Text\neins' },                // Dublette
+      { trackName: 'C', instrumental: true, plainLyrics: 'x' },
+      { trackName: 'D', plainLyrics: '', syncedLyrics: '[00:01.00] Nur synchron' },
+      { trackName: 7, plainLyrics: '   ' },
+      'kaputt',
+    ]);
+    if (c.length !== 2 || c[0].text !== 'Text\neins' || c[0].duration !== 120
+        || c[1].text !== 'Nur synchron' || c[1].artist !== '' || lrclibCandidates({}).length !== 0) {
+      failed.push('lrclibCandidates: Treffer müssten bereinigt und gefiltert werden');
+    }
   }
   // latestRuns(): nur der jüngste Lauf ist aktuell, invalidate() macht alle veraltet.
   checks++;
