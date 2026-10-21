@@ -905,12 +905,13 @@ window.addEventListener('resize', () => {
   if (openFabMenu) placeFabMenu(openFabMenu.btn, openFabMenu.backdrop);
 });
 
-/* Bibliothek: drei gleichrangige Wege, an Songs zu kommen — ZIP aus der
-   Dropbox (#import-view), einzelne Recordings (#rec-import-input) und ein
-   Platzhalter ganz ohne Aufnahme. */
+/* Bibliothek: gleichrangige Wege, an Songs zu kommen — ZIP aus der Dropbox
+   (#import-view), einzelne Recordings (#rec-import-input), ein exportierter
+   Song (#song-import-input) und ein Platzhalter ganz ohne Aufnahme. */
 wireFabMenu('#btn-songs-import-fab', '#songs-fab-backdrop', async (action) => {
   if (action === 'dropbox') { navigate('#import'); return; }
   if (action === 'recordings') { navigate('#settings'); $('#rec-import-input').click(); return; }
+  if (action === 'package') { $('#song-import-input').click(); return; }
   if (action === 'placeholder') {
     const title = await promptDialog({
       title: t('songs.placeholderTitle'),
