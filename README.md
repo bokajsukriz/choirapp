@@ -66,10 +66,14 @@ Menü mit zwei Wegen:
   und braucht keinen Schlüssel, deshalb geht das ohne eigenen Server. Bewusst
   ein einfacher GET ohne `Lrclib-Client`-Kopfzeile: die löste eine
   CORS-Vorabanfrage aus und verdoppelte jede Suche, und LRCLIB drosselt
-  (429/503) schon bei etwa einer Anfrage pro Sekunde. Die Antwort wird als
+  (429/503) schon bei etwa einer Anfrage pro Sekunde. Bei 429/503 versucht
+  die App es bis zu zweimal selbst erneut (Wartezeit aus `Retry-After`, sonst
+  2 bzw. 4 s, höchstens 10 s; `lrclibBusyDelayMs()`), ein zweites Antippen
+  während einer laufenden Suche startet keine weitere. Die Antwort wird als
   fremde Daten geprüft (`lrclibCandidates()`: Instrumentals, leere Texte und
   Dubletten fallen weg, nur synchronisierte Texte verlieren ihre Zeitmarken),
-  höchstens acht Treffer stehen zur Auswahl. Der gewählte Text wird zum
+  höchstens acht Treffer stehen zur Auswahl, je mit Titel, Interpret und
+  den ersten drei Zeilen. Der gewählte Text wird zum
   **eigenen Liedtext** und öffnet sich zum Prüfen; ein vorhandener eigener
   Text wird nur nach Rückfrage ersetzt, die offizielle Fassung aus dem Import
   nie angefasst. Vor dem ersten Abruf weist ein Dialog darauf hin, was

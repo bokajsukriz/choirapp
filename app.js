@@ -3820,7 +3820,27 @@ async function openLyricsSearch() {
 
 const LRCLIB_SEARCH_URL = 'https://lrclib.net/api/search';
 const LRCLIB_TIMEOUT_MS = 15000;
-const LRCLIB_RETRY_PAUSE_MS = 1200; // zweite Suche ohne Interpret, nicht schneller als LRCLIB erlaubt
+const LRCLIB_RETRY_PAUSE_MS = 2500; // zweite Suche ohne Interpret — mit Abstand, LRCLIB drosselt schon bei ~1 Anfrage/s
+// Bei 429/503 automatisch noch einmal: höchstens so oft, gewartet wird so
+// lange, wie Retry-After sagt (sonst 2 s, dann 4 s), aber nie länger als
+// LRCLIB_BUSY_MAX_WAIT_MS — wer tippt, soll nicht ewig vor einem Banner sitzen.
+const LRCLIB_BUSY_RETRIES = 2;
+const LRCLIB_BUSY_MAX_WAIT_MS = 10000;
+
+/**
+ * Wartezeit vor dem nächsten Versuch nach 429/503, in ms. `retryAfter` ist
+ * die Kopfzeile (Sekunden oder HTTP-Datum, oft fehlend: LRCLIB gibt sie per
+ * CORS frei, die vorgelagerte Drosselung womöglich nicht); `attempt` zählt ab 1.
+ */
+function lrclibBusyDelayMs(retryAfter, attempt, now = Date.now()) {
+  let ms = NaN;
+  const raw = String(retryAfter ?? '').trim();
+  if (/^\d+(\.\d+)?$/.test(raw)) ms = Number(raw) * 1000;
+  else if (raw) ms = Date.parse(raw) - now;
+  const fallback = 2000 * attempt;
+  if (!Number.isFinite(ms) || ms < 0) ms = fallback;
+  return Math.min(LRCLIB_BUSY_MAX_WAIT_MS, Math.max(ms, 1000));
+}
 const LRCLIB_MAX_CHOICES = 8;
 
 /** Zeitmarken einer LRC-Fassung entfernen: „[01:02.34] Text" → „Text"; Kopfzeilen wie „[ar:…]" fallen weg. */
@@ -3855,8 +3875,7 @@ function lrclibCandidates(json) {
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({
-      title: str(item.trackName), artist: str(item.artistName), album: str(item.albumName),
-      duration: Number.isFinite(item.duration) && item.duration > 0 ? item.duration : null,
+      title: str(item.trackName), artist: str(item.artistName),
       text,
     });
     if (out.length >= LRCLIB_MAX_CHOICES) break;
@@ -3864,12 +3883,17 @@ function lrclibCandidates(json) {
   return out;
 }
 
-/** Eine Suche bei LRCLIB. Wirft einen Fehler mit `code`: 'busy' | 'offline' | 'failed'. */
-async function lrclibSearch(params) {
-  const fail = (code, cause) => Object.assign(new Error(`LRCLIB: ${code}`, { cause }), { code });
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), LRCLIB_TIMEOUT_MS);
-  try {
+/**
+ * Eine Suche bei LRCLIB. Bei 429/503 bis zu LRCLIB_BUSY_RETRIES weitere
+ * Versuche (siehe lrclibBusyDelayMs), `onWait(sekunden)` meldet die Pause.
+ * Wirft einen Fehler mit `code` 'busy' | 'offline' | 'failed' und, wenn es
+ * eine Antwort gab, `status`.
+ */
+async function lrclibSearch(params, onWait) {
+  const fail = (code, cause, status) => Object.assign(new Error(`LRCLIB: ${code}${status ? ` (HTTP ${status})` : ''}`, { cause }), { code, status });
+  for (let attempt = 1; ; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), LRCLIB_TIMEOUT_MS);
     let res;
     try {
       res = await fetch(`${LRCLIB_SEARCH_URL}?${new URLSearchParams(params)}`, {
@@ -3879,32 +3903,40 @@ async function lrclibSearch(params) {
       // Offline, Zeitüberschreitung — oder eine Drosselung (429) ohne
       // CORS-Kopfzeilen, die der Browser nur als Netzwerkfehler meldet.
       throw fail('offline', err);
+    } finally {
+      clearTimeout(timer);
     }
-    if (res.status === 429 || res.status === 503) throw fail('busy');
-    if (!res.ok) throw fail('failed', new Error(`HTTP ${res.status}`));
+    if (res.status === 429 || res.status === 503) {
+      dlog('lrclib:busy', { status: res.status, attempt, retryAfter: res.headers.get('retry-after') });
+      if (attempt > LRCLIB_BUSY_RETRIES) throw fail('busy', null, res.status);
+      const wait = lrclibBusyDelayMs(res.headers.get('retry-after'), attempt);
+      onWait?.(Math.ceil(wait / 1000));
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
+    }
+    if (!res.ok) throw fail('failed', null, res.status);
     try { return lrclibCandidates(await res.json()); }
-    catch (err) { throw fail('failed', err); }
-  } finally {
-    clearTimeout(timer);
+    catch (err) { throw fail('failed', err, res.status); }
   }
 }
 
 /** Mit Interpret suchen; ohne Treffer noch einmal nur nach dem Titel (Chorsätze tragen oft einen anderen Interpreten). */
-async function lrclibFind(song) {
+async function lrclibFind(song, onWait) {
   const title = String(song.title || '').trim();
   const artist = String(song.artist || '').trim();
-  if (!artist) return lrclibSearch({ track_name: title });
-  const found = await lrclibSearch({ track_name: title, artist_name: artist });
+  if (!artist) return lrclibSearch({ track_name: title }, onWait);
+  const found = await lrclibSearch({ track_name: title, artist_name: artist }, onWait);
   if (found.length) return found;
   await new Promise((r) => setTimeout(r, LRCLIB_RETRY_PAUSE_MS));
-  return lrclibSearch({ track_name: title });
+  return lrclibSearch({ track_name: title }, onWait);
 }
 
 /** Auswahl unter den Treffern → der gewählte Treffer oder null. */
 function lrclibPickDialog(song, candidates) {
   return new Promise((resolve) => {
     const done = (v) => { layer.remove(); resolve(v); };
-    const firstLine = (text) => text.split('\n').find((line) => line.trim()) || '';
+    // Die ersten drei Zeilen — eine allein ist bei Dubletten oft gleich.
+    const firstLines = (text) => text.split('\n').filter((line) => line.trim()).slice(0, 3);
     const box = el('div', { class: 'dialog' },
       el('h2', { text: t('lyrics.lrclib.pickTitle') }),
       el('p', { text: t('lyrics.lrclib.pickText').replace('{song}', song.title) }),
@@ -3915,11 +3947,10 @@ function lrclibPickDialog(song, candidates) {
           onclick: () => done(c),
         },
         el('strong', { style: 'display:block', text: [c.title, c.artist].filter(Boolean).join(' – ') || song.title }),
-        el('span', { class: 'small muted', style: 'display:block',
-          text: [c.album, c.duration ? fmtTime(c.duration) : '', tPlural(c.text.split('\n').filter((l) => l.trim()).length, 'lyrics.lrclib.lineOne', 'lyrics.lrclib.lineMany')]
-            .filter(Boolean).join(' · ') }),
-        el('span', { class: 'small', style: 'display:block; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap',
-          text: firstLine(c.text) })))),
+        firstLines(c.text).map((line) => el('span', {
+          class: 'small', style: 'display:block; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap',
+          text: line,
+        }))))),
       el('div', { class: 'dialog-actions' },
         el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) })));
     const layer = el('div', { class: 'overlay' }, box);
@@ -3950,6 +3981,7 @@ async function applyLrclibLyrics(song, text) {
   banner(t('lyrics.lrclib.applied'), { kind: 'ok' });
 }
 
+let lrclibRunning = false; // läuft gerade eine Suche (siehe loadLyricsFromLrclib)
 async function loadLyricsFromLrclib() {
   if (!playerSong) return;
   if (!settings.lrclibNoticeShown) {
@@ -3964,16 +3996,27 @@ async function loadLyricsFromLrclib() {
   // Song erst jetzt festhalten — während des Hinweises kann er gewechselt haben.
   const song = playerSong;
   if (!song || !String(song.title || '').trim()) return;
-  const closeBusy = banner(t('lyrics.lrclib.searching'), { timeout: 0 });
+  // Doppeltes Antippen startet keine zweite Suche — jede weitere Anfrage
+  // brächte LRCLIBs Drosselung nur schneller zum Greifen.
+  if (lrclibRunning) return;
+  lrclibRunning = true;
+  let closeBusy = banner(t('lyrics.lrclib.searching'), { timeout: 0 });
+  const onWait = (sec) => {
+    closeBusy();
+    closeBusy = banner(t('lyrics.lrclib.waiting').replace('{s}', sec), { timeout: 0 });
+  };
   let candidates;
   try {
-    candidates = await lrclibFind(song);
+    candidates = await lrclibFind(song, onWait);
   } catch (err) {
     closeBusy();
-    if (err.code === 'busy') banner(t('lyrics.lrclib.busy'), { kind: 'error' });
+    const status = err.status ? ` (HTTP ${err.status})` : '';
+    if (err.code === 'busy') banner(t('lyrics.lrclib.busy').replace('{status}', status), { kind: 'error' });
     else if (err.code === 'offline') banner(t('lyrics.lrclib.offline'), { kind: 'error' });
-    else bannerError(t('lyrics.lrclib.failed'), 'LRCLIB', err);
+    else bannerError(t('lyrics.lrclib.failed') + status, 'LRCLIB', err);
     return;
+  } finally {
+    lrclibRunning = false;
   }
   closeBusy();
   if (playerSong !== song) return;
@@ -19994,9 +20037,15 @@ function runSelfTests() {
       { trackName: 7, plainLyrics: '   ' },
       'kaputt',
     ]);
-    if (c.length !== 2 || c[0].text !== 'Text\neins' || c[0].duration !== 120
+    if (c.length !== 2 || c[0].text !== 'Text\neins' || c[0].artist !== 'B'
         || c[1].text !== 'Nur synchron' || c[1].artist !== '' || lrclibCandidates({}).length !== 0) {
       failed.push('lrclibCandidates: Treffer müssten bereinigt und gefiltert werden');
+    }
+    const now = Date.parse('2026-10-21T12:00:00Z');
+    if (lrclibBusyDelayMs('3', 1, now) !== 3000 || lrclibBusyDelayMs(null, 1, now) !== 2000
+        || lrclibBusyDelayMs('', 2, now) !== 4000 || lrclibBusyDelayMs('600', 1, now) !== LRCLIB_BUSY_MAX_WAIT_MS
+        || lrclibBusyDelayMs('Wed, 21 Oct 2026 12:00:05 GMT', 1, now) !== 5000 || lrclibBusyDelayMs('0', 1, now) !== 1000) {
+      failed.push('lrclibBusyDelayMs: Retry-After müsste in Sekunden/Datum gelesen und begrenzt werden');
     }
   }
   // latestRuns(): nur der jüngste Lauf ist aktuell, invalidate() macht alle veraltet.
