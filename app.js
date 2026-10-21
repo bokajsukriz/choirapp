@@ -2872,13 +2872,20 @@ async function renderStorageManager() {
     });
     rename.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
 
+    const exportBtn = el('button', {
+      class: 'icon-btn', type: 'button',
+      'aria-label': t('song.export.aria').replace('{song}', song.title),
+      onclick: () => exportSong(song, exportBtn),
+    });
+    exportBtn.innerHTML = REC_EXPORT_DOWNLOAD_ICON;
+
     host.append(el('div', { class: 'pick-song' },
-      el('div', { class: 'pick-head' },
+      el('div', { class: 'pick-head pick-head--manage' },
         el('div', { class: 'grow' },
           el('strong', { text: song.title }),
           el('div', { class: 'small muted',
             text: `${tPlural(song.tracks.length, 'count.voiceOne', 'count.voiceMany')} · ${fmtBytes(bytes)}` })),
-        rename, del, toggle),
+        el('div', { class: 'pick-actions' }, exportBtn, rename, del, toggle)),
       tracksHost));
   }
 }
@@ -17907,6 +17914,62 @@ function metaWithAudioParts(meta, base64) {
 }
 
 /**
+ * Metadaten eines RECs für Sicherung und Song-Paket (ohne Audio, das hängt
+ * metaWithAudioParts() an). Die Kennung verbindet die RECs mit ihren Paketen
+ * (recChains); der Anker steht nur drin, wenn es einen gibt — sonst verlöre
+ * jeder REC beim Sichern und Zurückspielen seinen Anker (siehe restoreBackup).
+ */
+function recordingExportMeta(r, songTitle) {
+  const meta = {
+    id: r.id, songTitle,
+    name: r.name, voice: r.voice || null, duration: r.duration,
+    mimeType: r.mimeType, createdAt: r.createdAt,
+  };
+  if (Number.isFinite(r.trimStart)) meta.trimStart = r.trimStart;
+  if (Number.isFinite(r.trimEnd)) meta.trimEnd = r.trimEnd;
+  if (r.anchor) meta.anchor = r.anchor;
+  return meta;
+}
+
+/**
+ * Ein `songAudio`-Eintrag: Titel, Interpret, Liedtext, Stimmen und Noten
+ * (Notenblätter/PDFs gehören zum selben Song und teilen sich die Auswahl
+ * "Song-Audiodateien"). Blob-Teilstücke wie metaWithAudioParts(); `null`,
+ * wenn der Song weder Spuren noch Noten mit Datei hat.
+ */
+async function songAudioEntryParts(s, reportProgress) {
+  const trackParts = [];
+  let trackCount = 0, scoreCount = 0;
+  for (const t of s.tracks) {
+    const rec = await DB.fileGet(t.fileKey);
+    if (!rec) continue;
+    const blob = recordBlob(rec, mimeForTrack(t));
+    const base64 = await blobToBase64(blob);
+    const meta = { voice: t.voice, fileName: t.fileName, mimeType: mimeForTrack(t) };
+    if (trackParts.length) trackParts.push(',');
+    trackParts.push(...metaWithAudioParts(meta, base64));
+    reportProgress?.(t.size);
+    trackCount++;
+  }
+  const scoreParts = [];
+  for (const sc of s.scores || []) {
+    const rec = await DB.fileGet(sc.fileKey);
+    if (!rec) continue;
+    const blob = recordBlob(rec, 'application/pdf');
+    const base64 = await blobToBase64(blob);
+    if (scoreParts.length) scoreParts.push(',');
+    scoreParts.push(...metaWithAudioParts({ fileName: sc.fileName }, base64));
+    reportProgress?.(sc.size);
+    scoreCount++;
+  }
+  if (!trackParts.length && !scoreParts.length) return null;
+  return {
+    trackCount, scoreCount,
+    parts: [`{"title":${JSON.stringify(s.title)},"artist":${JSON.stringify(s.artist || null)},"lyrics":${JSON.stringify(s.lyrics || null)},"tracks":[`, ...trackParts, '],"scores":[', ...scoreParts, ']}'],
+  };
+}
+
+/**
  * Baut die Sicherung als Liste von Blob-Teilstücken (statt eines einzigen
  * JSON-Strings) plus Zählern für die Erfolgsmeldung. `new Blob(parts)`/
  * `new File(parts, …)` fügt die Teile aneinander, ohne je einen JS-String
@@ -18167,18 +18230,7 @@ async function buildBackupParts(opts, onProgress) {
       if (!rec) continue;
       const blob = recordBlob(rec, r.mimeType);
       const base64 = await blobToBase64(blob);
-      const meta = {
-        // Die Kennung verbindet die RECs mit ihren Paketen (recChains weiter unten).
-        id: r.id,
-        songTitle: byId.get(r.songId)?.title || r.songTitle || '',
-        name: r.name, voice: r.voice || null, duration: r.duration,
-        mimeType: r.mimeType, createdAt: r.createdAt,
-      };
-      if (Number.isFinite(r.trimStart)) meta.trimStart = r.trimStart;
-      if (Number.isFinite(r.trimEnd)) meta.trimEnd = r.trimEnd;
-      // Nur wenn vorhanden — ohne diesen Schritt verlöre jeder REC beim
-      // Sichern und Zurückspielen seinen Anker (siehe restoreBackup).
-      if (r.anchor) meta.anchor = r.anchor;
+      const meta = recordingExportMeta(r, byId.get(r.songId)?.title || r.songTitle || '');
       if (!first) parts.push(',');
       first = false;
       parts.push(...metaWithAudioParts(meta, base64));
@@ -18200,37 +18252,13 @@ async function buildBackupParts(opts, onProgress) {
     parts.push(',"songAudio":[');
     let firstSong = true, trackCount = 0, scoreCount = 0;
     for (const s of songs) {
-      const trackParts = [];
-      for (const t of s.tracks) {
-        const rec = await DB.fileGet(t.fileKey);
-        if (!rec) continue;
-        const blob = recordBlob(rec, mimeForTrack(t));
-        const base64 = await blobToBase64(blob);
-        const meta = { voice: t.voice, fileName: t.fileName, mimeType: mimeForTrack(t) };
-        if (trackParts.length) trackParts.push(',');
-        trackParts.push(...metaWithAudioParts(meta, base64));
-        reportProgress(t.size);
-        trackCount++;
-      }
-      // Noten (Notenblätter/PDFs) gehören zum selben Song — dieselbe
-      // Auswahl ("Song-Audiodateien") nimmt sie mit, sonst gingen sie bei
-      // "Alles sichern" ohne Hinweis verloren.
-      const scoreParts = [];
-      for (const sc of s.scores || []) {
-        const rec = await DB.fileGet(sc.fileKey);
-        if (!rec) continue;
-        const blob = recordBlob(rec, 'application/pdf');
-        const base64 = await blobToBase64(blob);
-        const meta = { fileName: sc.fileName };
-        if (scoreParts.length) scoreParts.push(',');
-        scoreParts.push(...metaWithAudioParts(meta, base64));
-        reportProgress(sc.size);
-        scoreCount++;
-      }
-      if (!trackParts.length && !scoreParts.length) continue;
+      const entry = await songAudioEntryParts(s, reportProgress);
+      if (!entry) continue;
       if (!firstSong) parts.push(',');
       firstSong = false;
-      parts.push(`{"title":${JSON.stringify(s.title)},"artist":${JSON.stringify(s.artist || null)},"lyrics":${JSON.stringify(s.lyrics || null)},"tracks":[`, ...trackParts, '],"scores":[', ...scoreParts, ']}');
+      parts.push(...entry.parts);
+      trackCount += entry.trackCount;
+      scoreCount += entry.scoreCount;
     }
     parts.push(']');
     counts.songAudioTracks = trackCount;
@@ -18432,6 +18460,212 @@ $('#backup-input').addEventListener('change', async (e) => {
   }
 });
 
+/* ---------- Song-Pakete: einen Song samt Zubehör weitergeben -------------
+   Eine `.json` im Format der Sicherung (`BACKUP_FORMAT`, `"package":"song"`),
+   aber nur mit einem Song: Titel, Interpret, Liedtext, eigene Liedtexte,
+   Notizen, Loops, Übeprogramme (Loops/REC) — wahlweise mit Stimmen und Noten
+   (Audio) und den eigenen RECs samt Paketen. Alles hängt wie in der Sicherung
+   am Titel, nicht an der Gerätekennung; eingespielt wird über restoreBackup()
+   (`pkg: 'song'`), das nichts überschreibt und Doppeltes überspringt. */
+
+/** Abfrage vor dem Song-Export: was soll mit? → { audio, recordings } oder null bei Abbruch. */
+async function showSongExportDialog(song) {
+  const recordings = (await DB.metaByType('recording').catch(() => [])).filter((r) => r.songId === song.id);
+  const audioBytes = (song.tracks || []).reduce((n, tr) => n + (tr.size || 0), 0)
+    + (song.scores || []).reduce((n, sc) => n + (sc.size || 0), 0);
+  const recBytes = recordings.reduce((n, r) => n + (r.size || 0), 0);
+  const opts = { audio: audioBytes > 0, recordings: recordings.length > 0 };
+
+  return new Promise((resolve) => {
+    const done = (result) => { layer.remove(); resolve(result); };
+    const totalLabel = el('strong');
+    const updateTotal = () => {
+      // *1,34 gleicht den Base64-Aufschlag aus (wie backupSizeEstimate()).
+      const bytes = ((opts.audio ? audioBytes : 0) + (opts.recordings ? recBytes : 0)) * 1.34;
+      totalLabel.textContent = bytes > 0 ? fmtBytes(Math.round(bytes)) : t('song.export.sizeSmall');
+    };
+    const row = (key, title, bytes) => {
+      const cb = el('input', { type: 'checkbox' });
+      cb.checked = opts[key];
+      cb.addEventListener('change', () => { opts[key] = cb.checked; updateTotal(); });
+      return el('label', { class: 'row', style: 'align-items:flex-start; gap:10px; cursor:pointer' },
+        cb, el('span', { class: 'grow' }, el('div', { text: title })),
+        el('span', { class: 'small muted', style: 'white-space:nowrap', text: fmtBytes(bytes) }));
+    };
+    const rows = [];
+    if (audioBytes > 0) rows.push(row('audio', t('song.export.audio'), audioBytes));
+    if (recordings.length) rows.push(row('recordings', t('song.export.recordings').replace('{recordings}', tPlural(recordings.length, 'count.recOne', 'count.recMany')), recBytes));
+
+    const box = el('div', { class: 'dialog' },
+      el('h2', { text: t('song.export.title') }),
+      el('p', { text: t('song.export.hint').replace('{song}', song.title) }),
+      rows.length ? el('div', { class: 'stack', style: 'gap:2px' }, ...rows) : null,
+      el('div', { class: 'row', style: 'margin-top:12px; padding-top:10px; border-top:1px solid var(--pill-line)' },
+        el('span', { text: t('backup.estimatedSize') }), totalLabel),
+      el('div', { class: 'dialog-actions' },
+        el('button', { class: 'btn', type: 'button', text: t('common.cancel'), onclick: () => done(null) }),
+        el('button', { class: 'btn btn--primary', type: 'button', text: t('song.export.ok'), onclick: () => done({ ...opts }) })));
+    updateTotal();
+    const layer = el('div', { class: 'overlay' }, box);
+    layer.addEventListener('click', (e) => { if (e.target === layer) done(null); });
+    mountModal(layer, { onEscape: () => done(null) });
+  });
+}
+
+/**
+ * Baut die Paketdatei eines Songs als Blob-Teilstücke (siehe
+ * metaWithAudioParts(): nie ein String über alle Audiodaten).
+ * @param {{audio: boolean, recordings: boolean}} opts
+ * @param {(fraction: number) => void} [onProgress]
+ */
+async function buildSongPackageParts(song, opts, onProgress) {
+  const [loops, notes, lyricsNotes, recordings, recChains, routines] = await Promise.all([
+    DB.metaByType('loop'), DB.metaByType('note'), DB.metaByType('lyricsNote'),
+    DB.metaByType('recording'), DB.metaByType('recChain'), DB.metaByType('routine'),
+  ]);
+  const mine = (r) => r.songId === song.id;
+  const ownRecordings = opts.recordings ? recordings.filter(mine) : [];
+  const audioTotal = (opts.audio
+    ? (song.tracks || []).reduce((n, tr) => n + (tr.size || 0), 0) + (song.scores || []).reduce((n, sc) => n + (sc.size || 0), 0)
+    : 0) + ownRecordings.reduce((n, r) => n + (r.size || 0), 0);
+  let doneBytes = 0;
+  const report = (rawSize) => { doneBytes += rawSize || 0; onProgress?.(audioTotal > 0 ? Math.min(1, doneBytes / audioTotal) : 1); };
+
+  const counts = { loops: 0, notes: 0, lyricsNotes: 0, recordings: 0, tracks: 0, scores: 0, routines: 0 };
+  const parts = [`{"format":${JSON.stringify(BACKUP_FORMAT)},"version":${BACKUP_FORMAT_VERSION},"exportedAt":${JSON.stringify(new Date().toISOString())},"package":"song"`];
+  parts.push(`,"songs":${JSON.stringify([{
+    title: song.title, voices: (song.tracks || []).map((tr) => tr.voice),
+    artist: song.artist || null, lyrics: song.lyrics || null,
+  }])}`);
+
+  const loopsOut = loops.filter(mine).map((l) => ({ songTitle: song.title, name: l.name, start: l.start, end: l.end }));
+  parts.push(`,"loops":${JSON.stringify(loopsOut)}`);
+  counts.loops = loopsOut.length;
+  const textOut = (list) => list.filter(mine)
+    .map((n) => ({ songTitle: song.title, text: n.text || '', updatedAt: n.updatedAt || null }))
+    .filter((n) => n.text.trim());
+  const notesOut = textOut(notes);
+  const lyricsOut = textOut(lyricsNotes);
+  parts.push(`,"notes":${JSON.stringify(notesOut)},"lyricsNotes":${JSON.stringify(lyricsOut)}`);
+  counts.notes = notesOut.length;
+  counts.lyricsNotes = lyricsOut.length;
+
+  // Übeprogramme dieses Songs — nur Schritte; eine „… dann Playlist"-Reihenfolge
+  // hinge an geräteeigenen Kennungen (siehe buildBackupParts).
+  const routinesOut = routines
+    .filter((r) => (r.scope === 'loops' || (r.scope === 'rec' && opts.recordings)) && r.targetId === song.id)
+    .map((r) => ({ scope: r.scope, target: song.title, steps: r.steps }));
+  if (routinesOut.length) {
+    parts.push(`,"routines":${JSON.stringify(routinesOut)}`);
+    counts.routines = routinesOut.length;
+  }
+
+  if (ownRecordings.length) {
+    parts.push(',"recordings":[');
+    const ids = new Set();
+    let first = true;
+    for (const r of ownRecordings) {
+      const file = await DB.fileGet(r.fileKey);
+      if (!file) continue;
+      const base64 = await blobToBase64(recordBlob(file, r.mimeType));
+      if (!first) parts.push(',');
+      first = false;
+      parts.push(...metaWithAudioParts(recordingExportMeta(r, song.title), base64));
+      ids.add(r.id);
+      counts.recordings++;
+      report(r.size);
+    }
+    parts.push(']');
+    const chainsOut = recChains.filter(mine)
+      .map((c) => ({ name: c.name, createdAt: c.createdAt, recs: (c.recIds || []).filter((id) => ids.has(id)) }))
+      .filter((c) => c.recs.length >= 2);
+    if (chainsOut.length) parts.push(`,"recChains":${JSON.stringify(chainsOut)}`);
+  }
+
+  if (opts.audio) {
+    const entry = await songAudioEntryParts(song, report);
+    if (entry) {
+      parts.push(',"songAudio":[', ...entry.parts, ']');
+      counts.tracks = entry.trackCount;
+      counts.scores = entry.scoreCount;
+    }
+  }
+  parts.push('}');
+  onProgress?.(1);
+  return { parts, counts };
+}
+
+/** Exportiert einen Song als eine Datei (Teilen oder Herunterladen). */
+async function exportSong(song, anchorBtn) {
+  const opts = await showSongExportDialog(song);
+  if (!opts) return;
+  const fileName = `chor-app-song_${sanitizeFileName(song.title)}.json`;
+  let action = 'download';
+  if (navigator.canShare?.({ files: [new File([], 'probe.json', { type: 'application/json' })] })) {
+    action = await floatingMenu(anchorBtn, [
+      { value: 'share', label: t('common.share'), icon: REC_EXPORT_SHARE_ICON },
+      { value: 'download', label: t('common.download'), icon: REC_EXPORT_DOWNLOAD_ICON },
+    ]);
+    if (!action) return;
+  }
+  const progress = showRecExportProgressDialog('song.export.progressTitle', 'song.export.progressText');
+  try {
+    const { parts } = await buildSongPackageParts(song, opts, (fraction) => progress.update(fraction));
+    progress.close();
+    const file = new File(parts, fileName, { type: 'application/json' });
+    if (action === 'share') {
+      try { await navigator.share({ files: [file], title: song.title, text: fileName }); return; }
+      catch (err) { if (err?.name === 'AbortError') return; }
+    }
+    downloadBlob(new Blob(parts, { type: 'application/json' }), fileName);
+    banner(t('song.export.done').replace('{song}', song.title).replace('{size}', fmtBytes(file.size)), { kind: 'ok' });
+  } catch (err) {
+    progress.close();
+    bannerError(t('song.export.failed'), 'SONG-EXPORT', err);
+  }
+}
+
+$('#btn-song-import').addEventListener('click', () => $('#song-import-input').click());
+
+$('#song-import-input').addEventListener('change', async (e) => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  for (const file of files) await importSongPackage(file);
+});
+
+/** Spielt eine Song-Paketdatei ein (siehe buildSongPackageParts). */
+async function importSongPackage(file) {
+  let data, resolveAudioBase64;
+  try {
+    ({ data, resolveAudioBase64 } = await readBackupFile(file));
+  } catch (err) {
+    bannerError(t('song.import.failed'), 'SONG-IMPORT', err);
+    return;
+  }
+  if (!data || data.format !== BACKUP_FORMAT || data.package !== 'song'
+      || !(Array.isArray(data.songs) && data.songs.length) && !(Array.isArray(data.songAudio) && data.songAudio.length)) {
+    banner(t('song.import.failed'), { kind: 'error' });
+    return;
+  }
+  if (typeof data.version === 'number' && data.version > BACKUP_FORMAT_VERSION) {
+    banner(t('backup.newerVersion'), { kind: 'error' });
+    return;
+  }
+  // Nur das, was zu einem Song gehört — Einstellungen, Setlisten oder
+  // Übungsstände, die eine (vielleicht von Hand geänderte) Datei sonst noch
+  // enthielte, werden hier nicht angefasst.
+  const slim = { format: data.format, version: data.version };
+  for (const key of ['songs', 'songAudio', 'loops', 'notes', 'lyricsNotes', 'recordings', 'recChains', 'routines']) {
+    if (data[key] !== undefined) slim[key] = data[key];
+  }
+  try {
+    await restoreBackup(slim, resolveAudioBase64, { pkg: 'song' });
+    await Promise.all([renderSongs(), renderStorageManager(), renderImportStats()]);
+  } catch (err) {
+    bannerError(backupPartialTallyText(err.backupPartialTally), 'SONG-IMPORT', err);
+  }
+}
+
 /**
  * Baut aus der an einen Restore-Fehler angehängten Teilbilanz (siehe
  * restoreBackup()) eine konkrete Meldung statt der bisherigen Pauschalmeldung
@@ -18503,7 +18737,7 @@ async function importRecChainPackage(file) {
   // geänderte) Datei sonst noch enthielte, wird hier nicht angefasst.
   const slim = { format: data.format, version: data.version, recordings: data.recordings, recChains: data.recChains };
   try {
-    await restoreBackup(slim, resolveAudioBase64, { pkg: true });
+    await restoreBackup(slim, resolveAudioBase64, { pkg: 'recChain' });
     await renderImportStats();
   } catch (err) {
     bannerError(backupPartialTallyText(err.backupPartialTally), 'REC-PAKET-IMPORT', err);
@@ -18657,6 +18891,19 @@ function sanitizeSettingsPatch(raw) {
   return patch;
 }
 
+/** „Liedtext, 2 Loops, 1 Notiz …" für die Meldungen beim Song-Import; leer, wenn nichts dabei ist. */
+function songPackageParts({ lyrics, loops, notes, lyricsNotes, recordings, tracks, scores }) {
+  const out = [];
+  if (lyrics) out.push(t('song.import.lyricsOfficial'));
+  if (tracks) out.push(tPlural(tracks, 'count.trackOne', 'count.trackMany'));
+  if (scores) out.push(tPlural(scores, 'count.scoreOne', 'count.scoreMany'));
+  if (loops) out.push(tPlural(loops, 'count.loopOne', 'count.loopMany'));
+  if (notes) out.push(tPlural(notes, 'count.noteOne', 'count.noteMany'));
+  if (lyricsNotes) out.push(tPlural(lyricsNotes, 'count.lyricsOne', 'count.lyricsMany'));
+  if (recordings) out.push(tPlural(recordings, 'count.recOne', 'count.recMany'));
+  return out.join(', ');
+}
+
 /**
  * Vorschau vor dem Übernehmen, dann Zusammenführen mit dem vorhandenen
  * Bestand (kein „Alles ersetzen" mehr — zu leicht versehentlich Daten
@@ -18666,7 +18913,7 @@ function sanitizeSettingsPatch(raw) {
  * (siehe dort), sonst (z.B. Aufruf mit von Hand gebautem `data`) optional und
  * die Werte in `data` sind schon echtes Base64.
  */
-async function restoreBackup(data, resolveAudioBase64 = async (v) => v, { pkg = false } = {}) {
+async function restoreBackup(data, resolveAudioBase64 = async (v) => v, { pkg = null } = {}) {
   validateBackupSkeleton(data);
   const songs = await DB.metaByType('song').catch(() => []);
   const loops = Array.isArray(data.loops) ? data.loops : [];
@@ -18682,8 +18929,21 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v, { pkg = 
   // Nur noch Zusammenführen — „Alles ersetzen" ist als Datenverlust-Falle
   // entfernt: wer wirklich bei null anfangen will, löscht vorher von Hand
   // über „Alle Daten löschen" und spielt die Sicherung danach ein.
-  // Eine Paketdatei (Export eines REC-Pakets) fragt knapper und mit eigenen Worten.
-  const ok = await confirmDialog(pkg ? {
+  // Eine Paketdatei (REC-Paket, Song) fragt knapper und mit eigenen Worten.
+  const songTitleIn = String(songMetaIn[0]?.title ?? songAudioIn[0]?.title ?? '').slice(0, BACKUP_MAX_TITLE_LEN);
+  const ok = await confirmDialog(pkg === 'song' ? {
+    title: t('song.import.confirmTitle'),
+    text: t('song.import.confirmText')
+      .replace('{song}', songTitleIn)
+      .replace('{parts}', songPackageParts({
+        lyrics: typeof (songMetaIn[0]?.lyrics ?? songAudioIn[0]?.lyrics) === 'string',
+        loops: loops.length, notes: notes.length, lyricsNotes: lyricsNotes.length,
+        recordings: recordingsIn.length,
+        tracks: songAudioIn.reduce((n, x) => n + (Array.isArray(x?.tracks) ? x.tracks.length : 0), 0),
+        scores: songAudioIn.reduce((n, x) => n + (Array.isArray(x?.scores) ? x.scores.length : 0), 0),
+      }) || t('song.import.partsNone')),
+    okLabel: t('song.import.ok'),
+  } : pkg === 'recChain' ? {
     title: t('rec.chain.importConfirmTitle'),
     text: t('rec.chain.importConfirmText')
       .replace('{name}', recChainsIn.map((c) => String(c?.name ?? '').slice(0, BACKUP_MAX_TITLE_LEN)).filter(Boolean).join(', '))
@@ -18720,11 +18980,12 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v, { pkg = 
   // Inhalt in die Wiedergabe/den PDF-Betrachter tragen.
   let discardedTracks = 0, discardedScores = 0;
 
-  let songsCreated = 0, songsSkipped = 0, scoresRestored = 0;
+  let songsCreated = 0, songsSkipped = 0, scoresRestored = 0, tracksRestored = 0;
   let addedLoops = 0, addedPl = 0, keptPending = 0;
   let addedNotes = 0, skippedNotes = 0;
   let addedLyricsNotes = 0, skippedLyricsNotes = 0;
   let addedRecordings = 0, skippedRecordings = 0, addedChains = 0;
+  let lyricsFilled = 0;
   // Kennung eines RECs in der Datei → Kennung hier (neu angelegt oder schon vorhanden).
   const recIdMap = new Map();
 
@@ -18748,6 +19009,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v, { pkg = 
           continue;
         }
         const existingSong = findSongByTitle(songs, s.title);
+        const hadLyrics = !!existingSong?.lyrics;
         // Ein vorhandener Song ganz ohne Spuren und Noten ist nur ein
         // Platzhalter — z.B. aus dem Metadaten-Teil einer zuvor eingespielten
         // Sicherung, der nur Titel/Interpret/Text kennt (siehe unten). Den
@@ -18803,6 +19065,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v, { pkg = 
             fileName, fileKey, size: blob.size, durationSec: null,
             sourceRevision: newSourceRevision(),
           });
+          tracksRestored++;
           songGotContent = true;
           batch.songs.add(song);
           if (batch.bytes >= IMPORT_BATCH_BYTES || batch.files.length >= IMPORT_BATCH_FILES) {
@@ -18839,6 +19102,7 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v, { pkg = 
         if (songGotContent) {
           if (!existingSong) songs.push(song);
           songsCreated++;
+          if (song.lyrics && !hadLyrics) lyricsFilled++;
         }
       }
       await flushImportBatch(batch);
@@ -18846,9 +19110,22 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v, { pkg = 
     }
 
     const metadataSongs = [];
+    const filledSongs = [];
     for (const meta of songMetaIn) {
       if (!meta || typeof meta.title !== 'string' || !meta.title.trim()) continue;
-      if (findSongByTitle(songs, meta.title)) continue;
+      const known = findSongByTitle(songs, meta.title);
+      if (known) {
+        // Ein Song-Paket bringt Interpret und Liedtext mit: was dem hiesigen
+        // Song fehlt, wird ergänzt, Vorhandenes bleibt unangetastet.
+        if (pkg === 'song') {
+          const lyricsOk = typeof meta.lyrics === 'string' && meta.lyrics.length <= BACKUP_MAX_TEXT_LEN;
+          let changed = false;
+          if (!known.lyrics && lyricsOk) { known.lyrics = meta.lyrics; changed = true; }
+          if (!known.artist && typeof meta.artist === 'string' && meta.artist) { known.artist = meta.artist; changed = true; }
+          if (changed) { filledSongs.push(known); lyricsFilled++; }
+        }
+        continue;
+      }
       const title = meta.title.trim();
       const normTitle = normalizeTitle(title);
       const song = {
@@ -18858,12 +19135,13 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v, { pkg = 
         importedAt: new Date().toISOString(),
       };
       if (typeof meta.artist === 'string') song.artist = meta.artist;
+      if (song.lyrics) lyricsFilled++;
       metadataSongs.push(song);
       songs.push(song);
       songsCreated++;
     }
-    if (metadataSongs.length) {
-      await DB.metaPutMany(metadataSongs);
+    if (metadataSongs.length || filledSongs.length) {
+      await DB.metaPutMany([...metadataSongs, ...filledSongs]);
       dropSongCache();
     }
 
@@ -19134,6 +19412,25 @@ async function restoreBackup(data, resolveAudioBase64 = async (v) => v, { pkg = 
   await renderPlaylists();
   await renderSettings();
   if (playerSong) { await loadSongNote(); await loadSongLyricsNote(); }
+  if (pkg === 'song') {
+    // Loops, Notizen und RECs, die beim Löschen des Songs nur vom Song gelöst
+    // wurden (detachSongLinks), hängen jetzt wieder an ihm — sie zählen für
+    // die Duplikatprüfung oben als „schon vorhanden".
+    let relinked = 0;
+    for (const reconnect of [reconnectPendingLoops, () => reconnectPendingByType('note'), () => reconnectPendingByType('lyricsNote'), reconnectPendingRecordings]) {
+      relinked += await reconnect().catch((err) => { console.warn('[song-import] verbinden', err); return 0; });
+    }
+    const parts = songPackageParts({
+      lyrics: lyricsFilled > 0, loops: addedLoops, notes: addedNotes, lyricsNotes: addedLyricsNotes,
+      recordings: addedRecordings, tracks: tracksRestored, scores: scoresRestored,
+    });
+    const message = parts
+      ? t('song.import.done').replace('{song}', songTitleIn).replace('{parts}', parts)
+        + (songsSkipped ? t('song.import.audioKept') : '') + (relinked ? t('song.import.relinked') : '')
+      : (relinked ? t('song.import.relinkedOnly').replace('{song}', songTitleIn) : t('song.import.nothing'));
+    banner(message, { kind: parts || relinked ? 'ok' : 'info' });
+    return;
+  }
   if (pkg) {
     banner(addedChains || addedRecordings
       ? t('rec.chain.importDone').replace('{chains}', tPlural(addedChains, 'rec.chain.countOne', 'rec.chain.countMany'))
