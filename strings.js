@@ -2339,6 +2339,7 @@ export const STRINGS = {
     'songs.importArrowHint': 'Songs hier importieren',
     'songs.fabPlaceholder': 'Platzhalter hinzufügen',
     'songs.fabFromRecordings': 'Aus Recordings',
+    'songs.fabFromPackage': 'Aus Paket',
     'songs.fabFromDropbox': 'Aus der Dropbox',
 
     'common.ok': 'OK',
@@ -5000,6 +5001,7 @@ export const STRINGS = {
     'songs.importArrowHint': 'Import songs here',
     'songs.fabPlaceholder': 'Add placeholder',
     'songs.fabFromRecordings': 'From recordings',
+    'songs.fabFromPackage': 'From package',
     'songs.fabFromDropbox': 'From Dropbox',
 
     'common.ok': 'OK',
@@ -7661,6 +7663,7 @@ export const STRINGS = {
     'songs.importArrowHint': 'Importuj utwory tutaj',
     'songs.fabPlaceholder': 'Dodaj element zastępczy',
     'songs.fabFromRecordings': 'Z nagrań',
+    'songs.fabFromPackage': 'Z paczki',
     'songs.fabFromDropbox': 'Z Dropboxa',
 
     'common.ok': 'OK',

@@ -542,7 +542,8 @@ weitergeben — etwa an andere Chormitglieder oder aufs neue Handy.
   über alle Audiodaten). Spuren/Noten laufen über `songAudioEntryParts()`, RECs
   über `recordingExportMeta()` — dieselben Bausteine wie `buildBackupParts()`.
   Alles hängt am Titel, nicht an der Gerätekennung.
-- **Importieren:** Einstellungen → „Daten & Sicherung“ → „Song importieren“
+- **Importieren:** „+“-Menü der Songs-Seite → „Aus Paket“ oder Einstellungen →
+  „Daten & Sicherung“ → „Song importieren“
   (`importSongPackage()`, nimmt nur `package: "song"`). Läuft durch
   `restoreBackup(…, { pkg: 'song' })`: Es wird nichts überschrieben und nichts
   doppelt angelegt (Loops/RECs nach Name + Song, Notizen und eigene Liedtexte
