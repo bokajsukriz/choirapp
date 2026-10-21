@@ -12,7 +12,7 @@
 // weiter unten erhöhen — nicht nur bei index.html/sw.js/manifest.json (siehe
 // die ausführlichere Failsafe-Regel in CLAUDE.md). Daraus leitet sich der
 // Cache-Name ab; ein neuer Name = frischer Shell-Cache.
-const SW_VERSION = 'v572';
+const SW_VERSION = 'v573';
 const CACHE_NAME = `chor-app-shell-${SW_VERSION}`;
 // Samples (echte Instrumente in „Einsatz finden“, Klavier für Übungen und
 // piano.html, ./samples/*.mp3): eigener
@@ -239,7 +239,7 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
 
   const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return; // die App lädt ohnehin nichts Fremdes
+  if (url.origin !== self.location.origin) return; // Fremdes (Liedtext-Abruf bei LRCLIB) geht unberührt ans Netz
 
   // Samples: erst der eigene Cache, dann Netz (und nachtragen). Offline ohne
   // Cache: 504 — die Übungsseite klingt dann wie mit „Einfach“ (Synthese).

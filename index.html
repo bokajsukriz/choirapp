@@ -14,7 +14,7 @@
      Ausbildung uebe-lab.html, Einsingen einsingen.html im Tools-Reiter), font-src data: für die
      eingebettete woff2-Schrift weiter unten, img-src data: blob: für Icons
      und (Vorsichtshalber) Blob-Vorschauen. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' wss://uhr.ptb.de; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' wss://uhr.ptb.de https://lrclib.net; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BVG</title>
 
@@ -4953,7 +4953,7 @@ input[type="checkbox"] {
           <button class="preset" type="button" data-lyrics-source="private" aria-pressed="false" data-i18n="lyrics.sourcePrivate">Eigener</button>
         </div>
         <span class="lyrics-toolbar-spacer" aria-hidden="true"></span>
-        <button class="lyrics-search-btn" id="btn-lyrics-search" type="button" aria-label="Liedtext bei Google suchen" data-i18n-aria="lyrics.searchAria">
+        <button class="lyrics-search-btn" id="btn-lyrics-search" type="button" aria-label="Liedtext suchen" data-i18n-aria="lyrics.searchAria" aria-haspopup="menu">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
         </button>
         <div class="lyrics-size-seg" role="group" aria-label="Schriftgröße" data-i18n-aria="lyrics.sizeAria">
