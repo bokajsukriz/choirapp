@@ -527,6 +527,32 @@ kann.
   doppelt. Vollsicherungen enthalten die Pakete ebenfalls (`recChains`, RECs
   tragen dafür ihre `id`).
 
+## Song-Export/-Import
+
+Ein einzelner Song lässt sich samt allem, was an ihm hängt, als **eine Datei**
+weitergeben — etwa an andere Chormitglieder oder aufs neue Handy.
+
+- **Exportieren:** Einstellungen → „Speicher verwalten“ → Download-Symbol in der
+  Zeile des Songs (`exportSong()`). Der Dialog fragt nur nach den großen Teilen:
+  „Stimmen und Noten (Audio)“ und „Eigene Aufnahmen (RECs)“ (jeweils mit
+  Größe). Immer dabei: Interpret, offizieller Liedtext, eigene Liedtexte,
+  Notizen, Loops und die Übeprogramme des Songs (Loops/REC).
+- **Format:** das der Sicherung (`BACKUP_FORMAT`, mit `"package":"song"`),
+  gebaut von `buildSongPackageParts()` aus Blob-Teilstücken (nie ein String
+  über alle Audiodaten). Spuren/Noten laufen über `songAudioEntryParts()`, RECs
+  über `recordingExportMeta()` — dieselben Bausteine wie `buildBackupParts()`.
+  Alles hängt am Titel, nicht an der Gerätekennung.
+- **Importieren:** Einstellungen → „Daten & Sicherung“ → „Song importieren“
+  (`importSongPackage()`, nimmt nur `package: "song"`). Läuft durch
+  `restoreBackup(…, { pkg: 'song' })`: Es wird nichts überschrieben und nichts
+  doppelt angelegt (Loops/RECs nach Name + Song, Notizen und eigene Liedtexte
+  eine je Song). Hat der Song hier schon Stimmen oder Noten, bleiben sie
+  unverändert; fehlen ihm Interpret oder Liedtext, werden sie ergänzt. Wurde der
+  Song vorher gelöscht, hängen sich dort liegengebliebene Loops, Notizen und RECs
+  wieder an ihn. Einstellungen, Setlisten und Übungsstände aus einer Datei
+  werden dabei bewusst ignoriert. Die normale „Wiederherstellen“-Funktion liest
+  eine Song-Datei ebenfalls, fragt dann aber wie bei einer Sicherung.
+
 ## Übe-Programme
 
 An drei Stellen (aktuelle Setliste, übrige Setlisten, Loops und REC im

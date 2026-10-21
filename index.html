@@ -1273,6 +1273,12 @@ button.card-row:focus-visible {
 .pick-head .grow { flex: 1; min-width: 0; }
 .pick-head strong { display: block; overflow-wrap: anywhere; }
 
+/* Speicherverwaltung: vier Aktionen je Song — auf schmalen Schirmen rutschen
+   sie unter den Titel, statt ihn auf ein Zeichen Breite zu quetschen. */
+.pick-head--manage { flex-wrap: wrap; }
+.pick-head--manage .grow { flex: 1 1 150px; }
+.pick-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+
 .disclose {
   min-width: var(--tap);
   min-height: var(--tap);
@@ -6033,6 +6039,15 @@ input[type="checkbox"] {
           <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
         <input class="visually-hidden" id="backup-input" type="file" tabindex="-1" aria-hidden="true" accept=".json,application/json">
+
+        <button class="setting-item setting-item--toggle" id="btn-song-import" type="button">
+          <span class="setting-main">
+            <span class="setting-label" data-i18n="song.import.btn">Song importieren</span>
+            <span class="setting-sub" data-i18n="song.import.sub">Ein exportierter Song mit Loops, Liedtexten und Notizen</span>
+          </span>
+          <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        </button>
+        <input class="visually-hidden" id="song-import-input" type="file" tabindex="-1" aria-hidden="true" accept=".json,application/json" multiple>
 
         <button class="setting-item setting-item--toggle setting-row-toggle" type="button"
                 aria-expanded="false" aria-controls="panel-notes-lyrics">
