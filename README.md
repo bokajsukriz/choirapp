@@ -12,7 +12,10 @@ Bestätigung eine kurze Verbindung zur Atomuhr der PTB (uhr.ptb.de) auf und
 fragt darüber einige Male die Uhrzeit ab. Unabhängig davon prüft der Browser
 beim Öffnen bei GitHub Pages, ob es eine neue App-Version gibt (Service-Worker-
 Update) — dabei sieht GitHub wie bei jedem Seitenaufruf IP-Adresse und
-Zeitpunkt, aber keine Inhalte.
+Zeitpunkt, aber keine Inhalte. Der optionale Dropbox-Abgleich (siehe
+[Dropbox-Abgleich](#dropbox-abgleich)) fragt nach einem einmaligen Hinweis
+beim Cloudflare Worker des Chores nach der Dateiliste; dabei gehen der
+Dropbox-Link und die IP-Adresse dorthin, Inhalte der App nie.
 
 ## Daten und Speicherorte
 
@@ -37,9 +40,10 @@ Alles bleibt auf dem Gerät:
 
 „Alle Daten löschen“ in den Einstellungen leert beide IndexedDB-Speicher vollständig
 sowie Fehler- und Diagnoseprotokoll — damit auch Stimmprofil, Tool-Stände
-und Übe-Fortschritt (`progress`). Dateien in einer verbundenen Dropbox
-bleiben davon unberührt — die App greift nie direkt auf Dropbox zu, sondern
-nur auf lokal heruntergeladene ZIP-Archive.
+und Übe-Fortschritt (`progress`), ebenso die Einstellungen des
+Dropbox-Abgleichs samt Merkliste gelöschter Songs. Dateien in der Dropbox
+bleiben davon unberührt — die App liest dort nur (über ZIP-Archive oder den
+Dropbox-Abgleich) und schreibt oder löscht nie etwas.
 
 ## Externe Liedsuche
 
@@ -86,6 +90,50 @@ Menü mit zwei Wegen:
   (`settings.lrclibNoticeShown`).
 
 Beide Wege laufen nur auf aktives Antippen, nie im Hintergrund.
+
+## Dropbox-Abgleich
+
+Statt die Dropbox als ZIP herunterzuladen, kann die App den geteilten
+Ordner über einen Cloudflare Worker des Chores abgleichen. Einrichtung von
+Dropbox-App, Worker und Refresh-Token: Anleitung „Chor-PWA: Dropbox-Sync über
+Cloudflare Worker“. Der Worker bietet `/list?path=…` (Inhalt eines Ordners)
+und `/file?path=…` (eine Datei); Zugangsschutz ist der Dropbox-Link, den die
+App im Kopf `X-Chor-Link` mitschickt (`settings.dropboxUrl`, nur auf dem
+Gerät).
+
+- **Server-Adresse:** wird in der App eingetragen — Einstellungen → Hilfe →
+  „Abgleich-Server“, oder beim ersten Tipp auf „Mit Dropbox abgleichen“
+  (`settings.dropboxSyncWorker`, nur auf dem Gerät, nicht in der Sicherung).
+  Angenommen werden nur `https://…workers.dev`-Adressen
+  (`normalizeSyncWorkerUrl()`), denn nur die gibt die CSP frei
+  (`connect-src … https://*.workers.dev`). Ein Worker unter eigener Domain
+  bräuchte dort und in `normalizeSyncWorkerUrl()` einen weiteren Eintrag.
+  Läuft die App auf localhost, darf der Server zum Testen auch dort liegen
+  (CSP der Testkopie entsprechend erweitern).
+- **Einstiege:** „Mit Dropbox abgleichen“ in der Import-Ansicht,
+  „Dropbox abgleichen“ im +-Menü der Songs, „Ansehen“ im Start-Banner
+  (`startDropboxSync()`). Alle holen nur die Liste und öffnen die gewohnte
+  Auswahlmaske; geladen wird erst mit „Importieren“ (`entryBlob()`, Quelle
+  `kind: 'dropbox'`). Vor dem ersten Abgleich einmaliger Hinweis mit Wahl
+  „Auch beim Start nachsehen“ / „Nur auf Knopfdruck“
+  (`settings.dropboxSyncNoticeShown`, `dropboxCheckOnStart`).
+- **Prüfung beim Start** (`dropboxQuietCheck()`): höchstens alle 6 Stunden,
+  etwa 3 s nach dem Start, nur online. Meldet neue Songs, neue Spuren in den
+  eigenen Stimmen oder Gesamt, ersetzte Spuren und geänderte Noten/Liedtexte
+  als Banner — dieselben Funde nur einmal (`dropboxLastNoticeSig`), danach
+  steht nur die Zahl am Knopf. Fehler bleiben still im Diagnose-Log; nur ein
+  nicht mehr passender Link meldet sich, einmal je Link.
+- **Was als geändert gilt:** über den Dropbox-Hash (`remoteVersion`, dazu
+  `remotePath` an jeder Spur, `remoteVersion` an Noten, `lyricsRemoteVersion`
+  am Song); ohne gespeicherten Hash (Song kam per ZIP) wie beim ZIP-Import
+  über die Größe. Noten und Liedtext eines vorhandenen Songs erscheinen nur
+  als eigene Zeile, wenn sie neu oder geändert sind (`markDropboxExtras()`).
+- **Nie löschen:** Was aus der Dropbox verschwindet, bleibt in der App. Von
+  Hand gelöschte Songs merkt sich `settings.dropboxIgnoredSongs`; sie bleiben
+  in der Auswahl wählbar, werden aber weder vorausgewählt noch gemeldet.
+- **Doppelte Stimmen:** zwei Dateien, die auf dieselbe Stimme fallen
+  („S1“/„S2“), ergeben für alle Importwege eine Stimme und eine Zusatzspur
+  (`dupOf`) statt dass die zweite die erste still ersetzt.
 
 ## Dateiübersicht
 
@@ -663,7 +711,7 @@ Genanntes:
 ```
 default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self';
 style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:;
-media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' wss://uhr.ptb.de https://lrclib.net;
+media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' wss://uhr.ptb.de https://lrclib.net https://*.workers.dev;
 manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';
 ```
 
@@ -683,7 +731,10 @@ manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';
   `wss://uhr.ptb.de` (Internetzeit per WebSocket, siehe
   [Lichtshow](#lichtshow)) und `https://lrclib.net` (Liedtext-Abruf, siehe
   [Externe Liedsuche](#externe-liedsuche)); jede andere Netzwerkanfrage aus
-  dem Code wäre damit von vornherein blockiert.
+  dem Code wäre damit von vornherein blockiert. Dazu kommt
+  `https://*.workers.dev` für den [Dropbox-Abgleich](#dropbox-abgleich): die
+  Server-Adresse trägt man in der App selbst ein, deshalb kann hier keine
+  feste Adresse stehen; die App nimmt auch nur solche Adressen an.
 - `manifest-src 'self'`, `object-src 'none'`, `base-uri 'none'` und
   `form-action 'none'` schließen die übrigen Kanäle.
 
