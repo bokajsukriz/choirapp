@@ -14,7 +14,7 @@
      Ausbildung uebe-lab.html, Einsingen einsingen.html im Tools-Reiter), font-src data: für die
      eingebettete woff2-Schrift weiter unten, img-src data: blob: für Icons
      und (Vorsichtshalber) Blob-Vorschauen. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' wss://uhr.ptb.de https://lrclib.net; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' wss://uhr.ptb.de https://lrclib.net https://*.workers.dev; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BVG</title>
 
@@ -5134,10 +5134,11 @@ input[type="checkbox"] {
         <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
         <span data-i18n="dropbox.openBtn">Dropbox öffnen</span>
       </button>
-      <!-- Dropbox-Abgleich über den Worker des Chores: nur sichtbar, wenn in
-           app.js eine Worker-Adresse eingetragen ist (renderDropboxSyncUi).
-           Öffnet die Auswahlmaske, lädt erst nach „Importieren". -->
-      <button class="btn btn--primary btn--block" id="btn-dropbox-sync" type="button" style="margin-top:10px" hidden>
+      <!-- Dropbox-Abgleich über den Worker des Chores. Ohne eingetragene
+           Server-Adresse fragt der Knopf zuerst danach; mit Adresse wird er
+           zum Hauptknopf der Karte (renderDropboxSyncUi). Öffnet die
+           Auswahlmaske, lädt erst nach „Importieren". -->
+      <button class="btn btn--block" id="btn-dropbox-sync" type="button" style="margin-top:10px">
         <span data-i18n="sync.btn">Mit Dropbox abgleichen</span>
         <span class="badge badge--new dropbox-sync-count" hidden></span>
       </button>
@@ -6178,7 +6179,16 @@ input[type="checkbox"] {
           <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
         </button>
 
-        <div class="setting-item" id="dropbox-sync-start-item" hidden>
+        <button class="setting-item setting-item--toggle" id="btn-dropbox-worker" type="button">
+          <span class="setting-main">
+            <span class="setting-label" data-i18n="sync.workerLabel">Abgleich-Server</span>
+            <span class="setting-sub" id="dropbox-worker-sub" style="overflow-wrap:anywhere"></span>
+            <span class="setting-sub" data-i18n="sync.workerSub">Für „Mit Dropbox abgleichen“. Die Adresse bekommst du vom Chor.</span>
+          </span>
+          <span class="setting-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>
+        </button>
+
+        <div class="setting-item" id="dropbox-sync-start-item">
           <span class="setting-main">
             <span class="setting-label" data-i18n="sync.startToggle">Beim Start nach neuen Songs sehen</span>
             <span class="setting-sub" data-i18n="sync.startToggleSub">Meldet nur, was neu ist. Geladen wird erst, wenn du es auswählst.</span>
@@ -6329,7 +6339,7 @@ input[type="checkbox"] {
       </svg>
       <span data-i18n="songs.fabFromDropbox">Aus der Dropbox</span>
     </button>
-    <button class="fab-menu-item" type="button" role="menuitem" data-action="dropbox-sync" hidden>
+    <button class="fab-menu-item" type="button" role="menuitem" data-action="dropbox-sync">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/>
       </svg>

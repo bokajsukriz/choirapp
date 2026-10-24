@@ -1360,6 +1360,7 @@ const DEFAULT_SETTINGS = {
   dropboxUrl: '',
   // Dropbox-Abgleich über den Worker des Chores (siehe dropboxQuietCheck).
   // Wie dropboxUrl nur auf diesem Gerät, nicht in der Sicherung.
+  dropboxSyncWorker: '',         // Adresse des Workers, nur *.workers.dev (normalizeSyncWorkerUrl)
   dropboxSyncNoticeShown: false, // einmaliger Hinweis vor dem ersten Abgleich gezeigt?
   dropboxCheckOnStart: false,    // beim Start nach Neuem sehen (nur melden, nie laden)
   dropboxLastCheckAt: null,      // letzte erfolgreiche Prüfung beim Start
@@ -4799,10 +4800,6 @@ $('#btn-dropbox-url').addEventListener('click', () => editDropboxUrl());
    Ordner — geladen wird erst mit „Importieren" in der Auswahlmaske, gelöscht
    wird nie etwas. Die Prüfung beim Start meldet Neues nur. */
 
-// Adresse des Workers, Herkunft ohne Pfad. Leer = Abgleich ausgeblendet.
-// Wer sie setzt, trägt dieselbe Herkunft in connect-src der CSP in
-// index.html ein — sonst blockiert der Browser jede Anfrage still.
-const DROPBOX_SYNC_WORKER = '';
 const DROPBOX_SYNC_MAX_FOLDERS = 2000;
 const DROPBOX_SYNC_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // Prüfung beim Start höchstens so oft
 const DROPBOX_SYNC_START_DELAY_MS = 3000;  // erst nach dem ersten Bildaufbau
@@ -4818,15 +4815,66 @@ class DropboxSyncError extends Error {
 
 let dropboxSyncRunning = false;
 
-function dropboxSyncAvailable() {
-  return !!DROPBOX_SYNC_WORKER;
+/**
+ * Eingabe der Server-Adresse → Herkunft ohne Pfad oder null. Erlaubt sind nur
+ * https-Adressen auf `.workers.dev` — genau das, was die CSP in index.html
+ * unter connect-src freigibt; alles andere blockierte der Browser ohnehin
+ * still. Läuft die App selbst auf localhost, darf der Server zum Testen auch
+ * dort liegen (die CSP muss ihn dann zusätzlich erlauben).
+ */
+function normalizeSyncWorkerUrl(raw, appHost = location.hostname) {
+  let text = String(raw || '').trim();
+  if (!text) return null;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(text)) text = `https://${text}`;
+  let url;
+  try { url = new URL(text); } catch { return null; }
+  if (url.username || url.password) return null;
+  const loopback = new Set(['localhost', '127.0.0.1', '[::1]']);
+  if (loopback.has(appHost) && loopback.has(url.hostname)) return url.origin;
+  if (url.protocol !== 'https:' || url.port) return null;
+  const host = url.hostname.toLowerCase();
+  if (!host.endsWith('.workers.dev') || host === '.workers.dev') return null;
+  return url.origin;
+}
+
+/** Eingetragene Server-Adresse, geprüft — '' = noch keine. */
+function dropboxSyncWorker() {
+  return normalizeSyncWorkerUrl(settings.dropboxSyncWorker) || '';
+}
+
+/** Fragt nach der Server-Adresse. Liefert die Adresse, '' (bewusst geleert,
+ *  nur mit allowClear) oder null (abgebrochen bzw. ungültig — mit Hinweis). */
+async function askSyncWorkerUrl({ allowClear = false } = {}) {
+  const raw = await promptDialog({
+    title: t('sync.workerPromptTitle'),
+    text: t(allowClear ? 'sync.workerPromptTextClear' : 'sync.workerPromptText'),
+    value: settings.dropboxSyncWorker || '',
+    placeholder: 'https://….workers.dev',
+  });
+  if (raw === null) return null;
+  if (!raw.trim()) return allowClear ? '' : null;
+  const url = normalizeSyncWorkerUrl(raw);
+  if (!url) { banner(t('sync.workerInvalid'), { kind: 'error' }); return null; }
+  return url;
+}
+
+/** Adresse ändern — Einstellungen → Hilfe und „Adresse ändern" in Fehlermeldungen. */
+async function editSyncWorkerUrl() {
+  const url = await askSyncWorkerUrl({ allowClear: true });
+  if (url === null || url === settings.dropboxSyncWorker) return;
+  // Neuer Server: beim nächsten Start gleich nachsehen statt die Pause abzuwarten.
+  await saveSettings({ dropboxSyncWorker: url, dropboxLastCheckAt: null });
+  renderDropboxSetting();
+  banner(t(url ? 'sync.workerSaved' : 'sync.workerRemoved'), { kind: 'info', timeout: 2500 });
 }
 
 /** Eine Anfrage an den Worker. Der Link ist der Zugangsschutz (siehe README). */
 async function dropboxSyncFetch(endpoint, path) {
+  const worker = dropboxSyncWorker();
+  if (!worker) throw new DropboxSyncError('noWorker');
   let res;
   try {
-    res = await fetch(`${DROPBOX_SYNC_WORKER}/${endpoint}?path=${encodeURIComponent(path)}`, {
+    res = await fetch(`${worker}/${endpoint}?path=${encodeURIComponent(path)}`, {
       headers: { 'X-Chor-Link': settings.dropboxUrl || '' },
       cache: 'no-store',
     });
@@ -4955,16 +5003,16 @@ function renderDropboxSyncBadge(count = settings.dropboxNewsCount) {
   }
 }
 
-/** Knöpfe nur zeigen, wenn ein Worker eingetragen ist; Schalter spiegeln. */
+/** Server-Adresse in den Einstellungen, Hauptknopf der Import-Karte, Schalter. */
 function renderDropboxSyncUi() {
-  const on = dropboxSyncAvailable();
-  $('#btn-dropbox-sync').hidden = !on;
-  // Ein Hauptknopf je Karte: mit Abgleich tritt die ZIP-Auswahl zurück.
-  $('#btn-zip').classList.toggle('btn--primary', !on);
-  $('#songs-fab-menu [data-action="dropbox-sync"]').hidden = !on;
-  $('#dropbox-sync-start-item').hidden = !on;
+  const worker = dropboxSyncWorker();
+  $('#dropbox-worker-sub').textContent = worker ? worker.replace(/^https:\/\//, '') : t('dropbox.linkNone');
+  // Ein Hauptknopf je Karte: mit eingetragenem Server ist das der Abgleich,
+  // sonst bleibt es die ZIP-Auswahl.
+  $('#btn-dropbox-sync').classList.toggle('btn--primary', !!worker);
+  $('#btn-zip').classList.toggle('btn--primary', !worker);
   $('#btn-dropbox-sync-start').setAttribute('aria-checked', settings.dropboxCheckOnStart ? 'true' : 'false');
-  renderDropboxSyncBadge(on ? settings.dropboxNewsCount : 0);
+  renderDropboxSyncBadge(worker ? settings.dropboxNewsCount : 0);
 }
 
 /** Einmaliger Hinweis vor dem ersten Abgleich — mit echter Wahl, ob auch beim
@@ -5002,20 +5050,27 @@ function showDropboxSyncError(err) {
   if (code === 'unauthorized') {
     banner(t('sync.errUnauthorized'), { kind: 'error', action: { label: t('sync.changeLink'), onClick: () => editDropboxUrl() } });
   } else if (code === 'offline') {
-    banner(t('sync.errOffline'), { kind: 'error' });
+    banner(t('sync.errOffline'), { kind: 'error', action: { label: t('sync.changeWorker'), onClick: () => editSyncWorkerUrl() } });
   } else if (code === 'setup') {
     banner(t('sync.errSetup'), { kind: 'error' });
   } else if (code === 'tooBig') {
     banner(t('sync.errTooBig'), { kind: 'error' });
   } else {
-    bannerError(t('sync.errFailed'), 'SYNC', err);
+    // Auch eine falsche Adresse landet meist hier (404, fremde Antwort).
+    bannerError(t('sync.errFailed'), 'SYNC', err, { action: { label: t('sync.changeWorker'), onClick: () => editSyncWorkerUrl() } });
   }
 }
 
 /** Knopf in der Import-Ansicht und Eintrag im +-Menü. Lädt nichts, öffnet nur
  *  die Auswahlmaske. */
 async function startDropboxSync() {
-  if (!dropboxSyncAvailable() || dropboxSyncRunning || pick) return;
+  if (dropboxSyncRunning || pick) return;
+  if (!dropboxSyncWorker()) {
+    const worker = await askSyncWorkerUrl();
+    if (!worker) return;
+    await saveSettings({ dropboxSyncWorker: worker });
+    renderDropboxSetting();
+  }
   if (!normalizeDropboxUrl(settings.dropboxUrl)) {
     const url = await askDropboxUrl();
     if (!url) return;
@@ -5050,7 +5105,7 @@ async function startDropboxSync() {
  * sich nicht bei jedem Start erneut, die Zahl steht dann nur am Knopf.
  */
 async function dropboxQuietCheck() {
-  if (!dropboxSyncAvailable() || !settings.dropboxCheckOnStart || !normalizeDropboxUrl(settings.dropboxUrl)) return;
+  if (!dropboxSyncWorker() || !settings.dropboxCheckOnStart || !normalizeDropboxUrl(settings.dropboxUrl)) return;
   if (navigator.onLine === false || pick || dropboxSyncRunning) return;
   const last = Date.parse(settings.dropboxLastCheckAt || '') || 0;
   if (Date.now() - last < DROPBOX_SYNC_CHECK_INTERVAL_MS) return;
@@ -5086,7 +5141,7 @@ async function dropboxQuietCheck() {
 }
 
 function scheduleDropboxQuietCheck() {
-  if (!dropboxSyncAvailable()) return;
+  if (!dropboxSyncWorker()) return;
   setTimeout(() => { dropboxQuietCheck().catch((err) => console.warn('[sync] Prüfung beim Start', err)); }, DROPBOX_SYNC_START_DELAY_MS);
 }
 
@@ -5109,6 +5164,7 @@ async function forgetDeletedForSync(normTitles) {
 }
 
 $('#btn-dropbox-sync').addEventListener('click', () => startDropboxSync());
+$('#btn-dropbox-worker').addEventListener('click', () => editSyncWorkerUrl());
 $('#btn-dropbox-sync-start').addEventListener('click', async () => {
   await saveSettings({ dropboxCheckOnStart: !settings.dropboxCheckOnStart });
   renderDropboxSyncUi();
@@ -20710,7 +20766,7 @@ function runSelfTests() {
     // Wiedergabe-/Recorder-Vorlieben: Gültiges übernehmen, Ungültiges und Gerätegebundenes nie.
     const prefs = sanitizeSettingsPatch({ repeatMode: 'song', shuffleMode: true, presentTheme: 'light', slowMode: 'hd', recBackingVolume: 5, songSearchService: 'youtube', defaultImportScope: 'all' });
     if (prefs.repeatMode !== 'song' || prefs.shuffleMode !== true || prefs.presentTheme !== 'light' || prefs.slowMode !== 'hd' || prefs.recBackingVolume !== 0.6 || prefs.songSearchService !== 'youtube' || prefs.defaultImportScope !== 'all') failed.push('sanitizeSettingsPatch: Wiedergabe-Vorlieben aus Sicherung nicht übernommen');
-    const badPrefs = sanitizeSettingsPatch({ repeatMode: 'off', shuffleMode: 'ja', presentTheme: 'url(x)', slowMode: 'hq', songSearchService: 'evil', recBackingOffsetMs: 300, dropboxUrl: 'https://x.example', channelMode: 'mono', hdOptions: {}, dropboxCheckOnStart: true, dropboxSyncNoticeShown: true, dropboxIgnoredSongs: ['x'], dropboxLastNoticeSig: 'abc' });
+    const badPrefs = sanitizeSettingsPatch({ repeatMode: 'off', shuffleMode: 'ja', presentTheme: 'url(x)', slowMode: 'hq', songSearchService: 'evil', recBackingOffsetMs: 300, dropboxUrl: 'https://x.example', channelMode: 'mono', hdOptions: {}, dropboxCheckOnStart: true, dropboxSyncNoticeShown: true, dropboxIgnoredSongs: ['x'], dropboxLastNoticeSig: 'abc', dropboxSyncWorker: 'https://x.workers.dev' });
     if (Object.keys(badPrefs).length) failed.push(`sanitizeSettingsPatch: Ungültiges/Gerätegebundenes übernommen (${Object.keys(badPrefs).join(', ')})`);
   }
   checks++;
@@ -20812,6 +20868,29 @@ function runSelfTests() {
       [remoteFileStatus({ remoteVersion: 'a', size: 5 }, {}, 6), 'changed'],
     ];
     cases.forEach(([got, want], i) => { if (got !== want) failed.push(`remoteFileStatus Fall ${i}: ${got}, erwartet ${want}`); });
+  }
+
+  // Server-Adresse: nur https auf *.workers.dev (das deckt die CSP ab),
+  // localhost nur, wenn die App selbst dort läuft.
+  checks++;
+  {
+    const cases = [
+      ['chor-proxy.name.workers.dev', 'example.org', 'https://chor-proxy.name.workers.dev'],
+      ['https://Chor-Proxy.name.workers.dev/list?x=1', 'example.org', 'https://chor-proxy.name.workers.dev'],
+      ['http://chor-proxy.name.workers.dev', 'example.org', null],
+      ['https://chor-proxy.name.workers.dev:8443', 'example.org', null],
+      ['https://user:pw@chor-proxy.name.workers.dev', 'example.org', null],
+      ['https://workers.dev.evil.example', 'example.org', null],
+      ['https://evil.example/x.workers.dev', 'example.org', null],
+      ['javascript:alert(1)', 'example.org', null],
+      ['http://127.0.0.1:8792', 'example.org', null],
+      ['http://127.0.0.1:8792', '127.0.0.1', 'http://127.0.0.1:8792'],
+      ['', 'example.org', null],
+    ];
+    for (const [raw, appHost, want] of cases) {
+      const got = normalizeSyncWorkerUrl(raw, appHost);
+      if (got !== want) failed.push(`normalizeSyncWorkerUrl("${raw}", ${appHost}) = ${got}, erwartet ${want}`);
+    }
   }
 
   // Worker-Liste als fremde Daten: nur Gültiges kommt durch.

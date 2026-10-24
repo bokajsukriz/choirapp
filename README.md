@@ -101,10 +101,15 @@ und `/file?path=…` (eine Datei); Zugangsschutz ist der Dropbox-Link, den die
 App im Kopf `X-Chor-Link` mitschickt (`settings.dropboxUrl`, nur auf dem
 Gerät).
 
-- **Einschalten:** `DROPBOX_SYNC_WORKER` in `app.js` auf die Adresse des
-  Workers setzen (Herkunft ohne Pfad) **und** dieselbe Herkunft in
-  `connect-src` der CSP in `index.html` eintragen, `SW_VERSION` erhöhen.
-  Leer bleiben Knopf, Menüeintrag und Schalter ausgeblendet.
+- **Server-Adresse:** wird in der App eingetragen — Einstellungen → Hilfe →
+  „Abgleich-Server“, oder beim ersten Tipp auf „Mit Dropbox abgleichen“
+  (`settings.dropboxSyncWorker`, nur auf dem Gerät, nicht in der Sicherung).
+  Angenommen werden nur `https://…workers.dev`-Adressen
+  (`normalizeSyncWorkerUrl()`), denn nur die gibt die CSP frei
+  (`connect-src … https://*.workers.dev`). Ein Worker unter eigener Domain
+  bräuchte dort und in `normalizeSyncWorkerUrl()` einen weiteren Eintrag.
+  Läuft die App auf localhost, darf der Server zum Testen auch dort liegen
+  (CSP der Testkopie entsprechend erweitern).
 - **Einstiege:** „Mit Dropbox abgleichen“ in der Import-Ansicht,
   „Dropbox abgleichen“ im +-Menü der Songs, „Ansehen“ im Start-Banner
   (`startDropboxSync()`). Alle holen nur die Liste und öffnen die gewohnte
@@ -706,7 +711,7 @@ Genanntes:
 ```
 default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self';
 style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:;
-media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' wss://uhr.ptb.de https://lrclib.net;
+media-src 'self' blob:; frame-src 'self' blob:; connect-src 'self' wss://uhr.ptb.de https://lrclib.net https://*.workers.dev;
 manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';
 ```
 
@@ -726,9 +731,10 @@ manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none';
   `wss://uhr.ptb.de` (Internetzeit per WebSocket, siehe
   [Lichtshow](#lichtshow)) und `https://lrclib.net` (Liedtext-Abruf, siehe
   [Externe Liedsuche](#externe-liedsuche)); jede andere Netzwerkanfrage aus
-  dem Code wäre damit von vornherein blockiert. Wird der
-  [Dropbox-Abgleich](#dropbox-abgleich) eingeschaltet, kommt die Adresse des
-  Workers hinzu.
+  dem Code wäre damit von vornherein blockiert. Dazu kommt
+  `https://*.workers.dev` für den [Dropbox-Abgleich](#dropbox-abgleich): die
+  Server-Adresse trägt man in der App selbst ein, deshalb kann hier keine
+  feste Adresse stehen; die App nimmt auch nur solche Adressen an.
 - `manifest-src 'self'`, `object-src 'none'`, `base-uri 'none'` und
   `form-action 'none'` schließen die übrigen Kanäle.
 
