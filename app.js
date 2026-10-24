@@ -910,6 +910,7 @@ window.addEventListener('resize', () => {
    Song (#song-import-input) und ein Platzhalter ganz ohne Aufnahme. */
 wireFabMenu('#btn-songs-import-fab', '#songs-fab-backdrop', async (action) => {
   if (action === 'dropbox') { navigate('#import'); return; }
+  if (action === 'dropbox-sync') { startDropboxSync(); return; }
   if (action === 'recordings') { navigate('#settings'); $('#rec-import-input').click(); return; }
   if (action === 'package') { $('#song-import-input').click(); return; }
   if (action === 'placeholder') {
@@ -1357,6 +1358,15 @@ const DEFAULT_SETTINGS = {
   // diesem Gerät: buildBackupParts() übernimmt Einstellungen nur aus einer
   // festen Liste, dieser Schlüssel steht nicht darin.
   dropboxUrl: '',
+  // Dropbox-Abgleich über den Worker des Chores (siehe dropboxQuietCheck).
+  // Wie dropboxUrl nur auf diesem Gerät, nicht in der Sicherung.
+  dropboxSyncNoticeShown: false, // einmaliger Hinweis vor dem ersten Abgleich gezeigt?
+  dropboxCheckOnStart: false,    // beim Start nach Neuem sehen (nur melden, nie laden)
+  dropboxLastCheckAt: null,      // letzte erfolgreiche Prüfung beim Start
+  dropboxLastNoticeSig: null,    // Signatur der zuletzt gemeldeten Funde
+  dropboxNewsCount: 0,           // Zahl am Knopf „Mit Dropbox abgleichen" bis zum nächsten Abgleich
+  dropboxUnauthorizedSig: null,  // für welchen Link „passt nicht mehr" schon kam
+  dropboxIgnoredSongs: [],       // normTitle von Hand gelöschter Songs (rememberDeletedForSync)
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -1681,6 +1691,8 @@ async function loadSettings() {
   }
   settings.hdOptions = sanitizeHdOptions(settings.hdOptions);
   if (typeof settings.normalizationEnabled !== 'boolean') settings.normalizationEnabled = false;
+  if (!Array.isArray(settings.dropboxIgnoredSongs)) settings.dropboxIgnoredSongs = [];
+  settings.dropboxIgnoredSongs = settings.dropboxIgnoredSongs.filter((n) => typeof n === 'string');
 
   // Den Reiter „Sheets" gibt es nicht mehr (siehe PLAYER_TABS) — die
   // Vorschau der Noten läuft jetzt über einen Hinweis im Notes-Reiter
@@ -2145,11 +2157,16 @@ function scanFiles(files, zipTitle) {
     const withoutVoice = [];
     let hasFull = false;
 
+    // Nach Namen sortiert, damit bei zwei Dateien für dieselbe Stimme immer
+    // dieselbe die Stimme bekommt — unabhängig von der Reihenfolge im Archiv
+    // bzw. in der Dropbox-Liste.
+    audio.sort((a, b) => collator.compare(a.name, b.name));
+    const takenVoices = new Set();
+
     for (const item of audio) {
       const { voice, rest } = detectVoice(item.name, folderName || title);
       if (voice) {
         if (voice === 'FULL') hasFull = true;
-        tracks.push({ entry: item, voice, fileName: item.name, size: item.size });
 
         // Präfix, der nicht zum Ordner passt, deutet auf einen Ablagefehler hin.
         const folderNorm = normalizeTitle(folderName || title);
@@ -2157,6 +2174,18 @@ function scanFiles(files, zipTitle) {
           notes.push(t('import.noteWrongFolder')
             .replace('{file}', item.name).replace('{folder}', folderName || title));
         }
+
+        // „S1"/„S2" oder „Sopran 1"/„Sopran 2" fallen beide auf SOP. Die
+        // zweite ersetzte früher still die erste, und ein Abgleich hielte bei
+        // jedem Lauf abwechselnd eine von beiden für geändert. Nichts wird
+        // verworfen: die weitere Datei wird OTHER, `dupOf` merkt sich die
+        // Stimme (siehe analyzeAgainstLibrary, Tausch mit der gespeicherten).
+        if (takenVoices.has(voice)) {
+          tracks.push({ entry: item, voice: 'OTHER', dupOf: voice, fileName: item.name, size: item.size });
+          continue;
+        }
+        takenVoices.add(voice);
+        tracks.push({ entry: item, voice, fileName: item.name, size: item.size });
       } else {
         withoutVoice.push(item);
       }
@@ -3059,6 +3088,9 @@ async function deleteSong(song) {
   const keys = [...song.tracks.map((t) => t.fileKey), ...(song.scores || []).map((s) => s.fileKey)];
   await detachSongLinks(song);
   await DB.deleteMetaAndFiles(song.key, keys);
+  // Platzhalter (ohne Aufnahme) zählen nicht: kommt der Song später in die
+  // Dropbox, soll der Abgleich ihn melden.
+  if (song.tracks.length) await rememberDeletedForSync([song.normTitle || normalizeTitle(song.title)]);
   if (playerSong && playerSong.id === song.id) closePlayer();
   await refreshAfterDelete();
   banner(t('msg.songDeleted'), { kind: 'ok' });
@@ -3097,6 +3129,8 @@ $('#btn-drop-audio').addEventListener('click', async () => {
         ...(song.scores || []).map((x) => x.fileKey),
       ]);
     }
+    await rememberDeletedForSync(songs.filter((song) => song.tracks.length)
+      .map((song) => song.normTitle || normalizeTitle(song.title)));
     if (playerSong) closePlayer();
     banner(t('msg.songsRemovedFreed').replace('{songs}', tPlural(songs.length, 'common.songOne', 'common.songMany')).replace('{size}', fmtBytes(bytes)), { kind: 'ok' });
     await refreshAfterDelete();
@@ -4752,16 +4786,332 @@ function renderDropboxSetting() {
   $('#dropbox-url-sub').textContent = settings.dropboxUrl
     ? settings.dropboxUrl.replace(/^https:\/\//, '')
     : t('dropbox.linkNone');
+  renderDropboxSyncUi();
 }
 
 $('#btn-dropbox-open-import').addEventListener('click', openDropbox);
 $('#btn-dropbox-open-settings').addEventListener('click', openDropbox);
-$('#btn-dropbox-url').addEventListener('click', async () => {
+$('#btn-dropbox-url').addEventListener('click', () => editDropboxUrl());
+
+/* ---- Dropbox-Abgleich ----------------------------------------------------
+   Über den Cloudflare Worker des Chores (siehe README, „Dropbox-Abgleich").
+   Holt nur die Dateiliste und speist sie in denselben Import wie ZIP und
+   Ordner — geladen wird erst mit „Importieren" in der Auswahlmaske, gelöscht
+   wird nie etwas. Die Prüfung beim Start meldet Neues nur. */
+
+// Adresse des Workers, Herkunft ohne Pfad. Leer = Abgleich ausgeblendet.
+// Wer sie setzt, trägt dieselbe Herkunft in connect-src der CSP in
+// index.html ein — sonst blockiert der Browser jede Anfrage still.
+const DROPBOX_SYNC_WORKER = '';
+const DROPBOX_SYNC_MAX_FOLDERS = 2000;
+const DROPBOX_SYNC_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // Prüfung beim Start höchstens so oft
+const DROPBOX_SYNC_START_DELAY_MS = 3000;  // erst nach dem ersten Bildaufbau
+const DROPBOX_SYNC_MAX_IGNORED = 2000;     // Merkliste gelöschter Songs
+
+class DropboxSyncError extends Error {
+  constructor(code, message) {
+    super(message || code);
+    this.name = 'DropboxSyncError';
+    this.code = code;
+  }
+}
+
+let dropboxSyncRunning = false;
+
+function dropboxSyncAvailable() {
+  return !!DROPBOX_SYNC_WORKER;
+}
+
+/** Eine Anfrage an den Worker. Der Link ist der Zugangsschutz (siehe README). */
+async function dropboxSyncFetch(endpoint, path) {
+  let res;
+  try {
+    res = await fetch(`${DROPBOX_SYNC_WORKER}/${endpoint}?path=${encodeURIComponent(path)}`, {
+      headers: { 'X-Chor-Link': settings.dropboxUrl || '' },
+      cache: 'no-store',
+    });
+  } catch (err) {
+    throw new DropboxSyncError('offline', err?.message);
+  }
+  if (res.status === 401) throw new DropboxSyncError('unauthorized');
+  if (res.status === 503) throw new DropboxSyncError('setup');
+  if (!res.ok) throw new DropboxSyncError('http', `${endpoint} ${res.status}`);
+  return res;
+}
+
+/**
+ * Prüft eine /list-Antwort des Workers als fremde Daten und teilt sie in
+ * Dateien (für scanFiles: `path` ohne führenden „/") und Unterordner. Rein —
+ * kein Netz, kein DOM, testbar in runSelfTests().
+ */
+function dropboxSyncParseListing(entries) {
+  if (!Array.isArray(entries)) throw new DropboxSyncError('badListing');
+  const files = [];
+  const folders = [];
+  for (const e of entries) {
+    if (!e || typeof e !== 'object' || typeof e.path !== 'string') continue;
+    const path = e.path;
+    if (!path.startsWith('/') || path.length > IMPORT_MAX_PATH_LENGTH) continue;
+    if (path.split('/').some((seg) => seg === '..' || seg === '.')) continue;
+    if (isJunkPath(path.slice(1))) continue;
+    if (e.type === 'folder') { folders.push(path); continue; }
+    if (e.type !== 'file' || !Number.isSafeInteger(e.size) || e.size < 0 || e.size > IMPORT_MAX_ENTRY_BYTES) continue;
+    files.push({
+      path: path.slice(1),
+      size: e.size,
+      remotePath: path,
+      remoteVersion: typeof e.version === 'string' && e.version ? e.version.slice(0, 128) : null,
+    });
+  }
+  return { files, folders };
+}
+
+/** Ganze Ordnerstruktur als flache Liste — nur Metadaten, keine einzige Datei. */
+async function dropboxSyncListAll() {
+  const files = [];
+  const queue = [''];
+  let folders = 0;
+  while (queue.length) {
+    if (++folders > DROPBOX_SYNC_MAX_FOLDERS) throw new DropboxSyncError('tooBig');
+    let entries;
+    try {
+      entries = await (await dropboxSyncFetch('list', queue.shift())).json();
+    } catch (err) {
+      if (err instanceof DropboxSyncError) throw err;
+      throw new DropboxSyncError('badListing', err?.message);
+    }
+    const parsed = dropboxSyncParseListing(entries);
+    files.push(...parsed.files);
+    queue.push(...parsed.folders);
+    if (files.length > IMPORT_MAX_ENTRIES) throw new DropboxSyncError('tooBig');
+  }
+  return files;
+}
+
+/** Liste holen und wie einen ZIP-Inhalt einlesen. Dateien direkt im
+ *  Hauptordner sind kein Songordner und kommen nur als Hinweis vor. */
+async function dropboxSyncScan() {
+  const listing = await dropboxSyncListAll();
+  const inFolders = listing.filter((f) => f.path.includes('/'));
+  const { songs, notes } = scanFiles(inFolders, '');
+  if (listing.some((f) => !f.path.includes('/') && AUDIO_RE.test(f.path))) notes.push(t('sync.noteRootFiles'));
+  await analyzeAgainstLibrary(songs, { source: 'dropbox' });
+  return { songs, notes };
+}
+
+/**
+ * Was die Prüfung beim Start meldet: neue Songs (außer von Hand gelöschten),
+ * neue Spuren in eigener Stimme oder Gesamt, ersetzte Spuren, neue oder
+ * geänderte Noten/Liedtexte. Neue Spuren fremder Stimmen nicht. Rein —
+ * testbar in runSelfTests(). `signature` ist unabhängig von der Reihenfolge.
+ */
+function dropboxSyncNews(songs, { myVoices = [], ignored = [] } = {}) {
+  const ignoredSet = new Set(ignored);
+  const items = [];
+  let newSongs = 0, newTracks = 0, changedTracks = 0, extras = 0;
+  for (const song of songs) {
+    if (!song.existing) {
+      if (ignoredSet.has(song.normTitle)) continue;
+      newSongs++;
+      items.push(`song:${song.normTitle}`);
+      continue;
+    }
+    for (const tr of song.tracks) {
+      const mine = tr.voice === 'FULL' || myVoices.includes(tr.voice);
+      if (tr.status === 'changed') changedTracks++;
+      else if (tr.status === 'new' && mine) newTracks++;
+      else continue;
+      items.push(`${tr.entry.remotePath}@${tr.entry.remoteVersion || tr.size}`);
+    }
+    for (const x of song.extras || []) {
+      extras++;
+      items.push(`${x.entry.remotePath}@${x.entry.remoteVersion || x.size}`);
+    }
+  }
+  items.sort();
+  const total = newSongs + newTracks + changedTracks + extras;
+  return { newSongs, newTracks, changedTracks, extras, total, signature: total ? hashId(items.join('\n')) : null };
+}
+
+function dropboxSyncNewsText(news) {
+  const parts = [];
+  if (news.newSongs) parts.push(tPlural(news.newSongs, 'count.newSongOne', 'count.newSongMany'));
+  if (news.newTracks) parts.push(tPlural(news.newTracks, 'count.newVoiceOne', 'count.newVoiceMany'));
+  if (news.changedTracks) parts.push(tPlural(news.changedTracks, 'sync.changedRecordingOne', 'sync.changedRecordingMany'));
+  if (news.extras) parts.push(tPlural(news.extras, 'sync.extrasUpdatedOne', 'sync.extrasUpdatedMany'));
+  return t('sync.newsBanner').replace('{list}', parts.join(', '));
+}
+
+/** Zahl am Knopf in der Import-Ansicht und am Eintrag im +-Menü — gespeichert,
+ *  damit sie auch nach einem Neustart innerhalb der Prüfpause stehen bleibt. */
+function renderDropboxSyncBadge(count = settings.dropboxNewsCount) {
+  count = Number.isSafeInteger(count) && count > 0 ? count : 0;
+  if (count !== settings.dropboxNewsCount) {
+    saveSettings({ dropboxNewsCount: count }).catch((err) => console.warn('[sync] Zahl speichern', err));
+  }
+  for (const node of $$('.dropbox-sync-count')) {
+    node.textContent = count ? String(count) : '';
+    node.hidden = !count;
+  }
+}
+
+/** Knöpfe nur zeigen, wenn ein Worker eingetragen ist; Schalter spiegeln. */
+function renderDropboxSyncUi() {
+  const on = dropboxSyncAvailable();
+  $('#btn-dropbox-sync').hidden = !on;
+  // Ein Hauptknopf je Karte: mit Abgleich tritt die ZIP-Auswahl zurück.
+  $('#btn-zip').classList.toggle('btn--primary', !on);
+  $('#songs-fab-menu [data-action="dropbox-sync"]').hidden = !on;
+  $('#dropbox-sync-start-item').hidden = !on;
+  $('#btn-dropbox-sync-start').setAttribute('aria-checked', settings.dropboxCheckOnStart ? 'true' : 'false');
+  renderDropboxSyncBadge(on ? settings.dropboxNewsCount : 0);
+}
+
+/** Einmaliger Hinweis vor dem ersten Abgleich — mit echter Wahl, ob auch beim
+ *  Start nachgesehen werden darf (wie bei LRCLIB, siehe loadLyricsFromLrclib). */
+async function ensureDropboxSyncNotice() {
+  if (settings.dropboxSyncNoticeShown) return true;
+  const ok = await confirmDialog({
+    title: t('sync.noticeTitle'),
+    text: t('sync.noticeText'),
+    okLabel: t('sync.noticeOk'),
+    selectOptions: [
+      { value: 'start', label: t('sync.noticeChoiceStart') },
+      { value: 'manual', label: t('sync.noticeChoiceManual') },
+    ],
+    selectValue: 'start',
+    selectLabel: t('sync.noticeChoiceAria'),
+  });
+  if (!ok) return false;
+  await saveSettings({ dropboxSyncNoticeShown: true, dropboxCheckOnStart: dialogSelectValue() === 'start' });
+  renderDropboxSyncUi();
+  return true;
+}
+
+/** Link ändern — derselbe Weg wie „Dropbox-Link" in den Einstellungen. */
+async function editDropboxUrl() {
   const url = await askDropboxUrl({ allowClear: true });
   if (url === null || url === settings.dropboxUrl) return;
   await saveSettings({ dropboxUrl: url });
   renderDropboxSetting();
   banner(t(url ? 'dropbox.saved' : 'dropbox.removed'), { kind: 'info', timeout: 2500 });
+}
+
+function showDropboxSyncError(err) {
+  const code = err?.code;
+  if (code === 'unauthorized') {
+    banner(t('sync.errUnauthorized'), { kind: 'error', action: { label: t('sync.changeLink'), onClick: () => editDropboxUrl() } });
+  } else if (code === 'offline') {
+    banner(t('sync.errOffline'), { kind: 'error' });
+  } else if (code === 'setup') {
+    banner(t('sync.errSetup'), { kind: 'error' });
+  } else if (code === 'tooBig') {
+    banner(t('sync.errTooBig'), { kind: 'error' });
+  } else {
+    bannerError(t('sync.errFailed'), 'SYNC', err);
+  }
+}
+
+/** Knopf in der Import-Ansicht und Eintrag im +-Menü. Lädt nichts, öffnet nur
+ *  die Auswahlmaske. */
+async function startDropboxSync() {
+  if (!dropboxSyncAvailable() || dropboxSyncRunning || pick) return;
+  if (!normalizeDropboxUrl(settings.dropboxUrl)) {
+    const url = await askDropboxUrl();
+    if (!url) return;
+    await saveSettings({ dropboxUrl: url });
+    renderDropboxSetting();
+  }
+  if (!(await ensureDropboxSyncNotice())) return;
+  dropboxSyncRunning = true;
+  const close = banner(t('sync.checking'), { timeout: 0 });
+  try {
+    await ensureMyVoice();
+    const { songs, notes } = await dropboxSyncScan();
+    close();
+    dlog('sync:scan', { songs: songs.length });
+    if (!songs.length) { banner(t('sync.noSongs'), { kind: 'error' }); return; }
+    renderDropboxSyncBadge(dropboxSyncNews(songs, { myVoices: settings.myVoices, ignored: settings.dropboxIgnoredSongs }).total);
+    const foundFiles = songs.reduce((n, s) => n + s.tracks.length, 0);
+    const foundBytes = songs.reduce((n, s) => n + s.tracks.reduce((m, tr) => m + tr.size, 0), 0);
+    await openPicker({ songs, notes, skipped: [], source: { kind: 'dropbox' }, foundFiles, foundBytes });
+  } catch (err) {
+    close();
+    dlog('sync:fail', { code: err?.code, message: err?.message });
+    showDropboxSyncError(err);
+  } finally {
+    dropboxSyncRunning = false;
+  }
+}
+
+/**
+ * Prüfung beim Start: nur die Liste, nur melden. Schreibt nichts außer dem
+ * Zeitpunkt und der Signatur der letzten Meldung — dieselben Funde melden
+ * sich nicht bei jedem Start erneut, die Zahl steht dann nur am Knopf.
+ */
+async function dropboxQuietCheck() {
+  if (!dropboxSyncAvailable() || !settings.dropboxCheckOnStart || !normalizeDropboxUrl(settings.dropboxUrl)) return;
+  if (navigator.onLine === false || pick || dropboxSyncRunning) return;
+  const last = Date.parse(settings.dropboxLastCheckAt || '') || 0;
+  if (Date.now() - last < DROPBOX_SYNC_CHECK_INTERVAL_MS) return;
+  dropboxSyncRunning = true;
+  try {
+    const { songs } = await dropboxSyncScan();
+    const news = dropboxSyncNews(songs, { myVoices: settings.myVoices, ignored: settings.dropboxIgnoredSongs });
+    dlog('sync:check', { songs: songs.length, news: news.total });
+    await saveSettings({ dropboxLastCheckAt: new Date().toISOString() });
+    renderDropboxSyncBadge(news.total);
+    if (!news.signature || news.signature === settings.dropboxLastNoticeSig) return;
+    await saveSettings({ dropboxLastNoticeSig: news.signature });
+    banner(dropboxSyncNewsText(news), {
+      kind: 'info',
+      timeout: 12000,
+      action: { label: t('sync.show'), onClick: () => startDropboxSync() },
+    });
+  } catch (err) {
+    // Kein Banner bei Funkloch oder Worker-Ausfall — der nächste Start
+    // versucht es erneut. Nur ein geänderter Link braucht die Person, und
+    // das einmal je Link.
+    dlog('sync:check:fail', { code: err?.code, message: err?.message });
+    if (err?.code === 'unauthorized') {
+      const sig = hashId(settings.dropboxUrl || '');
+      if (settings.dropboxUnauthorizedSig !== sig) {
+        await saveSettings({ dropboxUnauthorizedSig: sig });
+        showDropboxSyncError(err);
+      }
+    }
+  } finally {
+    dropboxSyncRunning = false;
+  }
+}
+
+function scheduleDropboxQuietCheck() {
+  if (!dropboxSyncAvailable()) return;
+  setTimeout(() => { dropboxQuietCheck().catch((err) => console.warn('[sync] Prüfung beim Start', err)); }, DROPBOX_SYNC_START_DELAY_MS);
+}
+
+/**
+ * Merkliste für den Dropbox-Abgleich: ein von Hand gelöschter Song soll
+ * nicht bei jedem Start wieder als neu gemeldet werden. Er bleibt in der
+ * Auswahlmaske wählbar; wer ihn wieder importiert, nimmt ihn heraus.
+ */
+async function rememberDeletedForSync(normTitles) {
+  const add = normTitles.filter(Boolean);
+  if (!add.length) return;
+  const list = [...(settings.dropboxIgnoredSongs || []).filter((n) => !add.includes(n)), ...add];
+  await saveSettings({ dropboxIgnoredSongs: list.slice(-DROPBOX_SYNC_MAX_IGNORED) });
+}
+
+async function forgetDeletedForSync(normTitles) {
+  const current = settings.dropboxIgnoredSongs || [];
+  if (!normTitles.length || !current.some((n) => normTitles.includes(n))) return;
+  await saveSettings({ dropboxIgnoredSongs: current.filter((n) => !normTitles.includes(n)) });
+}
+
+$('#btn-dropbox-sync').addEventListener('click', () => startDropboxSync());
+$('#btn-dropbox-sync-start').addEventListener('click', async () => {
+  await saveSettings({ dropboxCheckOnStart: !settings.dropboxCheckOnStart });
+  renderDropboxSyncUi();
 });
 $('#btn-setup-again').addEventListener('click', () => openOnboarding());
 
@@ -7990,6 +8340,9 @@ async function readTextBlob(blob) {
 /** Liefert die Nutzdaten eines Scan-Eintrags — aus dem ZIP oder direkt. */
 async function entryBlob(entry) {
   if (entry.blob) return entry.blob;           // Ordner-Import
+  if (pick.source.kind === 'dropbox') {        // Dropbox-Abgleich: erst jetzt laden
+    return (await dropboxSyncFetch('file', entry.remotePath)).blob();
+  }
   return zipExtract(pick.source.file, entry, pick.source.inflateBudget);  // ZIP-Import
 }
 
@@ -8100,8 +8453,70 @@ function findExistingTrack(existingSong, track) {
   return tracks.find((x) => x.voice === track.voice) || null;
 }
 
+/**
+ * Zwei Dateien für dieselbe Stimme (siehe scanFiles, `dupOf`): Liegt in der
+ * Bibliothek schon die *zweite* als diese Stimme, tauschen die beiden Rollen.
+ * Sonst hielte der erste Abgleich nach dem Update die gespeicherte Spur für
+ * ersetzt und schlüge die andere Datei an ihrer Stelle vor.
+ */
+function preferStoredDuplicate(song) {
+  if (!song.existing) return;
+  for (const dup of song.tracks.filter((tr) => tr.dupOf)) {
+    const stored = (song.existing.tracks || []).find((x) => x.voice === dup.dupOf);
+    const primary = song.tracks.find((tr) => tr.voice === dup.dupOf);
+    if (!stored || !primary || stored.fileName !== dup.fileName || stored.fileName === primary.fileName) continue;
+    primary.voice = 'OTHER';
+    primary.dupOf = dup.dupOf;
+    primary.label = otherLabel(primary.fileName, song.title);
+    dup.voice = dup.dupOf;
+    dup.label = VOICE_LABEL[dup.voice];
+    delete dup.dupOf;
+  }
+  song.tracks.sort((a, b) => VOICE_ORDER.indexOf(a.voice) - VOICE_ORDER.indexOf(b.voice));
+}
+
+/**
+ * Status einer Datei gegenüber dem gespeicherten Gegenstück: über den
+ * Dropbox-Hash, wenn beide einen haben (Dropbox-Abgleich), sonst wie bisher
+ * über die Größe.
+ */
+function remoteFileStatus(stored, entry, size) {
+  if (!stored) return 'new';
+  if (stored.remoteVersion && entry?.remoteVersion) {
+    return stored.remoteVersion === entry.remoteVersion ? 'same' : 'changed';
+  }
+  return stored.size === size ? 'same' : 'changed';
+}
+
+/**
+ * Nur beim Dropbox-Abgleich: Noten und Liedtext eines vorhandenen Songs, die
+ * neu oder geändert sind, als eigene Zeilen der Auswahlmaske (`song.extras`).
+ * Unveränderte schreibt runImport() dann nicht noch einmal. Ein Liedtext ohne
+ * gespeicherte Version (Song kam per ZIP) gilt als 'unknown': nicht gemeldet,
+ * aber mitgeschrieben, wenn der Song ohnehin importiert wird.
+ */
+function markDropboxExtras(song) {
+  song.extras = [];
+  for (const pdf of song.pdfEntries) {
+    const stored = song.existing ? (song.existing.scores || []).find((sc) => sc.fileName === pdf.name) : null;
+    pdf.status = song.existing ? remoteFileStatus(stored, pdf, pdf.size) : 'new';
+    if (song.existing && pdf.status !== 'same') {
+      song.extras.push({ kind: 'score', entry: pdf, status: pdf.status, size: pdf.size, checked: false });
+    }
+  }
+  const lyrics = song.lyricsEntry;
+  if (lyrics) {
+    if (!song.existing) lyrics.status = 'new';
+    else if (!song.existing.lyricsRemoteVersion || !lyrics.remoteVersion) lyrics.status = song.existing.lyrics ? 'unknown' : 'new';
+    else lyrics.status = song.existing.lyricsRemoteVersion === lyrics.remoteVersion ? 'same' : 'changed';
+    if (song.existing && (lyrics.status === 'new' || lyrics.status === 'changed')) {
+      song.extras.push({ kind: 'lyrics', entry: lyrics, status: lyrics.status, size: lyrics.size, checked: false });
+    }
+  }
+}
+
 /** Vergleicht das Scan-Ergebnis mit der Bibliothek und setzt je Spur den Status. */
-async function analyzeAgainstLibrary(songs) {
+async function analyzeAgainstLibrary(songs, { source = null } = {}) {
   const existing = await DB.metaByType('song');
   const byNorm = new Map(existing.map((s) => [s.normTitle, s]));
 
@@ -8116,17 +8531,24 @@ async function analyzeAgainstLibrary(songs) {
     byCore.get(core).push(s);
   }
 
+  const ignored = new Set(source === 'dropbox' ? settings.dropboxIgnoredSongs || [] : []);
+
   for (const song of songs) {
     song.existing = byNorm.get(song.normTitle) || null;
     song.similar = song.existing
       ? null
       : (byCore.get(song.core) || []).find((s) => s.normTitle !== song.normTitle) || null;
+    preferStoredDuplicate(song);
     for (const track of song.tracks) {
       const found = findExistingTrack(song.existing, track);
       track.existingTrack = found;
-      if (!found) track.status = 'new';
-      else if (found.size === track.size) track.status = 'same';
-      else track.status = 'changed';
+      track.status = remoteFileStatus(found, track.entry, track.size);
+    }
+    if (source === 'dropbox') {
+      // Von Hand gelöscht: weiter wählbar, aber nicht vorausgewählt und
+      // beim Start nicht gemeldet (siehe rememberDeletedForSync).
+      song.ignored = !song.existing && ignored.has(song.normTitle);
+      markDropboxExtras(song);
     }
   }
   return songs;
@@ -8154,6 +8576,17 @@ function applyPreset(preset) {
     // abgewählt — entschieden wird nie still, aber auch nicht doppelt.
     if (!isChosenVersion(song)) {
       for (const track of song.tracks) track.checked = false;
+      for (const x of song.extras || []) x.checked = false;
+      continue;
+    }
+    // Neue bzw. geänderte Noten und Liedtexte eines vorhandenen Songs
+    // (Dropbox-Abgleich) liegen schon auf dem Gerät — wie geänderte Spuren
+    // immer zum Aktualisieren vorgeschlagen.
+    for (const x of song.extras || []) x.checked = true;
+    // Von Hand gelöschter Song (Dropbox-Abgleich): bleibt wählbar, kommt aber
+    // nicht von selbst zurück.
+    if (song.ignored) {
+      for (const track of song.tracks) track.checked = false;
       continue;
     }
     for (const track of song.tracks) {
@@ -8177,20 +8610,24 @@ function selectionStats() {
   let songCount = 0, fileCount = 0, bytes = 0;
   let newSongs = 0, extended = 0, replaced = 0, unchanged = 0;
 
+  let extrasUpdated = 0;
   for (const song of pick.songs) {
     const chosen = song.tracks.filter((t) => t.checked);
+    const chosenExtras = (song.extras || []).filter((x) => x.checked);
     unchanged += song.tracks.filter((t) => t.status === 'same').length;
-    if (!chosen.length) continue;
+    if (!chosen.length && !chosenExtras.length) continue;
 
     songCount++;
-    fileCount += chosen.length;
+    fileCount += chosen.length + chosenExtras.length;
     for (const t of chosen) bytes += t.size;
+    for (const x of chosenExtras) bytes += x.size || 0;
+    extrasUpdated += chosenExtras.length;
 
     if (!song.existing) newSongs++;
     else if (chosen.some((t) => t.status === 'new')) extended++;
     replaced += chosen.filter((t) => t.status === 'changed').length;
   }
-  return { songCount, fileCount, bytes, newSongs, extended, replaced, unchanged };
+  return { songCount, fileCount, bytes, newSongs, extended, replaced, unchanged, extrasUpdated };
 }
 
 /**
@@ -8241,6 +8678,7 @@ function updateSheetSummary() {
   if (s.newSongs)  parts.push(tPlural(s.newSongs, 'count.newSongOne', 'count.newSongMany'));
   if (s.extended)  parts.push(t('import.planExtended').replace('{songs}', tPlural(s.extended, 'common.songOne', 'common.songMany')));
   if (s.replaced)  parts.push(t('import.planReplaced').replace('{recordings}', tPlural(s.replaced, 'count.recordingOne', 'count.recordingMany')));
+  if (s.extrasUpdated) parts.push(tPlural(s.extrasUpdated, 'sync.extrasUpdatedOne', 'sync.extrasUpdatedMany'));
   if (s.unchanged) parts.push(t('import.planUnchanged').replace('{files}', tPlural(s.unchanged, 'common.fileOne', 'common.fileMany')));
   sheetPlan.textContent = parts.join(' · ');
 
@@ -8314,18 +8752,20 @@ function renderSheetSong(song) {
   {
     const box = el('div', { class: 'pick-song' });
 
+    // Spuren und — nur beim Dropbox-Abgleich — Noten/Liedtext-Zeilen.
+    const items = [...song.tracks, ...(song.extras || [])];
     const songBox = el('input', { type: 'checkbox' });
-    songBox.checked = song.tracks.some((t) => t.checked);
+    songBox.checked = items.some((t) => t.checked);
     songBox.indeterminate = !songBox.checked ? false
-      : song.tracks.some((t) => !t.checked) && song.tracks.some((t) => t.checked);
+      : items.some((t) => !t.checked) && items.some((t) => t.checked);
     songBox.setAttribute('aria-label', t('import.allTracksAria').replace('{song}', song.title));
 
     const tracksHost = el('div', { class: 'pick-tracks', hidden: true });
 
     const refreshSongBox = () => {
-      const on  = song.tracks.filter((t) => t.checked).length;
+      const on  = items.filter((t) => t.checked).length;
       songBox.checked = on > 0;
-      songBox.indeterminate = on > 0 && on < song.tracks.length;
+      songBox.indeterminate = on > 0 && on < items.length;
     };
 
     // --- Spurzeilen ------------------------------------------------------
@@ -8353,10 +8793,31 @@ function renderSheetSong(song) {
       tracksHost.append(row);
     }
 
+    // --- Noten und Liedtext (nur Dropbox-Abgleich, siehe markDropboxExtras)
+    for (const extra of song.extras || []) {
+      const name = extra.kind === 'score'
+        ? `${t('import.extraScore')}: ${extra.entry.name}`
+        : t('import.extraLyrics');
+      const cb = el('input', { type: 'checkbox' });
+      cb.checked = extra.checked;
+      cb.setAttribute('aria-label', t('import.trackAria').replace('{track}', name).replace('{song}', song.title));
+      cb.addEventListener('change', () => {
+        extra.checked = cb.checked;
+        refreshSongBox();
+        updateSheetSummary();
+      });
+      const info = el('div', { class: 'grow' }, el('div', { text: name }),
+        extra.status === 'changed'
+          ? el('span', { class: 'badge badge--changed', text: t('import.changedBadge') })
+          : el('span', { class: 'badge badge--new', text: t('sync.newBadge') }));
+      tracksHost.append(el('label', { class: 'pick-track' }, cb, info,
+        el('span', { class: 'size', text: fmtBytes(extra.size || 0) })));
+    }
+
     // --- Songzeile -------------------------------------------------------
     songBox.addEventListener('change', () => {
       const on = songBox.checked;
-      song.tracks.forEach((t, i) => {
+      items.forEach((t, i) => {
         t.checked = on;
         tracksHost.querySelectorAll('input[type="checkbox"]')[i].checked = on;
       });
@@ -8388,11 +8849,14 @@ function renderSheetSong(song) {
       const parts = [];
       if (neu) parts.push(tPlural(neu, 'count.newVoiceOne', 'count.newVoiceMany'));
       if (geaendert) parts.push(t('import.recordingsNewer').replace('{recordings}', tPlural(geaendert, 'count.recordingOne', 'count.recordingMany')));
+      if (song.extras?.length) parts.push(tPlural(song.extras.length, 'sync.extrasUpdatedOne', 'sync.extrasUpdatedMany'));
 
       titleBlock.append(el('span', {
         class: parts.length ? 'badge badge--new' : 'badge',
         text: parts.length ? parts.join(' · ') : t('import.alreadyPresent'),
       }));
+    } else if (song.ignored) {
+      titleBlock.append(el('span', { class: 'badge', text: t('sync.ignoredBadge') }));
     } else if (song.similar) {
       titleBlock.append(el('span', {
         class: 'badge badge--changed',
@@ -8833,7 +9297,9 @@ async function flushImportBatch(batch) {
  * Geschriebene erhalten und bleibt in sich stimmig.
  */
 async function runImport() {
-  const chosenSongs = pick.songs.filter((s) => s.tracks.some((t) => t.checked));
+  // Ein Song zählt auch dann als gewählt, wenn nur seine Noten oder sein
+  // Liedtext angehakt sind (Dropbox-Abgleich, siehe markDropboxExtras).
+  const chosenSongs = pick.songs.filter((s) => s.tracks.some((t) => t.checked) || (s.extras || []).some((x) => x.checked));
   const chosenTracks = chosenSongs.flatMap((s) => s.tracks.filter((t) => t.checked));
   const totalFiles = chosenTracks.length;
   const totalBytes = chosenTracks.reduce((n, t) => n + (t.size || 0), 0) || 1;
@@ -8912,6 +9378,9 @@ async function runImport() {
   // ähnlich betitelten Songs sollen erst umgehängt werden, wenn der Import
   // wirklich fertig geschrieben ist (siehe attachSimilarSongData unten).
   const attachRequests = [];
+  // Für die Merkliste gelöschter Songs (Dropbox-Abgleich): wer einen Song
+  // wieder importiert, will ihn zurück.
+  const importedNormTitles = [];
 
   try {
     for (const scan of chosenSongs) {
@@ -8984,6 +9453,12 @@ async function runImport() {
               durationSec: null,
               sourceRevision: newSourceRevision(),
             };
+            // Herkunft beim Dropbox-Abgleich: der nächste Abgleich vergleicht
+            // über den Hash statt nur über die Größe (siehe remoteFileStatus).
+            if (track.entry.remoteVersion) {
+              record.remotePath = track.entry.remotePath;
+              record.remoteVersion = track.entry.remoteVersion;
+            }
 
             // Gegen die laufend mitgeführte Arbeitskopie prüfen, nicht gegen
             // das unveränderliche scan.existing: enthält dieser Ordner zwei
@@ -9026,8 +9501,16 @@ async function runImport() {
         showProgress(track.fileName);
       }
 
+      // Dropbox-Abgleich: Noten und Liedtext eines vorhandenen Songs nur, wenn
+      // sie neu/geändert und angehakt sind; unveränderte nicht neu schreiben.
+      // ZIP/Ordner (ohne `status`) wie bisher immer.
+      const extraWanted = (entry) => !scan.existing || !entry.status || entry.status === 'unknown'
+        || (scan.extras || []).some((x) => x.entry === entry && x.checked);
+
       // Liedtext: ein neuer im Archiv ersetzt den alten (Texte werden nachgepflegt).
-      if (scan.lyricsEntry && Number(scan.lyricsEntry.size) > LYRICS_MAX_BYTES) {
+      if (scan.lyricsEntry && !extraWanted(scan.lyricsEntry)) {
+        // unverändert oder abgewählt — nichts zu tun
+      } else if (scan.lyricsEntry && Number(scan.lyricsEntry.size) > LYRICS_MAX_BYTES) {
         // Ein Liedtext liegt im Songdatensatz und wird bei jedem Start
         // mitgeladen — ein riesiger (präparierter) Text machte die App
         // dauerhaft langsam (SEC-FILE-4).
@@ -9039,6 +9522,8 @@ async function runImport() {
           song.lyrics = text;
           songGotContent = true;
           if (artist) song.artist = artist;
+          if (scan.lyricsEntry.remoteVersion) song.lyricsRemoteVersion = scan.lyricsEntry.remoteVersion;
+          else delete song.lyricsRemoteVersion;
         } catch (err) {
           console.warn('[import] Liedtext', err);
           report.failed.push(t('import.failedTextUnreadable').replace('{file}', scan.lyricsEntry.name));
@@ -9047,6 +9532,7 @@ async function runImport() {
 
       // Noten: gleicher Dateiname wird ersetzt, sonst hinzugefügt.
       for (const pdf of scan.pdfEntries) {
+        if (!extraWanted(pdf)) continue;
         try {
           const blob = await entryBlob(pdf);
           // Dieselbe Signaturprüfung wie bei Audiodateien, hier gegen die
@@ -9060,13 +9546,17 @@ async function runImport() {
             // werden. Ein Lesefehler lässt damit das alte Notenblatt intakt.
             const fileRec = await fileRecord(fileKey, blob, pdf.name);
             const existing = song.scores.find((sc) => sc.fileName === pdf.name);
+            let score = existing;
             if (existing) {
               batch.obsolete.push(existing.fileKey);
               existing.fileKey = fileKey;
               existing.size = blob.size;
             } else {
-              song.scores.push({ fileName: pdf.name, fileKey, size: blob.size });
+              score = { fileName: pdf.name, fileKey, size: blob.size };
+              song.scores.push(score);
             }
+            if (pdf.remoteVersion) score.remoteVersion = pdf.remoteVersion;
+            else delete score.remoteVersion;
             batch.files.push(fileRec);
             songGotContent = true;
             batch.bytes += blob.size;
@@ -9102,7 +9592,10 @@ async function runImport() {
           await flushImportBatch(batch);
         }
       }
-      if (songGotContent) report.songsImported++;
+      if (songGotContent) {
+        report.songsImported++;
+        importedNormTitles.push(song.normTitle);
+      }
     }
     await flushImportBatch(batch);
   } catch (err) {
@@ -9168,6 +9661,8 @@ async function runImport() {
   if (report.songsImported || report.tracksAdded || report.tracksReplaced) {
     await saveSettings({ lastImportAt: new Date().toISOString() });
   }
+  await forgetDeletedForSync(importedNormTitles);
+  if (pick.source.kind === 'dropbox') renderDropboxSyncBadge(0);
 
   lastReport = report;
   closeSheet();
@@ -20215,7 +20710,7 @@ function runSelfTests() {
     // Wiedergabe-/Recorder-Vorlieben: Gültiges übernehmen, Ungültiges und Gerätegebundenes nie.
     const prefs = sanitizeSettingsPatch({ repeatMode: 'song', shuffleMode: true, presentTheme: 'light', slowMode: 'hd', recBackingVolume: 5, songSearchService: 'youtube', defaultImportScope: 'all' });
     if (prefs.repeatMode !== 'song' || prefs.shuffleMode !== true || prefs.presentTheme !== 'light' || prefs.slowMode !== 'hd' || prefs.recBackingVolume !== 0.6 || prefs.songSearchService !== 'youtube' || prefs.defaultImportScope !== 'all') failed.push('sanitizeSettingsPatch: Wiedergabe-Vorlieben aus Sicherung nicht übernommen');
-    const badPrefs = sanitizeSettingsPatch({ repeatMode: 'off', shuffleMode: 'ja', presentTheme: 'url(x)', slowMode: 'hq', songSearchService: 'evil', recBackingOffsetMs: 300, dropboxUrl: 'https://x.example', channelMode: 'mono', hdOptions: {} });
+    const badPrefs = sanitizeSettingsPatch({ repeatMode: 'off', shuffleMode: 'ja', presentTheme: 'url(x)', slowMode: 'hq', songSearchService: 'evil', recBackingOffsetMs: 300, dropboxUrl: 'https://x.example', channelMode: 'mono', hdOptions: {}, dropboxCheckOnStart: true, dropboxSyncNoticeShown: true, dropboxIgnoredSongs: ['x'], dropboxLastNoticeSig: 'abc' });
     if (Object.keys(badPrefs).length) failed.push(`sanitizeSettingsPatch: Ungültiges/Gerätegebundenes übernommen (${Object.keys(badPrefs).join(', ')})`);
   }
   checks++;
@@ -20282,6 +20777,106 @@ function runSelfTests() {
   if (nested.songs[0]?.title !== 'Blaue Augen' ||
       nested.songs[0]?.collections[0] !== 'Best of 2025') {
     failed.push('Sammelordner „Best of 2025" wurde nicht korrekt aufgelöst');
+  }
+
+  // Zwei Dateien für dieselbe Stimme: die zweite (nach Namen) wird OTHER mit
+  // dupOf, statt die erste still zu ersetzen — sonst hielte der Dropbox-
+  // Abgleich bei jedem Lauf abwechselnd eine von beiden für geändert.
+  checks++;
+  const dupScan = scanFiles([
+    { path: 'Lied/Lied S2.mp3', size: 2 },
+    { path: 'Lied/Lied S1.mp3', size: 1 },
+  ], 'ZIP').songs[0];
+  const dupSop = dupScan?.tracks.find((tr) => tr.voice === 'SOP');
+  const dupOther = dupScan?.tracks.find((tr) => tr.voice === 'OTHER');
+  if (dupSop?.fileName !== 'Lied S1.mp3' || dupOther?.fileName !== 'Lied S2.mp3' || dupOther?.dupOf !== 'SOP') {
+    failed.push(`doppelte Stimme: ${dupScan?.tracks.map((tr) => `${tr.fileName}=${tr.voice}`).join(', ')}, erwartet S1=SOP, S2=OTHER (dupOf SOP)`);
+  }
+  // … liegt in der Bibliothek schon S2 als Sopran, tauschen die beiden.
+  checks++;
+  dupScan.existing = { tracks: [{ voice: 'SOP', fileName: 'Lied S2.mp3', size: 2 }] };
+  preferStoredDuplicate(dupScan);
+  if (dupScan.tracks.find((tr) => tr.voice === 'SOP')?.fileName !== 'Lied S2.mp3'
+      || dupScan.tracks.find((tr) => tr.voice === 'OTHER')?.dupOf !== 'SOP') {
+    failed.push('preferStoredDuplicate: gespeicherte Datei müsste ihre Stimme behalten');
+  }
+
+  // Dropbox-Abgleich: Status über den Hash, ohne gespeicherten Hash über die Größe.
+  checks++;
+  {
+    const cases = [
+      [remoteFileStatus(null, { remoteVersion: 'a' }, 1), 'new'],
+      [remoteFileStatus({ remoteVersion: 'a', size: 1 }, { remoteVersion: 'a' }, 9), 'same'],
+      [remoteFileStatus({ remoteVersion: 'a', size: 1 }, { remoteVersion: 'b' }, 1), 'changed'],
+      [remoteFileStatus({ size: 5 }, { remoteVersion: 'b' }, 5), 'same'],
+      [remoteFileStatus({ remoteVersion: 'a', size: 5 }, {}, 6), 'changed'],
+    ];
+    cases.forEach(([got, want], i) => { if (got !== want) failed.push(`remoteFileStatus Fall ${i}: ${got}, erwartet ${want}`); });
+  }
+
+  // Worker-Liste als fremde Daten: nur Gültiges kommt durch.
+  checks++;
+  {
+    let threw = false;
+    try { dropboxSyncParseListing({ entries: [] }); } catch (err) { threw = err?.code === 'badListing'; }
+    if (!threw) failed.push('dropboxSyncParseListing: kein Array müsste badListing werfen');
+    const parsed = dropboxSyncParseListing([
+      { type: 'folder', path: '/Lied' },
+      { type: 'file', path: '/Lied/Lied SOP.mp3', size: 10, version: 'h1' },
+      { type: 'file', path: '/Lied/Ah... Lied.mp3', size: 10, version: 'h2' },
+      { type: 'file', path: 'ohne-slash.mp3', size: 1 },
+      { type: 'file', path: '/Lied/../x.mp3', size: 1 },
+      { type: 'file', path: '/Lied/.DS_Store', size: 1 },
+      { type: 'file', path: '/Lied/neg.mp3', size: -1 },
+      { type: 'file', path: '/Lied/krumm.mp3', size: 1.5 },
+      { type: 'file', path: `/${'x'.repeat(IMPORT_MAX_PATH_LENGTH)}.mp3`, size: 1 },
+      null, 'text',
+    ]);
+    const paths = parsed.files.map((f) => f.path).join('|');
+    if (parsed.folders.join() !== '/Lied' || paths !== 'Lied/Lied SOP.mp3|Lied/Ah... Lied.mp3'
+        || parsed.files[0].remotePath !== '/Lied/Lied SOP.mp3' || parsed.files[0].remoteVersion !== 'h1') {
+      failed.push(`dropboxSyncParseListing: ${paths} / ${parsed.folders.join()}`);
+    }
+  }
+
+  // Noten und Liedtext beim Abgleich: unverändert = keine Zeile, geändert/neu
+  // = Zeile, Liedtext ohne gespeicherte Version wird nicht gemeldet.
+  checks++;
+  {
+    const song = {
+      existing: { lyrics: 'alt', scores: [{ fileName: 'a.pdf', size: 1, remoteVersion: 'p1' }, { fileName: 'b.pdf', size: 1, remoteVersion: 'p2' }] },
+      pdfEntries: [{ name: 'a.pdf', size: 1, remoteVersion: 'p1' }, { name: 'b.pdf', size: 1, remoteVersion: 'pX' }, { name: 'c.pdf', size: 3, remoteVersion: 'p3' }],
+      lyricsEntry: { name: 'Text.txt', size: 1, remoteVersion: 'l1' },
+    };
+    markDropboxExtras(song);
+    const got = song.extras.map((x) => `${x.entry.name}:${x.status}`).join(',');
+    if (got !== 'b.pdf:changed,c.pdf:new' || song.lyricsEntry.status !== 'unknown') {
+      failed.push(`markDropboxExtras: ${got}, Liedtext ${song.lyricsEntry.status}`);
+    }
+    song.existing.lyricsRemoteVersion = 'l0';
+    markDropboxExtras(song);
+    if (!song.extras.some((x) => x.kind === 'lyrics' && x.status === 'changed')) failed.push('markDropboxExtras: geänderter Liedtext fehlt');
+  }
+
+  // Was die Prüfung beim Start meldet.
+  checks++;
+  {
+    const tr = (voice, status, v) => ({ voice, status, size: 1, entry: { remotePath: `/L/${voice}${v}`, remoteVersion: v } });
+    const songs = [
+      { normTitle: 'neu', existing: null, tracks: [tr('SOP', 'new', 'a')] },
+      { normTitle: 'geloescht', existing: null, tracks: [tr('SOP', 'new', 'b')] },
+      { normTitle: 'da', existing: {}, tracks: [tr('ALT', 'new', 'c'), tr('TEN', 'new', 'd'), tr('BASS', 'changed', 'e'), tr('FULL', 'same', 'f')],
+        extras: [{ entry: { remotePath: '/L/a.pdf', remoteVersion: 'g' }, size: 1 }] },
+    ];
+    const news = dropboxSyncNews(songs, { myVoices: ['ALT'], ignored: ['geloescht'] });
+    if (news.newSongs !== 1 || news.newTracks !== 1 || news.changedTracks !== 1 || news.extras !== 1 || news.total !== 4) {
+      failed.push(`dropboxSyncNews: ${JSON.stringify(news)}`);
+    }
+    const reversed = dropboxSyncNews([...songs].reverse().map((s) => ({ ...s, tracks: [...s.tracks].reverse() })), { myVoices: ['ALT'], ignored: ['geloescht'] });
+    if (!news.signature || reversed.signature !== news.signature) failed.push('dropboxSyncNews: Signatur hängt von der Reihenfolge ab');
+    if (dropboxSyncNews([{ normTitle: 'x', existing: {}, tracks: [tr('FULL', 'same', 'z')] }]).signature !== null) {
+      failed.push('dropboxSyncNews: ohne Neues müsste die Signatur null sein');
+    }
   }
 
   // Titel-Normalisierung und Versionsmarker (4.5)
@@ -26871,6 +27466,7 @@ async function boot() {
   initGrooveLabEasterEgg();
   initTools();
   setupFolderImport();
+  renderDropboxSyncUi();
   if (shouldAutoRunSelfTests()) {
     try {
       runSelfTests();
@@ -26919,6 +27515,7 @@ async function boot() {
   } else {
     requestPersistence(); // im Hintergrund, blockiert den Start nicht
     checkCompatWarning().catch((err) => console.error('[compat-warning]', err));
+    scheduleDropboxQuietCheck(); // nur melden, nie laden (siehe dropboxQuietCheck)
   }
 
   registerServiceWorker();
