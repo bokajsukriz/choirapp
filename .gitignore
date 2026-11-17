@@ -1,0 +1,3 @@
+# Lokale Claude-Code-Einstellungen: enthalten ggf. per „nicht erneut fragen“
+# freigegebene Befehle samt Passwörtern/Tokens im Klartext — nie committen.
+.claude/settings.local.json
